@@ -1,0 +1,164 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+name: yakmv
+
+inputs:
+- name: file
+  short: "f"
+  default: "/dev/stdin"
+  type: string
+  description:  Path to input
+- name: autocreate-namespaces
+  short: "a"
+  default: true
+  type: bool
+  description: Automatically create missing namespaces
+
+entrypoint: pipeline
+
+steps:
+- name: pipeline
+  sequentialAnd:
+    refs:
+    - name: generate-cert
+    - name: write-token
+    - name: etcd
+    - name: kube-apiserver
+    - name: wait-for-apiserver
+    - name: extract-namespaces
+    - name: extract-crds
+    - name: extract-resources
+    - name: apply-namespaces
+    - name: apply-crds
+    - name: apply-resources
+- name: generate-cert
+  run:
+    image: alpine/openssl:3.1.4
+    args:
+    - req
+    - -x509
+    - -newkey
+    - rsa:4096
+    - -keyout=${{ v.tmpDir }}/key.pem 
+    - -out=${{ v.tmpDir }}/cert.pem
+    - -days=10
+    - -nodes
+    - "-subj=/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname"
+- name: write-token
+  run:
+    image: busybox
+    args:
+    - echo
+    - yakmv,default,default
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/token'
+- name: extract-namespaces
+  if: v.inputs['autocreate-namespaces']
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - ea
+    - '[. | select(.metadata.namespace != null)] | unique_by(.metadata.namespace) | .[] |={"kind":"Namespace","apiVersion":"v1","metadata":{"name":.metadata.namespace}} | .[] | split_doc'
+    - '${{ v.inputs.file }}'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/namespaces.yaml'
+  artifacts:
+  - name: namespaces
+    file:
+      path: '${{ v.tmpDir }}/namespaces.yaml'
+- name: extract-crds
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - e
+    - select(.kind=="CustomResourceDefinition") | .spec.conversion.strategy="None" | .spec.conversion.webhook = {}
+    - '${{ v.inputs.file }}'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/crds.yaml'
+  artifacts:
+  - name: crds
+    file:
+      path: '${{ v.tmpDir }}/crds.yaml'
+- name: extract-resources
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - e
+    - select(.kind!="CustomResourceDefinition")
+    - '${{ v.inputs.file }}'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/resources.yaml'
+  artifacts:
+  - name: resources
+    file:
+      path: '${{ v.tmpDir }}/resources.yaml'
+- name: wait-for-apiserver
+  run:
+    image: bitnami/kubectl:1.29.3
+    args:
+    - version
+    - --server=https://${{ v.containers['kube-apiserver'].containerIP }}:6443
+    - --token=yakmv
+    - --insecure-skip-tls-verify=true
+    restartPolicy: OnFailure 
+- name: apply-crds
+  if: v.artifacts['crds'].size > 0
+  run:
+    image: bitnami/kubectl:1.29.3
+    args:
+    - create
+    - --filename=${{ v.tmpDir }}/crds.yaml
+    - --server=https://${{ v.containers['kube-apiserver'].containerIP }}:6443
+    - --token=yakmv
+    - --insecure-skip-tls-verify=true
+- name: apply-namespaces
+  if: v.artifacts['namespaces'].size > 0
+  run:
+    image: bitnami/kubectl:1.29.3
+    args:
+    - apply
+    - --filename=${{ v.tmpDir }}/namespaces.yaml
+    - --server=https://${{ v.containers['kube-apiserver'].containerIP }}:6443
+    - --token=yakmv
+    - --insecure-skip-tls-verify=true
+- name: apply-resources
+  run:
+    image: bitnami/kubectl:1.29.3
+    args:
+    - apply
+    - --filename=${{ v.tmpDir }}/resources.yaml
+    - --server=https://${{ v.containers['kube-apiserver'].containerIP }}:6443
+    - --token=yakmv
+    - --insecure-skip-tls-verify=true
+- name: etcd
+  run:
+    image: quay.io/coreos/etcd:v3.5.11
+    args:
+    - "/usr/local/bin/etcd"
+    - --data-dir=${{ v.tmpDir }}/etcd.store
+    - "--advertise-client-urls=http://0.0.0.0:2379"
+    - "--listen-client-urls=http://0.0.0.0:2379"
+    - "--initial-advertise-peer-urls=http://0.0.0.0:2380"
+    - "--listen-peer-urls=http://0.0.0.0:2380"
+    - "--initial-cluster=default=http://0.0.0.0:2380"
+    await: Ready
+- name: kube-apiserver
+  run:
+    image: registry.k8s.io/kube-apiserver:v1.28.0
+    args:
+    - /usr/local/bin/kube-apiserver
+    - --etcd-servers=${{ v.containers['etcd'].containerIP }}:2379
+    - "--anonymous-auth"
+    - "--service-account-issuer=https://validation"
+    - "--service-account-key-file=${{ v.tmpDir }}/key.pem"
+    - "--service-account-signing-key-file=${{ v.tmpDir }}/key.pem"
+    - "--token-auth-file=${{ v.tmpDir }}/token"
+    - "--enable-priority-and-fairness=false"
+    - "--cert-dir=${{ v.tmpDir }}"
+    - "--disable-admission-plugins=MutatingAdmissionWebhook,ValidatingAdmissionPolicy,ValidatingAdmissionWebhook"
+    await: Ready

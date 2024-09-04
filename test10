@@ -1,0 +1,181 @@
+#!/usr/bin/env -S rageta run
+
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+name: validate-gitops
+
+inputs:
+- name: context
+  default: ""
+  type: string
+  description: Kubernetes context name
+- name: token
+  default: ""
+  type: string
+  description: Kubernetes bearer token
+- name: kube-version
+  default: "1.28.0"
+  type: string
+  description: Kubernetes version to test against
+- name: skip-sealedsecrets
+  default: false
+  type: bool
+  description: Skip validating SealedSecrets
+- name: skip-diff
+  default: false
+  type: bool
+  description: Skip kubectl diff
+- name: skip-clusterpolicies
+  default: false
+  type: bool
+  description: Skip validating resources against kyverno ClusterPolicies 
+- name: skip-terraform
+  default: false
+  type: bool
+  description: Skip validating crossplane terraform resources
+- name: skip-validate
+  default: false
+  type: bool
+  description: Skip running yakmv (validate resources against a certan kubernetes version) 
+- name: policy-path
+  type: string
+  description: Custom path to kyverno policies instead extracting them from the built resources
+
+entrypoint: pipeline
+
+steps:
+- name: pipeline
+  sequentialAnd:
+    refs:
+    - name: build
+    - name: combine-build-outputs
+    - name: validate-manifests
+- name: validate-manifests
+  concurrent:
+    refs:
+    - name: yakmv
+    - name: kubeseal
+    - name: kyverno-policies
+    - name: validate-terraform
+- name: kubeseal
+  if: '!v.inputs["skip-sealedsecrets"]'
+  sequentialAnd: 
+    refs:
+    - name: extract-sealedsecrets
+    - name: validate-sealedsecrets
+- name: kyverno-policies
+  if: '!v.inputs["skip-clusterpolicies"]'
+  sequentialAnd: 
+    refs:
+    - name: extract-policies
+    - name: validate-kyverno-policies
+- name: build
+  concurrentPipe:
+    refs:
+    - name: flux-build
+    - name: xunpack
+- name: validate-terraform
+  if: "!v.inputs['skip-terraform']"
+  sequentialAnd:
+    refs:
+    - name: tfxunpack
+    - name: terraform-init
+    - name: terraform-validate
+- name: yakmv
+  if: "!v.inputs['skip-validate']"
+  inherit:
+    pipeline: ./test5
+    args:
+    - --file=${{ v.tmpDir }}/resources.yaml
+- name: extract-sealedsecrets
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - e
+    - select(.kind=="SealedSecret")
+    - '${{ v.tmpDir }}/flux-build.yaml'
+    - '${{ v.tmpDir }}/xunpack.yaml'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/sealedsecrets.yaml'
+- name: validate-sealedsecrets
+  if: "!v.inputs['skip-sealedsecrets'] && v.inputs['token'] != ''"
+  run:
+    image: bitnami/sealed-secrets-kubeseal:0.26.0
+    args:
+    - --context=${{ v.inputs.context }}
+    - --token=${{ v.inputs.token }}
+    - --secret-file=${{ v.tmpDir }}/sealedsecrets.yaml
+    - --validate
+- name: extract-policies
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - e
+    - select(.kind=="ClusterPolicy")
+    - '${{ v.tmpDir }}/flux-build.yaml'
+    - '${{ v.tmpDir }}/xunpack.yaml'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/cluster-policies.yaml'
+- name: xunpack
+  run:
+    image: ghcr.io/doodlescheduling/xunpack:v0
+    args:
+    - -f
+    - /dev/stdin
+    - --output=${{ v.tmpDir }}/xunpack.yaml
+    - --log-level=debug
+    streams:
+      stdin:
+        path: '${{ v.tmpDir }}/flux-build.yaml'
+- name: tfxunpack
+  run:
+    image: ghcr.io/doodlescheduling/tfxunpack:v0
+    args:
+    - -f
+    - /dev/stdin
+    - --out=${{ v.tmpDir }}/tfxunpack
+- name: terraform-init
+  run:
+    image: hashicorp/terraform:1.8
+    pwd: ${{ v.tmpDir }}/tfxunpack
+    args:
+    - init
+- name: terraform-validate
+  run:
+    image: hashicorp/terraform:1.8
+    pwd: ${{ v.tmpDir }}/tfxunpack
+    args:
+    - validate
+- name: flux-build
+  run: 
+    image: ghcr.io/doodlescheduling/flux-build:v0
+    args:
+    - "${{ v.args.join(' ') }}"
+    #pwd: /__root/${{ v.env["PWD"] }}
+    #mounts:
+    #- /:/__root
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/flux-build.yaml'
+- name: combine-build-outputs
+  run:
+    image: mikefarah/yq:4.40.5
+    args:
+    - '${{ v.tmpDir }}/flux-build.yaml'
+    - '${{ v.tmpDir }}/xunpack.yaml'
+    streams:
+      stdout:
+        path: '${{ v.tmpDir }}/resources.yaml'
+- name: validate-kyverno-policies
+  run:
+    image: ghcr.io/kyverno/kyverno-cli:v1.11.3 
+    args:
+    - apply
+    - '${{ v.tmpDir }}/cluster-policies.yaml'
+    - -r
+    - '${{ v.tmpDir }}/resources.yaml'
+    - --detailed-results
+    - --table
