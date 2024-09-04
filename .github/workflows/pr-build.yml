@@ -22,6 +22,6 @@ jobs:
 
           docker run --workdir "/__rootfs/$HOME" --user=$UID -v $HOME:/__rootfs/$HOME bash -c "ls -hals /__rootfs/$HOME"
 
-          ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
+          ./rageta-osx run --log-level=debug --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
