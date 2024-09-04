@@ -14,7 +14,9 @@ jobs:
           colima delete --force
           colima start
           ls -hals /Users/runner/.colima
-          #export DOCKER_HOST="unix:///Users/runner/.colima/default/docker.sock"
+          export DOCKER_HOST="unix:///Users/runner/.colima/docker.sock"
+          export
+          sleep 1
           ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
