@@ -12,7 +12,7 @@ jobs:
           curl -L -v https://github.com/raffis/rageta/releases/download/v0.0.1-alpha/rageta-osx -o rageta-osx; chmod +x rageta-osx; ./rageta-osx version 
           brew install docker
           colima start
-          export DOCKER_HOST="unix://$HOME/.colima/docker.sock"
+          export DOCKER_HOST="unix:///Users/runner/.colima/default/docker.sock"
           ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
