@@ -13,7 +13,8 @@ jobs:
           brew install docker
           colima delete --force
           colima start
-          export DOCKER_HOST="unix:///Users/runner/.colima/default/docker.sock"
+          ls -hals /var/run
+          #export DOCKER_HOST="unix:///Users/runner/.colima/default/docker.sock"
           ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
