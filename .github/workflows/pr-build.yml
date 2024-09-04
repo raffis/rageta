@@ -17,6 +17,8 @@ jobs:
           export DOCKER_HOST="unix:///Users/runner/.colima/docker.sock"
           export
           sleep 1
+          colima version
+          colima ps
           ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
