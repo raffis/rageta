@@ -18,7 +18,7 @@ jobs:
           export
           sleep 1
           colima version
-          colima ps
+          docker info
           ./rageta-osx run --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
