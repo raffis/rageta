@@ -9,8 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - run: |
-          curl https://github.com/raffis/rageta/releases/download/v0.0.1-alpha/rageta-osx -o rageta-osx
-          chmod +x rageta-osx
-          ./rageta-osx version 
+          curl https://github.com/raffis/rageta/releases/download/v0.0.1-alpha/rageta-osx -o rageta-osx && chmod +x rageta-osx && ./rageta-osx version 
           
     timeout-minutes: 45
