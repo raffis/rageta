@@ -1,6 +1,5 @@
 name: pr-build
 on:
-  pull_request
   push:
     branches: 
     - master
