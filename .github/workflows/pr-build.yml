@@ -11,14 +11,14 @@ jobs:
       - run: |
           curl -L -v https://github.com/raffis/rageta/releases/download/v0.0.1-alpha/rageta-osx -o rageta-osx; chmod +x rageta-osx; ./rageta-osx version 
           brew install docker
-          colima delete --force
+          #colima delete --force
           colima start
-          ls -hals /Users/runner/.colima
+          #ls -hals /Users/runner/.colima
           export DOCKER_HOST="unix:///Users/runner/.colima/docker.sock"
-          export
-          sleep 1
-          colima version
-          docker info
+          #export
+          #sleep 1
+          #colima version
+          #docker info
 
           docker run --workdir "/__rootfs/$HOME" --user=$UID -v $HOME:/__rootfs/$HOME bash -c "ls -hals /__rootfs/$HOME"
 
