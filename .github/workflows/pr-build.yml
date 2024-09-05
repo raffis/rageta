@@ -25,6 +25,9 @@ jobs:
 
           export TMPDIR=/tmp/colima
           ./rageta-osx run --log-level=debug --no-gc --tee  test10 -o prompt -- _x/ || true
+          echo "-------"
+          docker ps
+          
           docker ps -q | xargs -L 1 docker logs          
 
     timeout-minutes: 45
