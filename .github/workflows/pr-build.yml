@@ -20,8 +20,10 @@ jobs:
           #colima version
           #docker info
 
+          
           docker run --workdir "/__rootfs/$HOME" --user=$UID -v $HOME:/__rootfs/$HOME bash -c "ls -hals /__rootfs/$HOME"
 
+          export TMPDIR=/tmp/colima
           ./rageta-osx run --log-level=debug --no-gc --tee  test10 -o prompt -- _x/
           
     timeout-minutes: 45
