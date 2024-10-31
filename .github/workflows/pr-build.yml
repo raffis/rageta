@@ -9,8 +9,8 @@ jobs:
     steps:
       - name: Group of log lines
         run: |
-            echo "::debug dedede"
-            echo "::error dedede"
+            echo "::debug::dedede"
+            echo "::error:.dedede"
             echo "::group::My title"
             echo "Inside group"
             sleep 1
