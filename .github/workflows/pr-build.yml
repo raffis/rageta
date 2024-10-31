@@ -14,6 +14,7 @@ jobs:
             sleep 1
             echo "Inside group"
             sleep 1
+            echo "::group::My title 2"
             echo "Inside group"
             sleep 1
             echo "Inside group"
@@ -28,6 +29,11 @@ jobs:
             echo "Inside group"
             echo "Inside group"
             echo "Inside group"
+            echo "::endgroup::"    
+            echo "Inside group 2"
+            sleep 1
+            echo "Inside group 2"
+            sleep 1
             echo "::endgroup::"    
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1      
       - run: |
