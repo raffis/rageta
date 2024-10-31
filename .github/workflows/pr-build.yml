@@ -10,8 +10,10 @@ jobs:
       - name: Group of log lines
         run: |
             echo "::debug::dedede"
-            echo "::error:.dedede"
+            echo "::error::dedede"
             echo "::group::My title"
+            echo "::group::My title 3"
+            echo "::group::My title 3"
             echo "Inside group"
             sleep 1
             echo "Inside group"
