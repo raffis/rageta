@@ -3,6 +3,7 @@ project_name: rageta
 builds:
 - id: rageta
   binary: rageta
+  main: ./cmd/
   goos:
   - linux
   - darwin
