@@ -100,7 +100,6 @@ signs:
 - cmd: cosign
   certificate: "${artifact}.pem"
   env:
-  - GITHUB_TEOKN=$RUNNER_TOKEN
   - COSIGN_EXPERIMENTAL=1
   args:
   - sign-blob
@@ -114,7 +113,6 @@ signs:
 docker_signs:
 - cmd: cosign
   env:
-  - GITHUB_TOKEN=$RUNNER_TOKEN
   - COSIGN_EXPERIMENTAL=1
   artifacts: images
   output: true
