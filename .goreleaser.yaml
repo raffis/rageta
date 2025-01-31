@@ -1,3 +1,4 @@
+version: 2
 project_name: rageta
 
 builds:
@@ -85,15 +86,15 @@ docker_manifests:
 brews:
 - ids:
   - rageta
-  tap:
+  repository:
     owner: raffis
     name: rageta
     token: "{{ .Env.GITHUB_TOKEN }}"
-  description: Kubernetes manifest validator
+  description: Cloud native pipelines
   homepage: https://github.com/raffis/rageta
-  folder: Formula
+  directory: Formula
   test: |
-    system "#{bin}/rageta -h" 
+    system "#{bin}/flux-build -h" 
 
 signs:
 - cmd: cosign

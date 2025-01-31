@@ -1,4 +1,4 @@
-oname: main
+name: main
 
 on:
   push:
