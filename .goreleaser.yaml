@@ -4,7 +4,7 @@ project_name: rageta
 builds:
 - id: rageta
   binary: rageta
-  main: ./cmd/
+  main: ./cmd/cli/
   goos:
   - linux
   - darwin
