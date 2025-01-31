@@ -1,0 +1,120 @@
+name: Setup rageta CLI
+description: A GitHub Action for installing the rageta CLI
+author: rageta project
+branding:
+  color: blue
+  icon: command
+inputs:
+  version:
+    description: "rageta version e.g. 2.0.0 (defaults to latest stable release)"
+    required: false
+  arch:
+    description: "arch can be amd64, arm64 or arm"
+    required: false
+    deprecationMessage: "No longer required, action will now detect runner arch."
+  bindir:
+    description: "Alternative location for the rageta binary, defaults to path relative to $RUNNER_TOOL_CACHE."
+    required: false
+  token:
+    description: "Token used to authentication against the GitHub.com API. Defaults to the token from the GitHub context of the workflow."
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: "Download the binary to the runner's cache dir"
+      shell: bash
+      run: |
+        VERSION=${{ inputs.version }}
+
+        TOKEN=${{ inputs.token }}
+        if [[ -z "$TOKEN" ]]; then
+          TOKEN=${{ github.token }}
+        fi
+
+        if [[ -z "$VERSION" ]] || [[ "$VERSION" = "latest" ]]; then
+          VERSION=$(curl -fsSL -H "Authorization: token ${TOKEN}" https://api.github.com/repos/raffis/rageta/releases/latest | grep tag_name | cut -d '"' -f 4)
+        fi
+        if [[ -z "$VERSION" ]]; then
+          echo "Unable to determine rageta CLI version"
+          exit 1
+        fi
+        if [[ $VERSION = v* ]]; then
+          VERSION="${VERSION:1}"
+        fi
+
+        OS=$(echo "${RUNNER_OS}" | tr '[:upper:]' '[:lower:]')
+        if [[ "$OS" == "macos" ]]; then
+          OS="darwin"
+        fi
+
+        ARCH=$(echo "${RUNNER_ARCH}" | tr '[:upper:]' '[:lower:]')
+        if [[ "$ARCH" == "x64" ]]; then
+          ARCH="amd64"
+        elif [[ "$ARCH" == "x86" ]]; then
+          ARCH="386"
+        fi
+
+        RAGETA_EXEC_FILE="rageta"
+        if [[ "$OS" == "windows" ]]; then
+            RAGETA_EXEC_FILE="${RAGETA_EXEC_FILE}.exe"
+        fi
+
+        RAGETA_TOOL_DIR=${{ inputs.bindir }}
+        if [[ -z "$RAGETA_TOOL_DIR" ]]; then
+          RAGETA_TOOL_DIR="${RUNNER_TOOL_CACHE}/rageta/${VERSION}/${OS}/${ARCH}"
+        fi
+        if [[ ! -x "$RAGETA_TOOL_DIR/RAGETA_EXEC_FILE" ]]; then
+          DL_DIR="$(mktemp -dt rageta-XXXXXX)"
+          trap 'rm -rf $DL_DIR' EXIT
+
+          echo "Downloading rageta ${VERSION} for ${OS}/${ARCH}"
+          RAGETA_TARGET_FILE="rageta_${VERSION}_${OS}_${ARCH}.tar.gz"
+          if [[ "$OS" == "windows" ]]; then
+            RAGETA_TARGET_FILE="rageta_${VERSION}_${OS}_${ARCH}.zip"
+          fi
+
+          RAGETA_CHECKSUMS_FILE="rageta_${VERSION}_checksums.txt"
+
+          RAGETA_DOWNLOAD_URL="https://github.com/raffis/rageta/releases/download/v${VERSION}/"
+
+          curl -fsSL -o "$DL_DIR/$RAGETA_TARGET_FILE" "$RAGETA_DOWNLOAD_URL/$RAGETA_TARGET_FILE"
+          curl -fsSL -o "$DL_DIR/$RAGETA_CHECKSUMS_FILE" "$RAGETA_DOWNLOAD_URL/$RAGETA_CHECKSUMS_FILE"
+
+          echo "Verifying checksum"
+          sum=""
+          if command -v openssl > /dev/null; then
+            sum=$(openssl sha256 "$DL_DIR/$RAGETA_TARGET_FILE" | awk '{print $2}')
+          elif command -v sha256sum > /dev/null; then
+            sum=$(sha256sum "$DL_DIR/$RAGETA_TARGET_FILE" | awk '{print $1}')
+          fi
+
+          if [[ -z "$sum" ]]; then
+            echo "Neither openssl nor sha256sum found. Cannot calculate checksum."
+            exit 1
+          fi
+
+          expected_sum=$(grep " $RAGETA_TARGET_FILE\$" "$DL_DIR/$RAGETA_CHECKSUMS_FILE" | awk '{print $1}')
+          if [ "$sum" != "$expected_sum" ]; then
+            echo "SHA sum of ${RAGETA_TARGET_FILE} does not match. Aborting."
+            exit 1
+          fi
+
+          echo "Installing rageta to ${RAGETA_TOOL_DIR}"
+          mkdir -p "$RAGETA_TOOL_DIR"
+        
+          if [[ "$OS" == "windows" ]]; then
+            unzip "$DL_DIR/$RAGETA_TARGET_FILE" "$RAGETA_EXEC_FILE" -d "$RAGETA_TOOL_DIR"
+          else
+            tar xzf "$DL_DIR/$RAGETA_TARGET_FILE" -C "$RAGETA_TOOL_DIR" $RAGETA_EXEC_FILE
+          fi
+
+          chmod +x "$RAGETA_TOOL_DIR/$RAGETA_EXEC_FILE"
+        fi
+
+        echo "Adding rageta to path"
+        echo "$RAGETA_TOOL_DIR" >> "$GITHUB_PATH"
+
+    - name: "Print installed rageta version"
+      shell: bash
+      run: |
+        rageta version

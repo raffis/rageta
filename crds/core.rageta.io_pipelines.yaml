@@ -1,0 +1,256 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: pipelines.core.rageta.io
+spec:
+  group: core.rageta.io
+  names:
+    kind: Pipeline
+    listKind: PipelineList
+    plural: pipelines
+    singular: pipeline
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          entrypoint:
+            type: string
+          inherits:
+            items:
+              type: string
+            type: array
+          inputs:
+            items:
+              properties:
+                default:
+                  description: |-
+                    RawMessage is a raw encoded JSON value.
+                    It implements [Marshaler] and [Unmarshaler] and can
+                    be used to delay JSON decoding or precompute a JSON encoding.
+                  format: byte
+                  type: string
+                description:
+                  type: string
+                name:
+                  type: string
+                required:
+                  type: boolean
+                short:
+                  type: string
+                type:
+                  type: string
+              type: object
+            type: array
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          longDescription:
+            type: string
+          metadata:
+            type: object
+          name:
+            type: string
+          shortDescription:
+            type: string
+          steps:
+            items:
+              properties:
+                allowFailure:
+                  type: boolean
+                and:
+                  properties:
+                    refs:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
+                concurrent:
+                  properties:
+                    failFast:
+                      type: boolean
+                    refs:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
+                description:
+                  type: string
+                finally:
+                  type: boolean
+                generates:
+                  items:
+                    properties:
+                      path:
+                        type: string
+                    type: object
+                  type: array
+                if:
+                  type: string
+                inherit:
+                  properties:
+                    entrypoint:
+                      type: string
+                    inputs:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            type: string
+                        type: object
+                      type: array
+                    pipeline:
+                      type: string
+                  type: object
+                matrix:
+                  additionalProperties:
+                    description: |-
+                      RawMessage is a raw encoded JSON value.
+                      It implements [Marshaler] and [Unmarshaler] and can
+                      be used to delay JSON decoding or precompute a JSON encoding.
+                    format: byte
+                    type: string
+                  type: object
+                name:
+                  type: string
+                needs:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                pipe:
+                  properties:
+                    refs:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
+                retry:
+                  properties:
+                    constant:
+                      type: string
+                    exponential:
+                      type: string
+                    maxRetries:
+                      type: integer
+                  type: object
+                run:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    await:
+                      type: string
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    env:
+                      items:
+                        type: string
+                      type: array
+                    image:
+                      type: string
+                    pwd:
+                      type: string
+                    restartPolicy:
+                      type: string
+                    stdin:
+                      type: boolean
+                    streams:
+                      properties:
+                        stderr:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                        stdin:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                        stdout:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                      type: object
+                    tty:
+                      type: boolean
+                  type: object
+                sources:
+                  items:
+                    properties:
+                      match:
+                        type: string
+                    type: object
+                  type: array
+                streams:
+                  properties:
+                    stderr:
+                      properties:
+                        append:
+                          type: boolean
+                        path:
+                          type: string
+                      type: object
+                    stdin:
+                      properties:
+                        append:
+                          type: boolean
+                        path:
+                          type: string
+                      type: object
+                    stdout:
+                      properties:
+                        append:
+                          type: boolean
+                        path:
+                          type: string
+                      type: object
+                  type: object
+                timeout:
+                  type: string
+              type: object
+            type: array
+          subPipelines:
+            items: {}
+            type: array
+        type: object
+    served: true
+    storage: true

@@ -1,0 +1,5 @@
+FROM alpine:latest
+WORKDIR /
+COPY gateway wrapper
+
+ENTRYPOINT ["/wrapper"]

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package v1beta1;
+
+option go_package="github.com/raffis/rageta/pkg/apis/network/v1beta1";
+
+service Gateway {
+  rpc Exec (stream ExecRequest) returns (stream ExecResponse) {}
+}
+
+message ExecRequest {
+  bytes stdin = 1;
+}
+
+enum StreamKind {
+  STREAM_STDIN = 0;
+  STREAM_STDOUT = 1;
+  STREAM_STDERR = 2;
+}
+
+message ExecResponse {
+  bytes stream = 1;
+  StreamKind kind = 2;
+}
