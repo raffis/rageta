@@ -24,12 +24,12 @@ import (
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
-	Short: "Push artifact",
-	Long: `The push artifact command creates a tarball from the given directory or the single file and uploads the artifact to an OCI repository.
+	Short: "Push pipeline",
+	Long: `The push command creates a tarball from the given directory or the single file and uploads the artifact to an OCI repository.
 The command can read the credentials from '~/.docker/config.json' but they can also be passed with --creds. It can also login to a supported provider with the --provider flag.`,
 	Example: `  # Push manifests to GHCR using the short Git SHA as the OCI artifact tag
   echo $GITHUB_PAT | docker login ghcr.io --username rageta --password-stdin
-  rageta push artifact oci://ghcr.io/org/config/app:$(git rev-parse --short HEAD) \
+  rageta push ghcr.io/org/config/app:$(git rev-parse --short HEAD) \
 	--path="./path/to/local/manifests" \
 	--source="$(git config --get remote.origin.url)" \
 	--revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
@@ -45,7 +45,7 @@ The command can read the credentials from '~/.docker/config.json' but they can a
   cosign sign $digest_url
 
   # Push manifests passed into stdin to GHCR and set custom OCI annotations
-  kustomize build . | rageta push artifact oci://ghcr.io/org/config/app:$(git rev-parse --short HEAD) -f - \ 
+  kustomize build . | rageta push ghcr.io/org/config/app:$(git rev-parse --short HEAD) -f - \ 
     --source="$(git config --get remote.origin.url)" \
     --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
     --annotations='org.opencontainers.image.licenses=Apache-2.0' \
@@ -54,14 +54,14 @@ The command can read the credentials from '~/.docker/config.json' but they can a
 
   # Push single manifest file to GHCR using the short Git SHA as the OCI artifact tag
   echo $GITHUB_PAT | docker login ghcr.io --username rageta --password-stdin
-  rageta push artifact oci://ghcr.io/org/config/app:$(git rev-parse --short HEAD) \
+  rageta push ghcr.io/org/config/app:$(git rev-parse --short HEAD) \
 	--path="./path/to/local/manifest.yaml" \
 	--source="$(git config --get remote.origin.url)" \
 	--revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
   # Push manifests to Docker Hub using the Git tag as the OCI artifact tag
   echo $DOCKER_PAT | docker login --username rageta --password-stdin
-  rageta push artifact oci://docker.io/org/app-config:$(git tag --points-at HEAD) \
+  rageta push docker.io/org/my-pipeline:$(git tag --points-at HEAD) \
 	--path="./path/to/local/manifests" \
 	--source="$(git config --get remote.origin.url)" \
 	--revision="$(git tag --points-at HEAD)@sha1:$(git rev-parse HEAD)"
@@ -69,14 +69,14 @@ The command can read the credentials from '~/.docker/config.json' but they can a
   # Login directly to the registry provider
   # You might need to export the following variable if you use local config files for AWS:
   # export AWS_SDK_LOAD_CONFIG=1
-  rageta push artifact oci://<account>.dkr.ecr.<region>.amazonaws.com/app-config:$(git tag --points-at HEAD) \
+  rageta push <account>.dkr.ecr.<region>.amazonaws.com/my-pipeline:$(git tag --points-at HEAD) \
 	--path="./path/to/local/manifests" \
 	--source="$(git config --get remote.origin.url)" \
 	--revision="$(git tag --points-at HEAD)@sha1:$(git rev-parse HEAD)" \
 	--provider aws
 
   # Login by passing credentials directly
-  rageta push artifact oci://docker.io/org/app-config:$(git tag --points-at HEAD) \
+  rageta push docker.io/org/my-pipeline:$(git tag --points-at HEAD) \
 	--path="./path/to/local/manifests" \
 	--source="$(git config --get remote.origin.url)" \
 	--revision="$(git tag --points-at HEAD)@sha1:$(git rev-parse HEAD)" \
@@ -85,35 +85,35 @@ The command can read the credentials from '~/.docker/config.json' but they can a
 	RunE: pushCmdRun,
 }
 
-type pushArtifactFlags struct {
-	path     string
-	source   string
-	revision string
-	//creds       string
+type PushFlags struct {
+	path        string
+	source      string
+	revision    string
 	provider    string
 	annotations []string
 	output      string
 	debug       bool
-	ociOptions  ocisetup.Options
+	ociOptions  *ocisetup.Options
 }
 
-var pushArtifactArgs = newPushArtifactFlags()
+var PushArgs = newPushFlags()
 
-func newPushArtifactFlags() pushArtifactFlags {
-	return pushArtifactFlags{
-		//provider: sourcev1.GenericOCIProvider,
+func newPushFlags() PushFlags {
+	return PushFlags{
+		ociOptions: ocisetup.DefaultOptions(),
 	}
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushArtifactArgs.path, "path", "f", "", "path to the directory where the Kubernetes manifests are located")
-	pushCmd.Flags().StringVar(&pushArtifactArgs.source, "source", "", "the source address, e.g. the Git URL")
-	pushCmd.Flags().StringVar(&pushArtifactArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
-	pushCmd.Flags().StringArrayVarP(&pushArtifactArgs.annotations, "annotations", "a", nil, "Set custom OCI annotations in the format '<key>=<value>'")
-	pushCmd.Flags().StringVarP(&pushArtifactArgs.output, "output", "o", "",
+	pushCmd.Flags().StringVarP(&PushArgs.path, "path", "f", "", "path to the directory where the Kubernetes manifests are located")
+	pushCmd.Flags().StringVar(&PushArgs.source, "source", "", "the source address, e.g. the Git URL")
+	pushCmd.Flags().StringVar(&PushArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
+	pushCmd.Flags().StringArrayVarP(&PushArgs.annotations, "annotations", "a", nil, "Set custom OCI annotations in the format '<key>=<value>'")
+	pushCmd.Flags().StringVarP(&PushArgs.output, "output", "o", "",
 		"the format in which the artifact digest should be printed, can be 'json' or 'yaml'")
-	pushCmd.Flags().BoolVarP(&pushArtifactArgs.debug, "debug", "", false, "display logs from underlying library")
-	pushArtifactArgs.ociOptions.BindFlags(pushCmd.Flags())
+	pushCmd.Flags().BoolVarP(&PushArgs.debug, "debug", "", false, "display logs from underlying library")
+
+	PushArgs.ociOptions.BindFlags(pushCmd.Flags())
 
 	rootCmd.AddCommand(pushCmd)
 
@@ -127,29 +127,29 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 	ociURL := args[0]
 
-	if pushArtifactArgs.source == "" {
+	if PushArgs.source == "" {
 		return fmt.Errorf("--source is required")
 	}
 
-	if pushArtifactArgs.revision == "" {
+	if PushArgs.revision == "" {
 		return fmt.Errorf("--revision is required")
 	}
 
-	if pushArtifactArgs.path == "" {
-		return fmt.Errorf("invalid path %q", pushArtifactArgs.path)
+	if PushArgs.path == "" {
+		return fmt.Errorf("invalid path %q", PushArgs.path)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	pushArtifactArgs.ociOptions.URL = ociURL
-	ociClient, err := pushArtifactArgs.ociOptions.Build(ctx)
+	PushArgs.ociOptions.URL = ociURL
+	ociClient, err := PushArgs.ociOptions.Build(ctx)
 	if err != nil {
 		return err
 	}
 
-	path := pushArtifactArgs.path
-	if pushArtifactArgs.path == "-" || pushArtifactArgs.path == "/dev/stdin" {
+	path := PushArgs.path
+	if PushArgs.path == "-" || PushArgs.path == "/dev/stdin" {
 		path, err = saveReaderToFile(os.Stdin)
 		if err != nil {
 			return err
@@ -177,7 +177,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	annotations := map[string]string{}
-	for _, annotation := range pushArtifactArgs.annotations {
+	for _, annotation := range PushArgs.annotations {
 		kv := strings.Split(annotation, "=")
 		if len(kv) != 2 {
 			return fmt.Errorf("invalid annotation %s, must be in the format key=value", annotation)
@@ -185,19 +185,19 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		annotations[kv[0]] = kv[1]
 	}
 
-	if pushArtifactArgs.debug {
+	if PushArgs.debug {
 		// direct logs from crane library to stderr
 		// this can be useful to figure out things happening underneath e.g when the library is retrying a request
 		logs.Warn.SetOutput(os.Stderr)
 	}
 
 	meta := client.Metadata{
-		Source:      pushArtifactArgs.source,
-		Revision:    pushArtifactArgs.revision,
+		Source:      PushArgs.source,
+		Revision:    PushArgs.revision,
 		Annotations: annotations,
 	}
 
-	if pushArtifactArgs.output == "" {
+	if PushArgs.output == "" {
 		logger.Info("pushing artifact to %s", ociURL)
 	}
 
@@ -230,7 +230,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		Digest:     digest.DigestStr(),
 	}
 
-	switch pushArtifactArgs.output {
+	switch PushArgs.output {
 	case "json":
 		marshalled, err := json.MarshalIndent(&info, "", "  ")
 		if err != nil {

@@ -66,10 +66,16 @@ type runFlags struct {
 	skipDone            bool              `env:"RAGETA_SKIP_DONE"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
-	ociOptions          ocisetup.Options
+	ociOptions          *ocisetup.Options
 }
 
 var runArgs = runFlags{}
+
+func newRunFlags() runFlags {
+	return runFlags{
+		ociOptions: ocisetup.DefaultOptions(),
+	}
+}
 
 const otelName = "go.opentelemetry.io/otel/example/dice"
 
