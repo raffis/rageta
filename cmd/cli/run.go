@@ -69,7 +69,7 @@ type runFlags struct {
 	ociOptions          *ocisetup.Options
 }
 
-var runArgs = runFlags{}
+var runArgs = newRunFlags()
 
 func newRunFlags() runFlags {
 	return runFlags{
