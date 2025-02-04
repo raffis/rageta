@@ -14,7 +14,7 @@ func NewTask(name string) *Task {
 	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
-	//m.viewport.Styles.LineNumber = lineNumberPrefixStyle
+	viewport.Styles.LineNumber = lineNumberPrefixStyle
 	//viewport.SetContent("Loading...")
 
 	task := &Task{

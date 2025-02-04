@@ -10,7 +10,7 @@ var (
 	taskRunningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFC0CB"))
 
 	lineNumberPrefixStyle = lipgloss.NewStyle().
-				Background(highlightColor).
+				Background(lipgloss.Color("#333333")).
 				Foreground(lipgloss.Color("#FFFFFF")).
 				MarginRight(1).
 				AlignHorizontal(lipgloss.Right)
@@ -19,11 +19,11 @@ var (
 	pipelineFailedStyle  = lipgloss.NewStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#FF0000"))
 	pipelineWaitingStyle = lipgloss.NewStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#0000FF"))
 
-	docStyle       = lipgloss.NewStyle()
+	docStyle = lipgloss.NewStyle()
+
 	highlightColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 	windowStyle    = lipgloss.NewStyle()
-
-	listStyle = lipgloss.NewStyle().
+	listStyle      = lipgloss.NewStyle().
 			BorderForeground(highlightColor).
 			Border(lipgloss.OuterHalfBlockBorder(), false, true, false, false).
 			PaddingTop(1)
@@ -34,16 +34,10 @@ var (
 				Padding(0, 1).
 				Height(1)
 
-	rightFooterPagerPercentageStyle = lipgloss.NewStyle().
-					BorderForeground(highlightColor).Border(lipgloss.OuterHalfBlockBorder(), false, true, false, true).
-					Height(1)
-	rightFooterPagerPercentageTopStyle = lipgloss.NewStyle().
-						BorderForeground(highlightColor).Border(lipgloss.OuterHalfBlockBorder(), true, true, false, true).
-						Height(1)
-
-	rightFooterPaddingStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#874BFD")).
-				Background(lipgloss.Color("#874BFD")).
+	scrollPercentageStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#000000")).
+				Background(lipgloss.Color("#CCCCCC")).
+				Align(lipgloss.Center).
 				Padding(0, 1).
 				Height(1)
 )

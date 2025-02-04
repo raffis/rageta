@@ -470,7 +470,7 @@ func runRun(c *cobra.Command, args []string) error {
 	}
 
 	if tuiDone != nil {
-		if err != nil {
+		if result != nil {
 			tuiInstance.SetStatus(tui.StepStatusFailed)
 		} else {
 			tuiInstance.SetStatus(tui.StepStatusDone)

@@ -16,6 +16,7 @@ func UI(ui tui.UI) processor.OutputFactory {
 			ui.AddTasks(task)
 		}
 
+		ui.SetStatus(tui.StepStatusRunning)
 		task.SetStatus(tui.StepStatusRunning)
 
 		return stdin, task, task, func(err error) {

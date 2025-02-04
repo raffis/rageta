@@ -32,7 +32,7 @@ func (m *model) AddTasks(tasks ...*Task) {
 	for _, task := range tasks {
 		if m.sizeMsg != nil {
 			task.viewport.Width = m.sizeMsg.Width
-			task.viewport.Height = m.sizeMsg.Height - 3
+			task.viewport.Height = m.sizeMsg.Height - 1
 			task.ready = true
 		}
 
@@ -51,9 +51,11 @@ func (m *model) GetTask(name string) (*Task, error) {
 }
 
 func NewModel() *model {
+	itemStyle := list.NewDefaultDelegate()
+
 	m := &model{
 		status: StepStatusWaiting,
-		list:   list.New(nil, list.NewDefaultDelegate(), 0, 0),
+		list:   list.New(nil, itemStyle, 0, 0),
 	}
 
 	m.list.SetShowTitle(false)
@@ -202,18 +204,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 
 	case tea.WindowSizeMsg:
-		h, v := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-v-1)
+		h, _ := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-1)
 
 		for _, task := range m.list.Items() {
 			task := task.(*Task)
 			if !task.ready {
 				task.viewport.Width = msg.Width
-				task.viewport.Height = msg.Height - 3
+				task.viewport.Height = msg.Height - 1
 				task.ready = true
 			} else {
 				task.viewport.Width = msg.Width
-				task.viewport.Height = msg.Height - v - 1
+				task.viewport.Height = msg.Height - 1
 			}
 		}
 
@@ -254,8 +256,7 @@ func (m *model) View() string {
 			lipgloss.JoinVertical(
 				lipgloss.Top,
 				zone.Mark("pager", task.viewport.View()),
-				m.queryView(task.viewport.Width-lipgloss.Width(list)),
-				m.footerRightView(task.viewport.Width-lipgloss.Width(list)),
+				m.queryView(),
 			)),
 	)
 }
@@ -270,27 +271,10 @@ func (m *model) footerLeftView(width int) string {
 	)
 }
 
-func (m *model) footerRightView(width int) string {
-	secondColumn := rightFooterPagerPercentageStyle.Render("    ")
-	firstColumn := rightFooterPaddingStyle.Width(width - lipgloss.Width(secondColumn)).Foreground(lipgloss.Color("#000000")).Render("")
-
-	return lipgloss.JoinHorizontal(lipgloss.Bottom,
-		firstColumn,
-		secondColumn,
-	)
-}
-
-func (m *model) queryView(width int) string {
+func (m *model) queryView() string {
 	task := m.SelectedTask()
-	secondColumn := rightFooterPagerPercentageTopStyle.Render(fmt.Sprintf("%3.f%%", task.viewport.ScrollPercent()*100))
-	style := lipgloss.NewStyle().Width(width - lipgloss.Width(secondColumn)).Foreground(lipgloss.Color("#FFF")).PaddingLeft(1).PaddingBottom(1)
-	firstColumn := ""
-
-	if m.scanState {
-		firstColumn = style.Render(m.scanInput.View())
-	} else {
-		firstColumn = style.Render()
-	}
+	secondColumn := scrollPercentageStyle.Width(8).Render(fmt.Sprintf("%3.f%%", task.viewport.ScrollPercent()*100))
+	firstColumn := leftFooterPaddingStyle.Width(task.viewport.Width - lipgloss.Width(secondColumn) - 25).Render()
 
 	return lipgloss.JoinHorizontal(lipgloss.Bottom,
 		firstColumn,

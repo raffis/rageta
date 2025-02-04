@@ -94,7 +94,7 @@ brews:
   homepage: https://github.com/raffis/rageta
   directory: Formula
   test: |
-    system "#{bin}/flux-build -h" 
+    system "#{bin}/rageta -h" 
 
 signs:
 - cmd: cosign
