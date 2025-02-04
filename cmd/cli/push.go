@@ -85,7 +85,7 @@ The command can read the credentials from '~/.docker/config.json' but they can a
 	RunE: pushCmdRun,
 }
 
-type PushFlags struct {
+type pushFlags struct {
 	path        string
 	source      string
 	revision    string
@@ -96,24 +96,24 @@ type PushFlags struct {
 	ociOptions  *ocisetup.Options
 }
 
-var PushArgs = newPushFlags()
+var pushArgs = newpushFlags()
 
-func newPushFlags() PushFlags {
-	return PushFlags{
+func newpushFlags() pushFlags {
+	return pushFlags{
 		ociOptions: ocisetup.DefaultOptions(),
 	}
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&PushArgs.path, "path", "f", "", "path to the directory where the Kubernetes manifests are located")
-	pushCmd.Flags().StringVar(&PushArgs.source, "source", "", "the source address, e.g. the Git URL")
-	pushCmd.Flags().StringVar(&PushArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
-	pushCmd.Flags().StringArrayVarP(&PushArgs.annotations, "annotations", "a", nil, "Set custom OCI annotations in the format '<key>=<value>'")
-	pushCmd.Flags().StringVarP(&PushArgs.output, "output", "o", "",
+	pushCmd.Flags().StringVarP(&pushArgs.path, "path", "f", "", "path to the directory where the Kubernetes manifests are located")
+	pushCmd.Flags().StringVar(&pushArgs.source, "source", "", "the source address, e.g. the Git URL")
+	pushCmd.Flags().StringVar(&pushArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
+	pushCmd.Flags().StringArrayVarP(&pushArgs.annotations, "annotations", "a", nil, "Set custom OCI annotations in the format '<key>=<value>'")
+	pushCmd.Flags().StringVarP(&pushArgs.output, "output", "o", "",
 		"the format in which the artifact digest should be printed, can be 'json' or 'yaml'")
-	pushCmd.Flags().BoolVarP(&PushArgs.debug, "debug", "", false, "display logs from underlying library")
+	pushCmd.Flags().BoolVarP(&pushArgs.debug, "debug", "", false, "display logs from underlying library")
 
-	PushArgs.ociOptions.BindFlags(pushCmd.Flags())
+	pushArgs.ociOptions.BindFlags(pushCmd.Flags())
 
 	rootCmd.AddCommand(pushCmd)
 
@@ -127,29 +127,29 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 	ociURL := args[0]
 
-	if PushArgs.source == "" {
+	if pushArgs.source == "" {
 		return fmt.Errorf("--source is required")
 	}
 
-	if PushArgs.revision == "" {
+	if pushArgs.revision == "" {
 		return fmt.Errorf("--revision is required")
 	}
 
-	if PushArgs.path == "" {
-		return fmt.Errorf("invalid path %q", PushArgs.path)
+	if pushArgs.path == "" {
+		return fmt.Errorf("invalid path %q", pushArgs.path)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	PushArgs.ociOptions.URL = ociURL
-	ociClient, err := PushArgs.ociOptions.Build(ctx)
+	pushArgs.ociOptions.URL = ociURL
+	ociClient, err := pushArgs.ociOptions.Build(ctx)
 	if err != nil {
 		return err
 	}
 
-	path := PushArgs.path
-	if PushArgs.path == "-" || PushArgs.path == "/dev/stdin" {
+	path := pushArgs.path
+	if pushArgs.path == "-" || pushArgs.path == "/dev/stdin" {
 		path, err = saveReaderToFile(os.Stdin)
 		if err != nil {
 			return err
@@ -177,7 +177,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	annotations := map[string]string{}
-	for _, annotation := range PushArgs.annotations {
+	for _, annotation := range pushArgs.annotations {
 		kv := strings.Split(annotation, "=")
 		if len(kv) != 2 {
 			return fmt.Errorf("invalid annotation %s, must be in the format key=value", annotation)
@@ -185,19 +185,19 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		annotations[kv[0]] = kv[1]
 	}
 
-	if PushArgs.debug {
+	if pushArgs.debug {
 		// direct logs from crane library to stderr
 		// this can be useful to figure out things happening underneath e.g when the library is retrying a request
 		logs.Warn.SetOutput(os.Stderr)
 	}
 
 	meta := client.Metadata{
-		Source:      PushArgs.source,
-		Revision:    PushArgs.revision,
+		Source:      pushArgs.source,
+		Revision:    pushArgs.revision,
 		Annotations: annotations,
 	}
 
-	if PushArgs.output == "" {
+	if pushArgs.output == "" {
 		logger.Info("pushing artifact to %s", ociURL)
 	}
 
@@ -230,7 +230,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		Digest:     digest.DigestStr(),
 	}
 
-	switch PushArgs.output {
+	switch pushArgs.output {
 	case "json":
 		marshalled, err := json.MarshalIndent(&info, "", "  ")
 		if err != nil {
