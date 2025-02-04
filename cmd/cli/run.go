@@ -152,7 +152,6 @@ type containerRuntime string
 
 var (
 	containerRuntimeDocker     containerRuntime = "docker"
-	containerRuntimeDockerGRPC containerRuntime = "docker-grpc"
 	containerRuntimeKubernetes containerRuntime = "kubernetes"
 )
 
@@ -185,12 +184,12 @@ func electDefaultDriver() containerRuntime {
 
 	switch {
 	case docker:
-		return containerRuntimeDockerGRPC
-	case isPossiblyInsideKube():
-		return containerRuntimeKubernetes
+		return containerRuntimeDocker
+		//case isPossiblyInsideKube():
+		//		return containerRuntimeKubernetes
 	}
 
-	return containerRuntimeDockerGRPC
+	return containerRuntimeDocker
 }
 
 func isPossiblyInsideDocker() (bool, error) {
@@ -220,7 +219,7 @@ func defaultDockerHTTPClient(hostURL *url.URL) (*http.Client, error) {
 
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, output io.Writer) (runtime.Interface, error) {
 	switch {
-	case d == containerRuntimeDocker || d == containerRuntimeDockerGRPC:
+	case d == containerRuntimeDocker:
 		hostURL, err := dockerclient.ParseHostURL(dockerclient.DefaultDockerHost)
 		if err != nil {
 			return nil, err
@@ -248,10 +247,6 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			runtime.WithLogger(logger),
 			runtime.WithPullImageWriter(output),
 		)
-
-		if d == containerRuntimeDockerGRPC {
-			//	return runtime.NewDockerGRPC(ctx, driver, logger), err
-		}
 
 		return driver, err
 	}
