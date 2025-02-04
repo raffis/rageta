@@ -18,9 +18,6 @@ archives:
   builds:
   - rageta
 
-checksum:
-  name_template: 'checksums.txt'
-
 source:
   enabled: true
   name_template: "{{ .ProjectName }}_{{ .Version }}_source_code"
