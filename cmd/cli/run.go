@@ -64,6 +64,7 @@ type runFlags struct {
 	contextDir          string            `env:"RAGETA_CONTEXT_DIR"`
 	inputs              map[string]string `env:"RAGETA_INPUTS"`
 	skipDone            bool              `env:"RAGETA_SKIP_DONE"`
+	skipSteps           []string          `env:"RAGETA_SKIP_STEPS"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -91,6 +92,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], raw]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `none` dumps all tasks directly without any modification.")
 	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
 	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
+	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	runCmd.Flags().StringToStringVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
@@ -126,6 +128,7 @@ var (
 	reportTypeTable    reportType = "table"
 	reportTypeJSON     reportType = "json"
 	reportTypeMarkdown reportType = "markdown"
+	reportTypeTimeline reportType = "timeline"
 )
 
 func (d reportType) String() string {
@@ -251,7 +254,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		return driver, err
 	}
 
-	return nil, nil
+	return nil, errors.New("unknown container runtime")
 }
 
 func getRunLogger() (logr.Logger, *os.File, error) {
@@ -628,6 +631,8 @@ func printReport(store *report.Store) error {
 		report.Table(output, store)
 	case reportTypeJSON.String():
 		report.JSON(output, store)
+	case reportTypeTimeline.String():
+		return report.Timeline(output, store)
 	case reportTypeMarkdown.String():
 		return report.Markdown(output, store)
 	case reportTypeNone.String():

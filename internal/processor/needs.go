@@ -47,7 +47,8 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return stepContext, err
 			}
 
-			stepContext, err = next(ctx, stepContext)
+			outCtx, err := next(ctx, stepContext)
+			stepContext.Merge(outCtx)
 
 			if err != nil {
 				return stepContext, err
