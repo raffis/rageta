@@ -5,66 +5,85 @@ import (
 	"io"
 	"os"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
-func Timeline(w io.Writer, store *Store) error {
+func Timeline(w io.Writer, steps []stepResult) error {
+	if len(steps) == 0 {
+		return nil
+	}
 
-	var totalDuration time.Duration
-	for _, step := range store.steps {
-		if duration := step.result.EndedAt.Sub(step.result.StartedAt); duration > totalDuration {
-			totalDuration = duration
+	// Get terminal width dynamically
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width < 30 {
+		width = 80
+	}
+
+	// Find min start time and max end time
+	minTime := steps[0].result.StartedAt
+	maxTime := steps[0].result.EndedAt
+	maxNameLen := len(steps[0].stepName)
+
+	for _, step := range steps {
+		if len(step.stepName) > maxNameLen {
+			maxNameLen = len(step.stepName)
+		}
+		if step.result.StartedAt.Before(minTime) {
+			minTime = step.result.StartedAt
+		}
+		if step.result.EndedAt.After(maxTime) {
+			maxTime = step.result.EndedAt
 		}
 	}
 
-	width := getTerminalWidth() - 20 // Leave space for labels and padding
-	if width < 30 {
-		width = 30 // Ensure minimum width for readability
+	barWidth := width - maxNameLen - 15
+	totalDuration := maxTime.Sub(minTime)
+	if totalDuration == 0 {
+		return nil
 	}
 
-	scale := float64(width) / float64(totalDuration.Milliseconds())
-	var timeline strings.Builder
+	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Background(lipgloss.Color("2"))
 
-	divider := lipgloss.NewStyle().Foreground(lipgloss.Color("#555")).Render("│")
-	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#aaa"))
-
-	timeline.WriteString(headerStyle.Render(" Time (ms): "))
-	for i := 0; i <= width; i += width / 10 {
-		label := fmt.Sprintf("%-4d", i*int(totalDuration.Milliseconds())/width)
-		timeline.WriteString(label)
-	}
-	timeline.WriteString("\n" + headerStyle.Render(strings.Repeat("─", width+12)) + "\n")
-
-	for _, step := range store.steps {
-		duration := step.result.EndedAt.Sub(step.result.StartedAt)
-		started := totalDuration - duration
-
-		startPos := int(float64(started.Milliseconds()) * scale)
-		endPos := startPos + int(float64(duration.Milliseconds())*scale)
-
-		if endPos > width {
-			endPos = width
+	// Render each step
+	var result string
+	for _, step := range steps {
+		endedAt := step.result.EndedAt
+		if endedAt.IsZero() {
+			endedAt = maxTime
 		}
 
-		spanBar := strings.Repeat(" ", startPos) + lipgloss.NewStyle().Background(lipgloss.Color("#CCCCCC")).Render(strings.Repeat("█", endPos-startPos))
-		timeline.WriteString(fmt.Sprintf("%-10s %s %s\n", step.stepName, divider, spanBar))
+		startOffset := int(float64(barWidth) * step.result.StartedAt.Sub(minTime).Seconds() / totalDuration.Seconds())
+		endOffset := int(float64(barWidth) * endedAt.Sub(minTime).Seconds() / totalDuration.Seconds())
+
+		barLength := endOffset - startOffset
+		if barLength < 1 {
+			barLength = 1
+		}
+
+		bar := barStyle.Render(strings.Repeat("█", barLength))
+		line := fmt.Sprintf("%-*s | %*s%s\n", maxNameLen, step.stepName, startOffset, "", bar)
+		result += line
 	}
 
-	timeline.WriteString(headerStyle.Render(strings.Repeat("─", width+12))) // Bottom border
-
-	_, err := w.Write([]byte(timeline.String()))
+	timeAxis := renderTimeAxis(minTime, maxTime, barWidth, maxNameLen)
+	_, err = w.Write([]byte(result + timeAxis))
 	return err
 }
 
-// getTerminalWidth dynamically fetches the terminal's current width
-func getTerminalWidth() int {
-	var ws struct {
-		Row, Col, Xpixel, Ypixel uint16
+// renderTimeAxis generates a time axis with labels at even intervals
+func renderTimeAxis(minTime, maxTime time.Time, width, labelOffset int) string {
+	tickInterval := maxTime.Sub(minTime) / 5
+	timeLabels := fmt.Sprintf("%*s", labelOffset+3, "")
+
+	for i := 0; i <= 5; i++ {
+		t := minTime.Add(time.Duration(i) * tickInterval)
+		label := t.Format("15:04:05") // Format HH:MM:SS
+		pos := int(float64(width) * float64(i) / 5)
+		timeLabels += fmt.Sprintf("%*s %s", pos-len(label)/2, "", label)
 	}
-	_, _, _ = syscall.Syscall(syscall.SYS_IOCTL, uintptr(os.Stdout.Fd()), uintptr(unsafe.Pointer(&ws)), 0)
-	return int(ws.Col)
+
+	return timeLabels + "\n"
 }

@@ -63,23 +63,22 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		_, stdout, stderr, close := s.outputFactory(PrefixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
-
 		var stdin io.Reader
 
-		if stepContext.Stdout != nil {
+		if stepContext.Stdout.Len() > 0 {
 			if s.tee {
-				stdout = io.MultiWriter(stepContext.Stdout, stdout)
-			} else {
-				stdout = stepContext.Stdout
+				stepContext.Stdout.Add(stdout)
 			}
+		} else {
+			stepContext.Stdout.Add(stdout)
 		}
 
-		if stepContext.Stderr != nil {
+		if stepContext.Stderr.Len() > 0 {
 			if s.tee {
-				stderr = io.MultiWriter(stepContext.Stderr, stderr)
-			} else {
-				stderr = stepContext.Stderr
+				stepContext.Stderr.Add(stderr)
 			}
+		} else {
+			stepContext.Stderr.Add(stderr)
 		}
 
 		if stepContext.Stdin != nil {
@@ -94,15 +93,17 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         s.step.Command,
 			Args:            s.step.Args,
-			Env:             s.step.Env,
+			Env:             envSlice(stepContext.Envs),
 			PWD:             s.step.PWD,
 			RestartPolicy:   runtime.RestartPolicy(s.step.RestartPolicy),
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-
-		stepContext, execErr := s.exec(ctx, stepContext, pod, stdin, stdout, stderr)
+		stepContext, execErr := s.exec(ctx, stepContext, pod, stdin)
 		defer close(execErr)
+
+		stepContext.Stderr.Remove(stderr)
+		stepContext.Stdout.Remove(stdout)
 
 		if execErr != nil {
 			return stepContext, fmt.Errorf("container %s failed: %w", pod.Name, execErr)
@@ -112,13 +113,22 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (e *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader, stdout, stderr io.Writer) (StepContext, error) {
+func envSlice(env map[string]string) []string {
+	var envs []string
+	for k, v := range env {
+		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	return envs
+}
+
+func (e *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader) (StepContext, error) {
 	pod.Spec.Volumes = append(pod.Spec.Volumes, runtime.Volume{
 		HostPath: stepContext.TmpDir(),
 		Path:     stepContext.TmpDir(),
 	})
 
-	await, err := e.driver.CreatePod(ctx, pod, stdin, stdout, stderr)
+	await, err := e.driver.CreatePod(ctx, pod, stdin, stepContext.Stdout, stepContext.Stderr)
 	if err != nil {
 		return stepContext, err
 	}

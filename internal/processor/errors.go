@@ -10,6 +10,8 @@ func AbortOnError(err error) bool {
 		return false
 	case errors.Is(err, ErrSkipDone):
 		return false
+	case errors.Is(err, ErrSkipBlacklist):
+		return false
 	case err != nil:
 		return true
 	default:

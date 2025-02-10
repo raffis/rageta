@@ -19,6 +19,10 @@ func WithExpressionParser(celEnv *cel.Env, processors ...Bootstraper) ProcessorB
 	}
 
 	return func(spec *v1beta1.Step) Bootstraper {
+		if len(lateVarBinders) == 0 {
+			return nil
+		}
+
 		return &ExpressionParser{
 			celEnv:         celEnv,
 			lateVarBinders: lateVarBinders,

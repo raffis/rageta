@@ -2,8 +2,8 @@ package processor
 
 import (
 	"context"
+	"errors"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -48,7 +48,6 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}
 
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		result := &multierror.Error{}
 		results := make(chan concurrentResult)
 		var errs []error
 
@@ -70,8 +69,7 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			case res := <-results:
 				done++
 				stepContext = stepContext.Merge(res.stepContext)
-
-				if res.err != nil {
+				if res.err != nil && AbortOnError(err) {
 					errs = append(errs, res.err)
 
 					if err != nil && s.failFast {
@@ -85,14 +83,8 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		for _, err := range errs {
-			if AbortOnError(err) {
-				result = multierror.Append(result, err)
-			}
-		}
-
-		if len(result.Errors) > 0 {
-			return stepContext, result
+		if len(errs) > 0 {
+			return stepContext, errors.Join(errs...)
 		}
 
 		return next(ctx, stepContext)

@@ -7,14 +7,14 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-func Table(w io.Writer, store *Store) error {
+func Table(w io.Writer, steps []stepResult) error {
 	table := tablewriter.NewWriter(w)
 	table.SetHeader([]string{"#", "Step", "Status", "Duration", "Error"})
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetBorder(false)
 	table.SetAutoWrapText(false)
 
-	for i, step := range store.steps {
+	for i, step := range steps {
 		errMsg, status, duration := stringify(step)
 
 		table.Append([]string{

@@ -16,54 +16,45 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/runtime"
 )
 
-type engine struct {
+type builder struct {
 	logger      logr.Logger
 	tmpDir      string
-	env         map[string]string
 	stepBuilder StepBuilder
 }
 
-type engineOption func(*engine)
+type builderOption func(*builder)
 type StepBuilder func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper
 
-func WithLogger(logger logr.Logger) func(*engine) {
-	return func(s *engine) {
+func WithLogger(logger logr.Logger) func(*builder) {
+	return func(s *builder) {
 		s.logger = logger
 	}
 }
 
-func WithStepBuilder(builder StepBuilder) func(*engine) {
-	return func(s *engine) {
-		s.stepBuilder = builder
+func WithStepBuilder(stepBuilder StepBuilder) func(*builder) {
+	return func(s *builder) {
+		s.stepBuilder = stepBuilder
 	}
 }
 
-func WithEnvs(env map[string]string) func(*engine) {
-	return func(s *engine) {
-		s.env = env
-	}
-}
-
-func WithTmpDir(tmpDir string) func(*engine) {
-	return func(s *engine) {
+func WithTmpDir(tmpDir string) func(*builder) {
+	return func(s *builder) {
 		s.tmpDir = tmpDir
 	}
 }
 
-func NewEngine(driver runtime.Interface, opts ...engineOption) *engine {
+func NewBuilder(opts ...builderOption) *builder {
 	env := make(map[string]string)
 	for _, e := range os.Environ() {
 		s := strings.Split(e, "=")
 		env[s[0]] = s[1]
 	}
 
-	e := &engine{
+	e := &builder{
 		logger: logr.Discard(),
 		tmpDir: os.TempDir(),
-		env:    env,
 	}
 
 	for _, o := range opts {
@@ -73,7 +64,7 @@ func NewEngine(driver runtime.Interface, opts ...engineOption) *engine {
 	return e
 }
 
-func (e *engine) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]string) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]string) (processor.Executable, error) {
 	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", inputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
@@ -92,8 +83,10 @@ func (e *engine) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs 
 		contextDir = filepath.Join(contextDir, pipeline.PipelineSpec.Name)
 	}
 
-	if _, err := os.Stat(contextDir); errors.Is(err, os.ErrNotExist) {
-		err := os.MkdirAll(contextDir, 0700)
+	dataDir := filepath.Join(contextDir, "_data")
+
+	if _, err := os.Stat(dataDir); errors.Is(err, os.ErrNotExist) {
+		err := os.MkdirAll(dataDir, 0700)
 		if err != nil {
 			return nil, err
 		}
@@ -106,16 +99,15 @@ func (e *engine) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs 
 		}
 
 		e.logger.Info("parsed inputs", "inputs", parsed)
-
 		stepCtx := processor.NewContext(contextDir, parsed)
+
 		if err := recoverContext(stepCtx, contextDir); err != nil {
 			return stepCtx, fmt.Errorf("failed to recover context: %w", err)
 		}
 
-		stepCtx.Envs = e.env
 		stepCtx.NamePrefix = pipeline.PipelineSpec.Name
-
 		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
+
 		if err := storeContext(stepCtx, contextDir); err != nil {
 			return stepCtx, fmt.Errorf("failed to store context: %w", err)
 		}
@@ -172,8 +164,8 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 	return nil
 }
 
-func (e *engine) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string) (map[string]interface{}, error) {
-	parsed := make(map[string]interface{})
+func (e *builder) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
 
 	for _, flagOpts := range pipeline.Inputs {
 		var value interface{}
@@ -189,11 +181,13 @@ func (e *engine) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string
 			case v1beta1.InputTypeBool:
 				boolValue, err := strconv.ParseBool(setInput)
 				if err != nil {
-					return parsed, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
+					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
 				}
 
 				value = boolValue
 			}
+
+			result[flagOpts.Name] = value
 		case len(flagOpts.Default) > 0 || !flagOpts.Required:
 			switch flagOpts.Type {
 			case v1beta1.InputTypeStringSlice:
@@ -206,20 +200,20 @@ func (e *engine) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string
 
 			if len(flagOpts.Default) > 0 {
 				if err := json.Unmarshal(flagOpts.Default, &value); err != nil {
-					return parsed, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
+					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
 				}
 			}
-		case flagOpts.Required:
-			return parsed, fmt.Errorf("missing required input `%s`", flagOpts.Name)
-		}
 
-		parsed[flagOpts.Name] = value
+			result[flagOpts.Name] = value
+		case flagOpts.Required:
+			return result, fmt.Errorf("missing required input `%s`", flagOpts.Name)
+		}
 	}
 
-	return parsed, nil
+	return result, nil
 }
 
-func (e *engine) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
+func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
 		name:       command.PipelineSpec.Name,
 		id:         utils.RandString(5),

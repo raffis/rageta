@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -27,6 +26,7 @@ type Pipe struct {
 type stepWrapper struct {
 	next        Next
 	r           io.ReadCloser
+	w           io.WriteCloser
 	stepContext StepContext
 }
 
@@ -50,9 +50,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}
 
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		result := &multierror.Error{}
 		results := make(chan concurrentResult)
-		var errs []error
 		var stdout *io.PipeReader
 
 		for i := range stepEntrypoints {
@@ -63,12 +61,13 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			} else {
 				r, w := io.Pipe()
 				stepEntrypoints[i].r = r
+				stepEntrypoints[i].w = w
 
 				if stdout != nil {
 					copy.Stdin = stdout
 				}
 
-				copy.Stdout = w
+				copy.Stdout.Add(w)
 				stdout = r
 			}
 
@@ -79,12 +78,12 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			step := step
 
 			go func() {
-				t, err := step.next(ctx, step.stepContext)
+				resultCtx, err := step.next(ctx, step.stepContext)
 				if step.r != nil {
 					step.r.Close()
 				}
 
-				results <- concurrentResult{t, err}
+				results <- concurrentResult{resultCtx, err}
 			}()
 		}
 
@@ -97,23 +96,14 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			case res := <-results:
 				done++
 				stepContext = stepContext.Merge(res.stepContext)
-				if res.err != nil {
-					errs = append(errs, res.err)
-
-					if err != nil {
-						break WAIT
-					}
+				if res.err != nil && AbortOnError(res.err) {
+					return stepContext, res.err
 				}
 
 				if done == len(steps) {
 					break WAIT
 				}
 			}
-		}
-
-		multierror.Append(result, errs...)
-		if len(result.Errors) > 0 {
-			return stepContext, result
 		}
 
 		return next(ctx, stepContext)

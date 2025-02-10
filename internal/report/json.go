@@ -6,8 +6,8 @@ import (
 	"io"
 )
 
-func JSON(w io.Writer, store *Store) error {
-	b, err := json.MarshalIndent(store.steps, "", "  ")
+func JSON(w io.Writer, steps []stepResult) error {
+	b, err := json.MarshalIndent(steps, "", "  ")
 	if err != nil {
 		return err
 	}

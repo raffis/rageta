@@ -1,6 +1,7 @@
 package report
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -36,4 +37,16 @@ func (s *Store) Add(stepName string, result *processor.StepResult) {
 		stepName: stepName,
 		result:   result,
 	})
+}
+
+func (s *Store) Ordered() []stepResult {
+	sort.Slice(s.steps, func(i, j int) bool {
+		if s.steps[i].result == nil {
+			return false
+		}
+
+		return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
+	})
+
+	return s.steps
 }

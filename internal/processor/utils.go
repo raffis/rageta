@@ -3,7 +3,9 @@ package processor
 import (
 	"context"
 	"fmt"
+	"io"
 
+	"github.com/joho/godotenv"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -51,4 +53,17 @@ func PrefixName(name, prefix string) string {
 	}
 
 	return fmt.Sprintf("%s-%s", prefix, name)
+}
+
+func parseVars(f io.Reader) (map[string]string, error) {
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	envMap, err := godotenv.UnmarshalBytes(b)
+	if err != nil {
+		return nil, fmt.Errorf("dotenv failed: %w", err)
+	}
+
+	return envMap, err
 }

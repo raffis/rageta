@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -37,6 +38,7 @@ func (s *Stdio) MarshalJSON() ([]byte, error) {
 
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		var stdout, stderr io.Writer
 
 		if s.streams.Stdout != nil {
 			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
@@ -45,7 +47,8 @@ func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 			}
 
 			defer outFile.Close()
-			stepContext.Stdout = outFile
+			stepContext.Stdout.Add(outFile)
+			stdout = outFile
 		}
 
 		if s.streams.Stderr != nil {
@@ -55,19 +58,13 @@ func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 			}
 
 			defer outFile.Close()
-			stepContext.Stderr = outFile
+			stepContext.Stdout.Add(outFile)
+			stderr = outFile
 		}
 
 		stepContext, err := next(ctx, stepContext)
-
-		// Remove context stream overrides before returning
-		if s.streams.Stdout != nil {
-			stepContext.Stdout = nil
-		}
-
-		if s.streams.Stderr != nil {
-			stepContext.Stderr = nil
-		}
+		stepContext.Stdout.Remove(stdout)
+		stepContext.Stderr.Remove(stderr)
 
 		return stepContext, err
 	}, nil

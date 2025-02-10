@@ -2,10 +2,10 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -30,7 +30,7 @@ func New(decoder runtime.Decoder, handlers ...LookupHandler) *storage {
 
 func (s *storage) Lookup(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
 	to := v1beta1.Pipeline{}
-	var errs *multierror.Error
+	var errs []error
 
 	for _, handler := range s.handlers {
 		if r, err := handler(ctx, ref); err == nil {
@@ -50,9 +50,9 @@ func (s *storage) Lookup(ctx context.Context, ref string) (v1beta1.Pipeline, err
 
 			return to, nil
 		} else {
-			errs = multierror.Append(errs, err)
+			errs = append(errs, err)
 		}
 	}
 
-	return to, fmt.Errorf("could not lookup ref: %s: %w", ref, errs)
+	return to, fmt.Errorf("could not lookup ref: %s: %w", ref, errors.Join(errs...))
 }

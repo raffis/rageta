@@ -41,7 +41,6 @@ type PipelineSpec struct {
 
 type Input struct {
 	Name        string          `json:"name,omitempty"`
-	Short       string          `json:"short,omitempty"`
 	Required    bool            `json:"required,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Default     json.RawMessage `json:"default,omitempty"`
@@ -67,6 +66,7 @@ type StepOptions struct {
 	Needs        []StepReference            `json:"needs,omitempty"`
 	Streams      *Streams                   `json:"streams,omitempty"`
 	Retry        *Retry                     `json:"retry,omitempty"`
+	Env          []string                   `json:"env,omitempty"`
 }
 
 type Retry struct {
@@ -120,7 +120,6 @@ type Container struct {
 	Stdin         bool          `json:"stdin,omitempty"`
 	TTY           bool          `json:"tty,omitempty"`
 	Image         string        `json:"image,omitempty"`
-	Env           []string      `json:"env,omitempty"`
 	Command       []string      `json:"command,omitempty"`
 	Args          []string      `json:"args,omitempty"`
 	PWD           string        `json:"pwd,omitempty"`

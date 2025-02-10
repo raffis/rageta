@@ -165,7 +165,7 @@ func (d containerRuntime) String() string {
 func electDefaultOutput() string {
 	switch {
 	case os.Getenv("GITHUB_ACTIONS") == "true":
-		renderOutputBufferDefaultTemplate = `{{- printf "\n::group::%s\n%s\n::endgroup::\n" .StepName .Buffer  -}}`
+		renderOutputBufferDefaultTemplate = `{{ printf "::group::%s\n%s\n::endgroup::\n" .StepName .Buffer }}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
 		return renderOutputPrefix.String()
@@ -285,6 +285,7 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 		}*/
 
 		substitutableProcessors := processor.Builder(&spec,
+			processor.WithEnv(envMap()),
 			processor.WithMatrix(),
 			processor.WithStdio(),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr),
@@ -293,11 +294,13 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 
 		processors := processor.Builder(&spec,
 			processor.WithReport(resultStore, uniqueName),
+			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
-			processor.WithOtel(logger, tracer, meter),
+			processor.WithOtelTrace(logger, tracer),
+			processor.WithOtelMetrics(meter),
 			processor.WithRetry(),
 			processor.WithAllowFailure(),
-			processor.WithEventEmitter(),
+			processor.WithResult(),
 			processor.WithTimeout(),
 			processor.WithSkipDone(runArgs.skipDone),
 			processor.WithIf(celEnv),
@@ -450,10 +453,9 @@ func runRun(c *cobra.Command, args []string) error {
 		}
 	}()
 
-	var engine processor.PipelineBuilder
-	engine = pipeline.NewEngine(
-		driver,
-		pipeline.WithStepBuilder(stepBuilder(logger, celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &engine, store)),
+	var builder processor.PipelineBuilder
+	builder = pipeline.NewBuilder(
+		pipeline.WithStepBuilder(stepBuilder(logger, celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -466,7 +468,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var result error
 	command.PipelineSpec.Name = ""
-	cmd, err := engine.Build(command, runArgs.entrypoint, runArgs.inputs)
+	cmd, err := builder.Build(command, runArgs.entrypoint, runArgs.inputs)
 	if err != nil {
 		result = err
 	} else {
@@ -540,6 +542,16 @@ func imagePullPolicy() (runtime.PullImagePolicy, error) {
 		return "", fmt.Errorf("invalid pull policy given: %s", runArgs.pull)
 
 	}
+}
+
+func envMap() map[string]string {
+	env := make(map[string]string)
+	for _, e := range os.Environ() {
+		s := strings.SplitN(e, "=", 2)
+		env[s[0]] = s[1]
+	}
+
+	return env
 }
 
 var tuiInstance tui.UI
@@ -628,13 +640,13 @@ func printReport(store *report.Store) error {
 
 	switch runArgs.report {
 	case reportTypeTable.String():
-		report.Table(output, store)
+		report.Table(output, store.Ordered())
 	case reportTypeJSON.String():
-		report.JSON(output, store)
+		report.JSON(output, store.Ordered())
 	case reportTypeTimeline.String():
-		return report.Timeline(output, store)
+		return report.Timeline(output, store.Ordered())
 	case reportTypeMarkdown.String():
-		return report.Markdown(output, store)
+		return report.Markdown(output, store.Ordered())
 	case reportTypeNone.String():
 		return nil
 	default:

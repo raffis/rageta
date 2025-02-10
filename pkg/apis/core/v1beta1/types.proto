@@ -9,15 +9,6 @@ message StepResult {
   map<string, string> outputs = 1;
 }
 
-message StreamResults {
-  StreamResult stdout = 1;
-  StreamResult stderr = 2;
-}
-
-message StreamResult {
-  int64 size = 1;
-}
-
 message ContainerStatus {
   string containerID = 1;
   string containerIP = 2;

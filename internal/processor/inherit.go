@@ -78,15 +78,11 @@ func (s *Inherit) mergeContext(from, to StepContext) {
 		to.Envs[k] = v
 	}
 
-	for k, v := range from.inputs {
-		to.inputs[k] = v
-	}
-
 	for k, v := range from.Steps {
 		to.Steps[PrefixName(k, s.stepName)] = v
 	}
 
-	for k, v := range from.Containers {
+	/*for k, v := range from.Containers {
 		to.Containers[PrefixName(k, s.stepName)] = v
-	}
+	}*/
 }

@@ -98,6 +98,10 @@ spec:
                   type: object
                 description:
                   type: string
+                env:
+                  items:
+                    type: string
+                  type: array
                 finally:
                   type: boolean
                 generates:
