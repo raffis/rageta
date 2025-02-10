@@ -32,12 +32,7 @@ func runVersion(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	logo, err := tui.PrintLogo()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("%s\n%s\n\n%s\t%s\n%s\t%s\n%s\t%s\n%s\n",
+	fmt.Printf("%s\n%s\n\n%s\t%s\n%s\t%s\n%s\t%s\n",
 		lipgloss.NewStyle().Bold(true).Render("RAGETA"),
 		"Build cloud native style cli style pipelines",
 		lipgloss.NewStyle().Bold(true).Render("Version:"),
@@ -46,8 +41,9 @@ func runVersion(cmd *cobra.Command, args []string) error {
 		commit,
 		lipgloss.NewStyle().Bold(true).Render("Build date:"),
 		date,
-		logo,
 	)
+
+	tui.PrintLogo()
 
 	return nil
 }
