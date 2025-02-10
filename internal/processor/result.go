@@ -48,6 +48,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		stepContext.Steps[s.stepName].Outputs = outputs
 		stepContext.Steps[s.stepName].EndedAt = endedAt
 		stepContext.Steps[s.stepName].Error = nextErr
+		stepContext.Output = ""
 
 		if nextErr != nil {
 			nextErr = fmt.Errorf("step %s failed: %w", s.stepName, nextErr)
