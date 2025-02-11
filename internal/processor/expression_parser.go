@@ -26,6 +26,7 @@ func WithExpressionParser(celEnv *cel.Env, processors ...Bootstraper) ProcessorB
 		return &ExpressionParser{
 			celEnv:         celEnv,
 			lateVarBinders: lateVarBinders,
+			isMatrix:       len(spec.Matrix) > 0,
 		}
 	}
 }
@@ -46,11 +47,19 @@ type lateVarBinder interface {
 type ExpressionParser struct {
 	celEnv         *cel.Env
 	lateVarBinders []lateVarBinder
+	isMatrix       bool
 }
 
 func (s *ExpressionParser) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		for _, lateVarBinder := range s.lateVarBinders {
+			//If the step has a matrix we only parse expressions from the matrix processor
+			//This is due that any other steps could depend on matrix context which is not evaluated in a matrix parent
+			_, isMatrixProcessor := lateVarBinder.(*Matrix)
+			if s.isMatrix && len(stepContext.Matrix) == 0 && !isMatrixProcessor {
+				continue
+			}
+
 			b, err := lateVarBinder.MarshalJSON()
 			if err != nil {
 				return stepContext, fmt.Errorf("failed to marshal processor to json: %w", err)

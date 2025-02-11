@@ -19,6 +19,7 @@ func WithMatrix() ProcessorBuilder {
 
 		return &Matrix{
 			rawMatrix: spec.Matrix,
+			stepName:  spec.Name,
 		}
 	}
 }
@@ -27,6 +28,7 @@ type Matrix struct {
 	rawMatrix map[string]json.RawMessage
 	matrix    map[string]interface{}
 	failFast  bool
+	stepName  string
 }
 
 func (s *Matrix) UnmarshalJSON(b []byte) error {
@@ -39,6 +41,21 @@ func (s *Matrix) MarshalJSON() ([]byte, error) {
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		//Only proceed if we are not in a a matrix child context
+		if len(stepContext.Matrix) > 0 {
+			return next(ctx, stepContext)
+		}
+
+		step, err := pipeline.Step(s.stepName)
+		if err != nil {
+			return stepContext, err
+		}
+
+		next, err := step.Entrypoint()
+		if err != nil {
+			return stepContext, err
+		}
+
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err

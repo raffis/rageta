@@ -285,8 +285,8 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 		}*/
 
 		substitutableProcessors := processor.Builder(&spec,
-			processor.WithEnv(envMap()),
 			processor.WithMatrix(),
+			processor.WithEnv(envMap()),
 			processor.WithStdio(),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithInherit(*builder, store),
