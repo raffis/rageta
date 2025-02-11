@@ -89,8 +89,8 @@ type pushFlags struct {
 	path        string
 	source      string
 	revision    string
-	provider    string
 	annotations []string
+	tags        []string
 	output      string
 	debug       bool
 	ociOptions  *ocisetup.Options
@@ -108,6 +108,7 @@ func init() {
 	pushCmd.Flags().StringVarP(&pushArgs.path, "path", "f", "", "path to the directory where the Kubernetes manifests are located")
 	pushCmd.Flags().StringVar(&pushArgs.source, "source", "", "the source address, e.g. the Git URL")
 	pushCmd.Flags().StringVar(&pushArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
+	pushCmd.Flags().StringArrayVarP(&pushArgs.tags, "tags", "t", nil, "Push additional tags")
 	pushCmd.Flags().StringArrayVarP(&pushArgs.annotations, "annotations", "a", nil, "Set custom OCI annotations in the format '<key>=<value>'")
 	pushCmd.Flags().StringVarP(&pushArgs.output, "output", "o", "",
 		"the format in which the artifact digest should be printed, can be 'json' or 'yaml'")
@@ -206,6 +207,13 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("pushing artifact failed: %w", err)
+	}
+
+	for _, tag := range pushArgs.tags {
+		_, err = ociClient.Tag(ctx, ociURL, tag)
+		if err != nil {
+			return fmt.Errorf("remote tag failed: %w", err)
+		}
 	}
 
 	digest, err := name.NewDigest(digestURL)
