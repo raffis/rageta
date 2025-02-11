@@ -18,7 +18,8 @@ func WithMatrix() ProcessorBuilder {
 		}
 
 		return &Matrix{
-			rawMatrix: spec.Matrix,
+			rawMatrix: spec.Matrix.Table,
+			failFast:  spec.Matrix.FailFast,
 			stepName:  spec.Name,
 		}
 	}
@@ -84,10 +85,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			case res := <-results:
 				done++
 				stepContext = stepContext.Merge(res.stepContext)
-				if res.err != nil && AbortOnError(err) {
+				if res.err != nil && AbortOnError(res.err) {
 					errs = append(errs, res.err)
 
-					if err != nil && s.failFast {
+					if s.failFast {
 						break WAIT
 					}
 				}

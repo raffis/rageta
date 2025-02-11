@@ -46,12 +46,6 @@ func WithTmpDir(tmpDir string) func(*builder) {
 }
 
 func NewBuilder(opts ...builderOption) *builder {
-	env := make(map[string]string)
-	for _, e := range os.Environ() {
-		s := strings.Split(e, "=")
-		env[s[0]] = s[1]
-	}
-
 	e := &builder{
 		logger: logr.Discard(),
 		tmpDir: os.TempDir(),
@@ -83,10 +77,8 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		contextDir = filepath.Join(contextDir, pipeline.PipelineSpec.Name)
 	}
 
-	dataDir := filepath.Join(contextDir, "_data")
-
-	if _, err := os.Stat(dataDir); errors.Is(err, os.ErrNotExist) {
-		err := os.MkdirAll(dataDir, 0700)
+	if _, err := os.Stat(contextDir); errors.Is(err, os.ErrNotExist) {
+		err := os.MkdirAll(contextDir, 0700)
 		if err != nil {
 			return nil, err
 		}

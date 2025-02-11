@@ -38,6 +38,7 @@ type StepResult struct {
 	EndedAt   time.Time
 	Outputs   map[string]string
 	Error     error
+	DataDir   string
 }
 
 func (t *StepResult) Duration() time.Duration {
@@ -61,6 +62,7 @@ func NewContext(dir string, inputs map[string]interface{}) StepContext {
 func (c StepContext) DeepCopy() StepContext {
 	copy := NewContext(c.dir, maps.Clone(c.inputs))
 	copy.NamePrefix = c.NamePrefix
+	copy.dataDir = c.dataDir
 	copy.Stdout.Add(c.Stdout.Unpack()...)
 	copy.Stderr.Add(c.Stderr.Unpack()...)
 	copy.Steps = maps.Clone(c.Steps)
@@ -96,6 +98,7 @@ func (t StepContext) TmpDir() string {
 func (t StepContext) Child() StepContext {
 	return StepContext{
 		dir:        t.dir,
+		dataDir:    t.dataDir,
 		inputs:     maps.Clone(t.inputs),
 		Steps:      maps.Clone(t.Steps),
 		Envs:       maps.Clone(t.Envs),
@@ -118,6 +121,7 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
 	for k, v := range vars.Steps {
 		t.Steps[k] = &StepResult{
 			Outputs: v.Outputs,
+			DataDir: v.TmpDir,
 		}
 	}
 }
@@ -151,6 +155,7 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
 			Outputs: v.Outputs,
+			TmpDir:  v.DataDir,
 		}
 	}
 

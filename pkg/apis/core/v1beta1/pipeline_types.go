@@ -56,17 +56,22 @@ var (
 )
 
 type StepOptions struct {
-	If           string                     `json:"if,omitempty"`
-	Timeout      metav1.Duration            `json:"timeout,omitempty"`
-	Finally      bool                       `json:"finally,omitempty"`
-	AllowFailure bool                       `json:"allowFailure,omitempty"`
-	Matrix       map[string]json.RawMessage `json:"matrix,omitempty"`
-	Generates    []Generate                 `json:"generates,omitempty"`
-	Sources      []Source                   `json:"sources,omitempty"`
-	Needs        []StepReference            `json:"needs,omitempty"`
-	Streams      *Streams                   `json:"streams,omitempty"`
-	Retry        *Retry                     `json:"retry,omitempty"`
-	Env          []string                   `json:"env,omitempty"`
+	If           string          `json:"if,omitempty"`
+	Timeout      metav1.Duration `json:"timeout,omitempty"`
+	Finally      bool            `json:"finally,omitempty"`
+	AllowFailure bool            `json:"allowFailure,omitempty"`
+	Matrix       *Matrix         `json:"matrix,omitempty"`
+	Generates    []Generate      `json:"generates,omitempty"`
+	Sources      []Source        `json:"sources,omitempty"`
+	Needs        []StepReference `json:"needs,omitempty"`
+	Streams      *Streams        `json:"streams,omitempty"`
+	Retry        *Retry          `json:"retry,omitempty"`
+	Env          []string        `json:"env,omitempty"`
+}
+
+type Matrix struct {
+	Table    map[string]json.RawMessage `json:"table,omitempty"`
+	FailFast bool                       `json:"failFast,omitempty"`
 }
 
 type Retry struct {

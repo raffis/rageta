@@ -46,7 +46,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
-		command.PipelineSpec.Name = s.stepName
+		command.PipelineSpec.Name = PrefixName(s.stepName, stepContext.NamePrefix)
 
 		cmd, err := s.builder.Build(command, s.step.Entrypoint, s.mapInputs(s.step.Inputs))
 		if err != nil {

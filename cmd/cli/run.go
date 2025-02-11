@@ -305,6 +305,7 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 			processor.WithSkipDone(runArgs.skipDone),
 			processor.WithIf(celEnv),
 			processor.WithNeeds(),
+			processor.WithTmpDir(),
 			processor.WithExpressionParser(celEnv, substitutableProcessors...),
 		)
 

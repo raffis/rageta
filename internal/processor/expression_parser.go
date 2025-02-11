@@ -26,7 +26,7 @@ func WithExpressionParser(celEnv *cel.Env, processors ...Bootstraper) ProcessorB
 		return &ExpressionParser{
 			celEnv:         celEnv,
 			lateVarBinders: lateVarBinders,
-			isMatrix:       len(spec.Matrix) > 0,
+			isMatrix:       spec.Matrix != nil && len(spec.Matrix.Table) > 0,
 		}
 	}
 }

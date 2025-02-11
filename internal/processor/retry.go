@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -47,7 +46,6 @@ func (s *Retry) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		if err := retry.Do(ctx, backoff, func(ctx context.Context) error {
 			stepContext, err = next(ctx, stepContext)
 			if err != nil {
-				fmt.Printf("%#v\n", err)
 				return retry.RetryableError(err)
 			}
 

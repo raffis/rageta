@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
+var (
 	version = "0.0.0-dev"
 	commit  = "none"
 	date    = "unknown"
