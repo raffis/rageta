@@ -63,6 +63,7 @@ type runFlags struct {
 	entrypoint          string            `env:"RAGETA_ENTRYPOINT"`
 	contextDir          string            `env:"RAGETA_CONTEXT_DIR"`
 	inputs              map[string]string `env:"RAGETA_INPUTS"`
+	envs                map[string]string `env:"RAGETA_ENVS"`
 	skipDone            bool              `env:"RAGETA_SKIP_DONE"`
 	skipSteps           []string          `env:"RAGETA_SKIP_STEPS"`
 	otelOptions         otelsetup.Options
@@ -75,10 +76,12 @@ var runArgs = newRunFlags()
 func newRunFlags() runFlags {
 	return runFlags{
 		ociOptions: ocisetup.DefaultOptions(),
+		inputs:     make(map[string]string),
+		envs:       make(map[string]string),
 	}
 }
 
-const otelName = "go.opentelemetry.io/otel/example/dice"
+const otelName = "github.com/raffis/rageta"
 
 func init() {
 	dbPath := "/rageta.db"
@@ -95,6 +98,7 @@ func init() {
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
+	runCmd.Flags().StringToStringVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	runCmd.Flags().StringToStringVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
 	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
@@ -278,7 +282,7 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 	return logger, os.Stderr, nil
 }
 
-func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, imagePullPolicy runtime.PullImagePolicy, tracer trace.Tracer, meter metric.Meter, outputFactory processor.OutputFactory, resultStore processor.ResultStore, teardown chan processor.Teardown, builder *processor.PipelineBuilder, store storage.Interface) pipeline.StepBuilder {
+func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, driver runtime.Interface, imagePullPolicy runtime.PullImagePolicy, tracer trace.Tracer, meter metric.Meter, outputFactory processor.OutputFactory, resultStore processor.ResultStore, teardown chan processor.Teardown, builder *processor.PipelineBuilder, store storage.Interface) pipeline.StepBuilder {
 	return func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper {
 		/*if ui := uiOutput(); ui != nil && spec.Run != nil {
 			ui.AddTasks(tui.NewTask(uniqueName))
@@ -286,7 +290,7 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 
 		substitutableProcessors := processor.Builder(&spec,
 			processor.WithMatrix(),
-			processor.WithEnv(envMap()),
+			processor.WithEnv(envs),
 			processor.WithStdio(),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithInherit(*builder, store),
@@ -294,11 +298,11 @@ func stepBuilder(logger logr.Logger, celEnv *cel.Env, driver runtime.Interface, 
 
 		processors := processor.Builder(&spec,
 			processor.WithReport(resultStore, uniqueName),
-			processor.WithSkipBlacklist(runArgs.skipSteps),
-			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
+			processor.WithRetry(),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithOtelMetrics(meter),
-			processor.WithRetry(),
+			processor.WithSkipBlacklist(runArgs.skipSteps),
+			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
 			processor.WithAllowFailure(),
 			processor.WithResult(),
 			processor.WithTimeout(),
@@ -456,7 +460,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(stepBuilder(logger, celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store)),
+		pipeline.WithStepBuilder(stepBuilder(logger, envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -541,18 +545,21 @@ func imagePullPolicy() (runtime.PullImagePolicy, error) {
 		return runtime.PullImagePolicyNever, nil
 	default:
 		return "", fmt.Errorf("invalid pull policy given: %s", runArgs.pull)
-
 	}
 }
 
 func envMap() map[string]string {
-	env := make(map[string]string)
-	for _, e := range os.Environ() {
-		s := strings.SplitN(e, "=", 2)
-		env[s[0]] = s[1]
+	envs := runArgs.envs
+	for k, v := range envs {
+		if v == "" {
+			if env, ok := os.LookupEnv(k); ok {
+				envs[k] = env
+			}
+
+		}
 	}
 
-	return env
+	return envs
 }
 
 var tuiInstance tui.UI

@@ -41,6 +41,7 @@ func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		logger.Info("process step")
 		logger.V(1).Info("step context input", "context", stepContext)
 		stepContext, err := next(ctx, stepContext)
+		logger.Info("process step done", "err", err)
 		logger.V(1).Info("step done", "err", err, "context", stepContext)
 
 		return stepContext, err
