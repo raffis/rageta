@@ -63,7 +63,7 @@ type runFlags struct {
 	entrypoint          string            `env:"RAGETA_ENTRYPOINT"`
 	contextDir          string            `env:"RAGETA_CONTEXT_DIR"`
 	inputs              map[string]string `env:"RAGETA_INPUTS"`
-	envs                map[string]string `env:"RAGETA_ENVS"`
+	envs                []string          `env:"RAGETA_ENVS"`
 	skipDone            bool              `env:"RAGETA_SKIP_DONE"`
 	skipSteps           []string          `env:"RAGETA_SKIP_STEPS"`
 	otelOptions         otelsetup.Options
@@ -77,7 +77,6 @@ func newRunFlags() runFlags {
 	return runFlags{
 		ociOptions: ocisetup.DefaultOptions(),
 		inputs:     make(map[string]string),
-		envs:       make(map[string]string),
 	}
 }
 
@@ -98,7 +97,7 @@ func init() {
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
-	runCmd.Flags().StringToStringVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
+	runCmd.Flags().StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	runCmd.Flags().StringToStringVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
 	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
@@ -549,13 +548,15 @@ func imagePullPolicy() (runtime.PullImagePolicy, error) {
 }
 
 func envMap() map[string]string {
-	envs := runArgs.envs
-	for k, v := range envs {
-		if v == "" {
-			if env, ok := os.LookupEnv(k); ok {
-				envs[k] = env
+	envs := make(map[string]string)
+	for _, v := range runArgs.envs {
+		s := strings.SplitN(v, "=", 2)
+		if len(s) == 1 {
+			if env, ok := os.LookupEnv(s[0]); ok {
+				envs[s[0]] = env
 			}
-
+		} else {
+			envs[s[0]] = s[1]
 		}
 	}
 
