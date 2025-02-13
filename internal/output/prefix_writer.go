@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -16,11 +17,13 @@ type Prefixer struct {
 	writer          io.Writer
 	trailingNewline bool
 	buf             bytes.Buffer
+	lock            *lockInfo
 }
 
 type PrefixOptions struct {
 	Prefix string
 	Style  lipgloss.Style
+	Lock   *lockInfo
 }
 
 func NewPrefixWriter(writer io.Writer, opts PrefixOptions) *Prefixer {
@@ -29,10 +32,30 @@ func NewPrefixWriter(writer io.Writer, opts PrefixOptions) *Prefixer {
 		trailingNewline: true,
 		prefix:          opts.Prefix,
 		style:           opts.Style,
+		lock:            opts.Lock,
 	}
 }
 
+type lockInfo struct {
+	mu *sync.Mutex
+	id string
+}
+
+func (p *Prefixer) Close() error {
+	if p.lock.id == p.prefix {
+		p.lock.id = ""
+		p.lock.mu.Unlock()
+	}
+
+	return nil
+}
+
 func (p *Prefixer) Write(payload []byte) (int, error) {
+	if p.lock.id == "" {
+		p.lock.mu.Lock()
+		p.lock.id = p.prefix
+	}
+
 	p.buf.Reset()
 
 	for _, b := range payload {
@@ -47,7 +70,15 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 		}
 	}
 
-	n, err := p.writer.Write(p.buf.Bytes())
+	bytes := p.buf.Bytes()
+	if bytes[len(bytes)-1] == '\n' {
+		defer func() {
+			p.lock.id = ""
+			p.lock.mu.Unlock()
+		}()
+	}
+
+	n, err := p.writer.Write(bytes)
 	if err != nil {
 		if n > len(payload) {
 			n = len(payload)
@@ -58,7 +89,7 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 	return len(payload), nil
 }
 
-func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool) (io.Writer, io.Writer) {
+func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool, lockInfo *lockInfo) (io.Writer, io.Writer) {
 	style := lipgloss.NewStyle()
 
 	if randColor {
@@ -70,6 +101,7 @@ func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool) (io.W
 		stdout = NewPrefixWriter(stdout, PrefixOptions{
 			Prefix: fmt.Sprintf("%s ", prefix),
 			Style:  style,
+			Lock:   lockInfo,
 		})
 	}
 
@@ -77,6 +109,7 @@ func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool) (io.W
 		stderr = NewPrefixWriter(stderr, PrefixOptions{
 			Prefix: fmt.Sprintf("%s ", prefix),
 			Style:  style,
+			Lock:   lockInfo,
 		})
 	}
 
