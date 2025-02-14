@@ -43,7 +43,7 @@ func runVersion(cmd *cobra.Command, args []string) error {
 		date,
 	)
 
-	tui.PrintLogo()
+	fmt.Println(tui.Logo)
 
 	return nil
 }

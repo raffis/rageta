@@ -35,6 +35,10 @@ type Task struct {
 	finished time.Time
 }
 
+func (t *Task) getViewport() *pager.Model {
+	return t.viewport
+}
+
 func (t *Task) Write(b []byte) (int, error) {
 	return t.viewport.Write(b)
 }

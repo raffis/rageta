@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -486,6 +487,16 @@ func runRun(c *cobra.Command, args []string) error {
 			tuiInstance.SetStatus(tui.StepStatusDone)
 		}
 
+		if resultStore, ok := resultStore.(*report.Store); ok {
+			buf := &bytes.Buffer{}
+
+			if err := printReport(buf, resultStore); err != nil {
+				fmt.Fprintln(buf, err)
+			}
+
+			tuiInstance.Report(buf.Bytes())
+		}
+
 		<-tuiDone
 	}
 
@@ -516,7 +527,20 @@ func runRun(c *cobra.Command, args []string) error {
 	wg.Wait()
 
 	if resultStore, ok := resultStore.(*report.Store); ok {
-		if err := printReport(resultStore); err != nil {
+		outputPath := runArgs.reportOutput
+		var output *os.File
+		if outputPath == "/dev/stdout" || outputPath == "" {
+			output = os.Stdout
+		} else {
+			var err error
+			output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+			if err != nil {
+				return err
+			}
+			defer output.Close()
+		}
+
+		if err := printReport(output, resultStore); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}
@@ -633,29 +657,16 @@ func outputFactory() (processor.OutputFactory, error) {
 	return outputHandler, nil
 }
 
-func printReport(store *report.Store) error {
-	outputPath := runArgs.reportOutput
-	var output *os.File
-	if outputPath == "/dev/stdout" || outputPath == "" {
-		output = os.Stdout
-	} else {
-		var err error
-		output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
-		if err != nil {
-			return err
-		}
-		defer output.Close()
-	}
-
+func printReport(w io.Writer, store *report.Store) error {
 	switch runArgs.report {
 	case reportTypeTable.String():
-		report.Table(output, store.Ordered())
+		report.Table(w, store.Ordered())
 	case reportTypeJSON.String():
-		report.JSON(output, store.Ordered())
+		report.JSON(w, store.Ordered())
 	case reportTypeTimeline.String():
-		return report.Timeline(output, store.Ordered())
+		return report.Timeline(w, store.Ordered())
 	case reportTypeMarkdown.String():
-		return report.Markdown(output, store.Ordered())
+		return report.Markdown(w, store.Ordered())
 	case reportTypeNone.String():
 		return nil
 	default:

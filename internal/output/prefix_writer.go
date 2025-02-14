@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,48 +13,26 @@ import (
 type Prefixer struct {
 	prefix          string
 	style           lipgloss.Style
-	writer          io.Writer
+	writer          chan prefixMessage
 	trailingNewline bool
 	buf             bytes.Buffer
-	lock            *lockInfo
 }
 
 type PrefixOptions struct {
 	Prefix string
 	Style  lipgloss.Style
-	Lock   *lockInfo
 }
 
-func NewPrefixWriter(writer io.Writer, opts PrefixOptions) *Prefixer {
+func NewPrefixWriter(writer chan prefixMessage, opts PrefixOptions) *Prefixer {
 	return &Prefixer{
 		writer:          writer,
 		trailingNewline: true,
 		prefix:          opts.Prefix,
 		style:           opts.Style,
-		lock:            opts.Lock,
 	}
-}
-
-type lockInfo struct {
-	mu *sync.Mutex
-	id string
-}
-
-func (p *Prefixer) Close() error {
-	if p.lock.id == p.prefix {
-		p.lock.id = ""
-		p.lock.mu.Unlock()
-	}
-
-	return nil
 }
 
 func (p *Prefixer) Write(payload []byte) (int, error) {
-	if p.lock.id == "" {
-		p.lock.mu.Lock()
-		p.lock.id = p.prefix
-	}
-
 	p.buf.Reset()
 
 	for _, b := range payload {
@@ -71,25 +48,14 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 	}
 
 	bytes := p.buf.Bytes()
-	if bytes[len(bytes)-1] == '\n' {
-		defer func() {
-			p.lock.id = ""
-			p.lock.mu.Unlock()
-		}()
+	p.writer <- prefixMessage{
+		b:        bytes,
+		producer: p.prefix,
 	}
-
-	n, err := p.writer.Write(bytes)
-	if err != nil {
-		if n > len(payload) {
-			n = len(payload)
-		}
-		return n, err
-	}
-
-	return len(payload), nil
+	return len(bytes), nil
 }
 
-func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool, lockInfo *lockInfo) (io.Writer, io.Writer) {
+func prefixWriter(prefix string, stdoutCh, stderrCh chan prefixMessage, randColor bool) (io.Writer, io.Writer) {
 	style := lipgloss.NewStyle()
 
 	if randColor {
@@ -97,19 +63,19 @@ func prefixWriter(prefix string, stdout, stderr io.Writer, randColor bool, lockI
 		style = style.Foreground(lipgloss.Color(fmt.Sprintf("#%s", color)))
 	}
 
-	if stdout != nil {
-		stdout = NewPrefixWriter(stdout, PrefixOptions{
+	var stdout, stderr io.Writer
+
+	if stdoutCh != nil {
+		stdout = NewPrefixWriter(stdoutCh, PrefixOptions{
 			Prefix: fmt.Sprintf("%s ", prefix),
 			Style:  style,
-			Lock:   lockInfo,
 		})
 	}
 
-	if stderr != nil {
-		stderr = NewPrefixWriter(stderr, PrefixOptions{
+	if stderrCh != nil {
+		stderr = NewPrefixWriter(stderrCh, PrefixOptions{
 			Prefix: fmt.Sprintf("%s ", prefix),
 			Style:  style,
-			Lock:   lockInfo,
 		})
 	}
 

@@ -25,7 +25,7 @@ var (
 	windowStyle    = lipgloss.NewStyle()
 	listStyle      = lipgloss.NewStyle().
 			BorderForeground(highlightColor).
-			Border(lipgloss.OuterHalfBlockBorder(), false, true, false, false).
+			Border(lipgloss.BlockBorder(), false, true, false, false).
 			PaddingTop(1)
 	listPaginatorStyle = lipgloss.NewStyle().Padding(1, 0, 2, 2)
 
