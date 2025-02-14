@@ -5,20 +5,20 @@
 class Rageta < Formula
   desc "Cloud native pipelines"
   homepage "https://github.com/raffis/rageta"
-  version "0.0.14"
+  version "0.0.15"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.14/rageta_0.0.14_darwin_amd64.tar.gz"
-      sha256 "7653b012dfb23ed085bbf10577781afdb294917f5e831995f86d613e9d80786c"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.15/rageta_0.0.15_darwin_amd64.tar.gz"
+      sha256 "b945ef75ae1e394bf53283c18c994b22992d110618582932c3b7e6c47e6827c3"
 
       def install
         bin.install "rageta"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.14/rageta_0.0.14_darwin_arm64.tar.gz"
-      sha256 "1bc61e0fd63c0455fff3808c32b30e6a69909675e885669aef036fd6537e281a"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.15/rageta_0.0.15_darwin_arm64.tar.gz"
+      sha256 "3febefdac6c73d5833dab3b569cbff1dd4401acdd6adad37e72c6ac29fb4093f"
 
       def install
         bin.install "rageta"
@@ -29,8 +29,8 @@ class Rageta < Formula
   on_linux do
     if Hardware::CPU.intel?
       if Hardware::CPU.is_64_bit?
-        url "https://github.com/raffis/rageta/releases/download/v0.0.14/rageta_0.0.14_linux_amd64.tar.gz"
-        sha256 "868db679dee53ba6580608c559240acbab0260303652661190e33578894a36c6"
+        url "https://github.com/raffis/rageta/releases/download/v0.0.15/rageta_0.0.15_linux_amd64.tar.gz"
+        sha256 "a9d4e28edb847388a7f7579df5d77bed799c863eebf5c52ea0fd0689bc78f766"
 
         def install
           bin.install "rageta"
@@ -39,8 +39,8 @@ class Rageta < Formula
     end
     if Hardware::CPU.arm?
       if Hardware::CPU.is_64_bit?
-        url "https://github.com/raffis/rageta/releases/download/v0.0.14/rageta_0.0.14_linux_arm64.tar.gz"
-        sha256 "4ecaba4e2a25944b0ac1e9d57a4afd48189c0626fe00a23f3b440420620e0f44"
+        url "https://github.com/raffis/rageta/releases/download/v0.0.15/rageta_0.0.15_linux_arm64.tar.gz"
+        sha256 "e35c43c98bf5d4f29b37eee02232c6eeaccc0bfbc24c16e29968edd3093f6777"
 
         def install
           bin.install "rageta"
