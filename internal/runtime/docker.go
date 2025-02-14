@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -412,15 +411,6 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 			netConfig.EndpointsConfig[k] = &network.EndpointSettings{
 				NetworkID: k,
 			}
-		}
-	} else {
-		u, err := url.Parse(d.client.DaemonHost())
-		if err == nil && u.Scheme == "unix" {
-			mounts = append(mounts, mount.Mount{
-				Type:   mount.TypeBind,
-				Source: u.Path,
-				Target: u.Path,
-			})
 		}
 	}
 
