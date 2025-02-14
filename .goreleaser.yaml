@@ -8,7 +8,7 @@ builds:
   goos:
   - linux
   - darwin
-#  - windows
+  - windows
   env:
   - CGO_ENABLED=0
 
