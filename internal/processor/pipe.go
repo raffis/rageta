@@ -74,6 +74,9 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			stepEntrypoints[i].stepContext = copy
 		}
 
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		for _, step := range stepEntrypoints {
 			step := step
 
@@ -89,20 +92,15 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		var done int
 	WAIT:
-		for {
-			select {
-			case <-ctx.Done():
-				return stepContext, nil
-			case res := <-results:
-				done++
-				stepContext = stepContext.Merge(res.stepContext)
-				if res.err != nil && AbortOnError(res.err) {
-					return stepContext, res.err
-				}
+		for res := range results {
+			done++
+			stepContext = stepContext.Merge(res.stepContext)
+			if res.err != nil && AbortOnError(res.err) {
+				cancel()
+			}
 
-				if done == len(steps) {
-					break WAIT
-				}
+			if done == len(steps) {
+				break WAIT
 			}
 		}
 
