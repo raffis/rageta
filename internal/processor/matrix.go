@@ -65,6 +65,9 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		results := make(chan concurrentResult)
 		var errs []error
 
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
 			copyContext.Matrix = matrix
@@ -78,24 +81,19 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		var done int
 	WAIT:
-		for {
-			select {
-			case <-ctx.Done():
-				return stepContext, nil
-			case res := <-results:
-				done++
-				stepContext = stepContext.Merge(res.stepContext)
-				if res.err != nil && AbortOnError(res.err) {
-					errs = append(errs, res.err)
+		for res := range results {
+			done++
+			stepContext = stepContext.Merge(res.stepContext)
+			if res.err != nil && AbortOnError(res.err) {
+				errs = append(errs, res.err)
 
-					if s.failFast {
-						break WAIT
-					}
+				if s.failFast {
+					cancel()
 				}
+			}
 
-				if done == len(matrixes) {
-					break WAIT
-				}
+			if done == len(matrixes) {
+				break WAIT
 			}
 		}
 

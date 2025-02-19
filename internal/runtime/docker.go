@@ -92,6 +92,7 @@ func (d *docker) DeletePod(ctx context.Context, pod *Pod) error {
 	wg := new(errgroup.Group)
 	for _, container := range pod.Status.Containers {
 		containerId := container.ContainerID
+
 		wg.Go(func() error {
 			return d.resetContainer(ctx, containerId)
 		})
@@ -131,8 +132,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 			Name:        container.Name,
 		})
 	}
-
-	wg := errgroup.Group{}
 
 	if len(pod.Spec.Containers) != 1 {
 		return nil, errors.New("exactly one container is required")
@@ -198,6 +197,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		Name:        container.Name,
 	})
 
+	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		_, err = stdcopy.StdCopy(stdout, stderr, streams.Reader)
 		if err != nil {
@@ -230,18 +230,23 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	}
 
 	wg.Go(func() error {
-		await := <-waitC
-		if await.StatusCode > 0 {
-			return &Result{
-				ExitCode: int(await.StatusCode),
+		select {
+		case <-ctx.Done():
+			streams.Close()
+			return ctx.Err()
+		case await := <-waitC:
+			if await.StatusCode > 0 {
+				return &Result{
+					ExitCode: int(await.StatusCode),
+				}
 			}
-		}
 
-		return nil
+			return nil
+		}
 	})
 
 	return &await{
-		wg:      &wg,
+		wg:      wg,
 		streams: streams,
 	}, nil
 }

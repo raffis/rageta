@@ -51,6 +51,9 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		results := make(chan concurrentResult)
 		var errs []error
 
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		for _, next := range stepEntrypoints {
 			next := next
 			stepContext := stepContext.DeepCopy()
@@ -62,24 +65,19 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		var done int
 	WAIT:
-		for {
-			select {
-			case <-ctx.Done():
-				return stepContext, nil
-			case res := <-results:
-				done++
-				stepContext = stepContext.Merge(res.stepContext)
-				if res.err != nil && AbortOnError(res.err) {
-					errs = append(errs, res.err)
+		for res := range results {
+			done++
+			stepContext = stepContext.Merge(res.stepContext)
+			if res.err != nil && AbortOnError(res.err) {
+				errs = append(errs, res.err)
 
-					if s.failFast {
-						break WAIT
-					}
+				if s.failFast {
+					cancel()
 				}
+			}
 
-				if done == len(steps) {
-					break WAIT
-				}
+			if done == len(steps) {
+				break WAIT
 			}
 		}
 
