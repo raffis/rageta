@@ -12,13 +12,11 @@ func writeBytes(w io.Writer, r chan prefixMessage) {
 	var lastProducer string
 
 	for msg := range r {
-		//fmt.Printf("\n%#v -- %#v -- %#v“\n", lastProducer, msg.producer, lastProducer == msg.producer)
-
 		if lastProducer != "" && lastProducer != msg.producer && lastChar != byte('\n') {
-			//	w.Write([]byte{'\n'})
+			w.Write([]byte{'\n'})
 		}
 
-		//lastChar = msg.b[len(msg.b)-1]
+		lastChar = msg.b[len(msg.b)-1]
 		lastProducer = msg.producer
 		w.Write(msg.b)
 	}
@@ -45,7 +43,6 @@ func Prefix(color bool) processor.OutputFactory {
 		if w, ok := writers[stdout]; ok {
 			stdoutCh = w
 		} else {
-			//fmt.Printf("\n\n\n==================================================== %#v\n\n\n", stdout)
 			writers[stdout] = make(chan prefixMessage)
 			stdoutCh = writers[stdout]
 			go writeBytes(stdout, writers[stdout])

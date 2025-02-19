@@ -47,12 +47,11 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 		}
 	}
 
-	bytes := p.buf.Bytes()
 	p.writer <- prefixMessage{
-		b:        bytes,
+		b:        bytes.Clone(p.buf.Bytes()),
 		producer: p.prefix,
 	}
-	return len(bytes), nil
+	return p.buf.Len(), nil
 }
 
 func prefixWriter(prefix string, stdoutCh, stderrCh chan prefixMessage, randColor bool) (io.Writer, io.Writer) {
