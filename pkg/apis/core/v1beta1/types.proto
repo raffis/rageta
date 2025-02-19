@@ -26,10 +26,9 @@ message RuntimeVars {
   map<string, ContainerStatus> containers = 4;
   map<string, StepResult> steps = 5;
   string tmpDir = 6;
-  string rootDir = 7;
-  map<string, google.protobuf.Any> matrix = 8;
-  string env = 9;
-  string output = 10;
-  string os = 11;
-  string arch = 12;
+  map<string, google.protobuf.Any> matrix = 7;
+  string env = 8;
+  string output = 9;
+  string os = 10;
+  string arch = 11;
 }

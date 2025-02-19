@@ -51,22 +51,23 @@ var runCmd = &cobra.Command{
 }
 
 type runFlags struct {
-	dbPath              string            `env:"RAGETA_DB_PATH"`
-	output              string            `env:"RAGETA_OUTPUT"`
-	noGC                bool              `env:"RAGETA_NO_GC"`
-	tee                 bool              `env:"RAGETA_TEE"`
-	containerRuntime    string            `env:"RAGETA_CONTAINER_RUNTIME"`
-	gracefulTermination time.Duration     `env:"RAGETA_GRACEFUL_TERMINATION"`
-	quiet               bool              `env:"RAGETA_QUIT"`
-	report              string            `env:"RAGETA_REPORT"`
-	reportOutput        string            `env:"RAGETA_REPORT_OUTPUT"`
-	pull                string            `env:"RAGETA_PULL"`
-	entrypoint          string            `env:"RAGETA_ENTRYPOINT"`
-	contextDir          string            `env:"RAGETA_CONTEXT_DIR"`
-	inputs              map[string]string `env:"RAGETA_INPUTS"`
-	envs                []string          `env:"RAGETA_ENVS"`
-	skipDone            bool              `env:"RAGETA_SKIP_DONE"`
-	skipSteps           []string          `env:"RAGETA_SKIP_STEPS"`
+	dbPath              string            `env:"DB_PATH"`
+	output              string            `env:"OUTPUT"`
+	noGC                bool              `env:"NO_GC"`
+	tee                 bool              `env:"TEE"`
+	containerRuntime    string            `env:"CONTAINER_RUNTIME"`
+	gracefulTermination time.Duration     `env:"GRACEFUL_TERMINATION"`
+	quiet               bool              `env:"QUIT"`
+	report              string            `env:"REPORT"`
+	reportOutput        string            `env:"REPORT_OUTPUT"`
+	pull                string            `env:"PULL"`
+	entrypoint          string            `env:"ENTRYPOINT"`
+	contextDir          string            `env:"CONTEXT_DIR"`
+	inputs              map[string]string `env:"INPUTS"`
+	envs                []string          `env:"ENVS"`
+	volumes             []string          `env:"VOLUMES"`
+	skipDone            bool              `env:"SKIP_DONE"`
+	skipSteps           []string          `env:"SKIP_STEPS"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -99,11 +100,12 @@ func init() {
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	runCmd.Flags().StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
+	runCmd.Flags().StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
 	runCmd.Flags().StringToStringVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
 	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	runCmd.Flags().StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
-	runCmd.Flags().StringVarP(&runArgs.entrypoint, "entrypoint", "", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
+	runCmd.Flags().StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 	runCmd.Flags().StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
 	runCmd.Flags().BoolVarP(&runArgs.quiet, "quiet", "q", false, "Suppress the pull output.")
 	runArgs.otelOptions.BindFlags(runCmd.Flags())
@@ -224,7 +226,7 @@ func defaultDockerHTTPClient(hostURL *url.URL) (*http.Client, error) {
 	}, nil
 }
 
-func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, output io.Writer) (runtime.Interface, error) {
+func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (runtime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
 		hostURL, err := dockerclient.ParseHostURL(dockerclient.DefaultDockerHost)
@@ -249,10 +251,13 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create docker client: %w", err)
 		}
 
+		runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
+
 		driver := runtime.NewDocker(dockerClient,
 			runtime.WithContext(ctx),
 			runtime.WithLogger(logger),
-			runtime.WithPullImageWriter(output),
+			runtime.WithHidePullOutput(hideOutput),
+			runtime.WithVolumes(runArgs.volumes),
 		)
 
 		return driver, err
@@ -332,7 +337,7 @@ func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, dr
 }
 
 func runRun(c *cobra.Command, args []string) error {
-	logger, logFile, err := getRunLogger()
+	logger, _, err := getRunLogger()
 	if err != nil {
 		return err
 	}
@@ -386,12 +391,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	logger.Info("use context directory", "path", contextDir)
 
-	var pullOutput io.Writer = logFile
-	if runArgs.quiet {
-		pullOutput = io.Discard
-	}
-
-	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, pullOutput)
+	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.quiet, contextDir)
 	if err != nil {
 		return err
 	}

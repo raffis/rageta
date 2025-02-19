@@ -123,11 +123,6 @@ func envSlice(env map[string]string) []string {
 }
 
 func (e *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader) (StepContext, error) {
-	pod.Spec.Volumes = append(pod.Spec.Volumes, runtime.Volume{
-		HostPath: stepContext.TmpDir(),
-		Path:     stepContext.TmpDir(),
-	})
-
 	await, err := e.driver.CreatePod(ctx, pod, stdin, stepContext.Stdout, stepContext.Stderr)
 	if err != nil {
 		return stepContext, err

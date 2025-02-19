@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/distribution/reference"
@@ -44,31 +44,32 @@ func WithContext(ctx context.Context) func(*docker) {
 	}
 }
 
-func WithPullImageWriter(w io.Writer) func(*docker) {
+func WithHidePullOutput(hide bool) func(*docker) {
 	return func(d *docker) {
-		termFd, isTerm := term.GetFdInfo(w)
-		d.pullWriter = w
-		d.termFd = termFd
-		d.isTerm = isTerm
+		d.hidePullOutput = hide
+	}
+}
+
+func WithVolumes(volumes []string) func(*docker) {
+	return func(d *docker) {
+		d.volumes = volumes
 	}
 }
 
 type docker struct {
-	client     *dockerclient.Client
-	logger     logr.Logger
-	self       *types.ContainerJSON
-	pullWriter io.Writer
-	termFd     uintptr
-	isTerm     bool
-	ctx        context.Context
+	client         *dockerclient.Client
+	logger         logr.Logger
+	self           *types.ContainerJSON
+	ctx            context.Context
+	hidePullOutput bool
+	volumes        []string
 }
 
 func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
 	d := &docker{
-		client:     client,
-		ctx:        context.Background(),
-		logger:     logr.Discard(),
-		pullWriter: io.Discard,
+		client: client,
+		ctx:    context.Background(),
+		logger: logr.Discard(),
 	}
 
 	for _, o := range opts {
@@ -155,7 +156,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	}
 
 	if pullImage {
-		if err := d.pullImage(ctx, container.Image); err != nil {
+		if err := d.pullImage(ctx, container.Image, stderr); err != nil {
 			return nil, fmt.Errorf("failed to pull image: %w", err)
 		}
 	}
@@ -302,13 +303,13 @@ func (d *docker) hasImage(ctx context.Context, image string) (bool, error) {
 	return false, nil
 }
 
-func (d *docker) pullImage(ctx context.Context, image string) error {
+func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error {
 	ref, err := reference.ParseNormalizedNamed(image)
 	if err != nil {
 		return err
 	}
 
-	configFile := config.LoadDefaultConfigFile(os.Stderr)
+	configFile := config.LoadDefaultConfigFile(w)
 
 	encodedAuth, err := encodedAuth(ref, configFile)
 	if err != nil {
@@ -322,37 +323,17 @@ func (d *docker) pullImage(ctx context.Context, image string) error {
 		return err
 	}
 
+	if d.hidePullOutput {
+		w = io.Discard
+	}
+
+	termFd, isTerm := term.GetFdInfo(w)
 	defer r.Close()
-	jsonmessage.DisplayJSONMessagesStream(r, d.pullWriter, d.termFd, d.isTerm, nil)
+	jsonmessage.DisplayJSONMessagesStream(r, w, termFd, isTerm, nil)
 	return err
 }
 
-func (d *docker) getPwd() (string, error) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return pwd, err
-	}
-
-	/*if d.self != nil {
-		return pwd, nil
-	}*/
-
-	return filepath.Join("/__rootfs", pwd), nil
-}
-
 func (d *docker) createContainer(ctx context.Context, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
-	var pwd string
-
-	if container.PWD == "" {
-		var err error
-		pwd, err = d.getPwd()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		pwd = container.PWD
-	}
-
 	g, err := os.Getgroups()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user groups: %w", err)
@@ -370,7 +351,7 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 		Entrypoint: strslice.StrSlice(container.Command),
 		Cmd:        strslice.StrSlice(container.Args),
 		Env:        container.Env,
-		WorkingDir: pwd,
+		WorkingDir: container.PWD,
 		User:       fmt.Sprintf("%d:%d", os.Geteuid(), os.Getgid()),
 	}
 
@@ -387,6 +368,19 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 	}
 
 	mounts := []mount.Mount{}
+
+	for _, volume := range d.volumes {
+		v := strings.Split(volume, ":")
+		if len(v) != 2 {
+			return nil, errors.New("invalid volume mount provided")
+		}
+
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: v[0],
+			Target: v[1],
+		})
+	}
 
 	for _, volume := range pod.Spec.Volumes {
 		mounts = append(mounts, mount.Mount{
@@ -413,12 +407,6 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 			}
 		}
 	}
-
-	mounts = append(mounts, mount.Mount{
-		Type:   mount.TypeBind,
-		Source: "/",
-		Target: "/__rootfs",
-	})
 
 	hostConfig.Mounts = mounts
 

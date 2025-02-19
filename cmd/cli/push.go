@@ -117,9 +117,7 @@ func init() {
 	pushArgs.ociOptions.BindFlags(pushCmd.Flags())
 
 	rootCmd.AddCommand(pushCmd)
-
 	oci.CanonicalConfigMediaType = "application/rageta"
-
 }
 
 func pushCmdRun(cmd *cobra.Command, args []string) error {

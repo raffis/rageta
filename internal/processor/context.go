@@ -128,7 +128,6 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
 
 func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 	vars := &v1beta1.RuntimeVars{
-		RootDir:    "/__rootfs",
 		TmpDir:     t.dataDir,
 		Envs:       t.Envs,
 		Steps:      make(map[string]*v1beta1.StepResult),
