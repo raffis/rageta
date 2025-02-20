@@ -14,7 +14,7 @@ import (
 type OutputCloser func(err error)
 type OutputFactory func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
 
-func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer) ProcessorBuilder {
+func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
 			return nil
@@ -30,6 +30,7 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 			stdout:            stdout,
 			stderr:            stderr,
 			defaultPullPolicy: defaultPullPolicy,
+			teardown:          teardown,
 		}
 	}
 }
@@ -45,6 +46,7 @@ type Run struct {
 	outputFactory     OutputFactory
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
+	teardown          chan Teardown
 }
 
 func (s *Run) UnmarshalJSON(b []byte) error {
@@ -122,8 +124,8 @@ func envSlice(env map[string]string) []string {
 	return envs
 }
 
-func (e *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader) (StepContext, error) {
-	await, err := e.driver.CreatePod(ctx, pod, stdin, stepContext.Stdout, stepContext.Stderr)
+func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader) (StepContext, error) {
+	await, err := s.driver.CreatePod(ctx, pod, stdin, stepContext.Stdout, stepContext.Stderr)
 	if err != nil {
 		return stepContext, err
 	}
@@ -132,13 +134,23 @@ func (e *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Po
 		stepContext.Containers[v.Name] = v
 	}
 
-	if e.step.Await == v1beta1.AwaitStatusReady {
+	if s.step.Await == v1beta1.AwaitStatusReady {
+		done := make(chan error)
 		go func() {
 			if err := await.Wait(); err != nil {
-				panic(err)
+				fmt.Printf("\nWAIT ERR %#v\n\n", err)
+				done <- err
 			}
+			fmt.Printf("\nWAIT done\n\n", err)
 
+			done <- nil
 		}()
+
+		s.teardown <- func(ctx context.Context) error {
+			fmt.Printf("\n\nTEARDOWN\n\n")
+			return <-done
+		}
+
 	} else {
 		if err := await.Wait(); err != nil {
 			return stepContext, err

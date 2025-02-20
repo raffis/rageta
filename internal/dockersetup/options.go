@@ -1,11 +1,16 @@
 package dockersetup
 
 import (
+	"crypto/tls"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/client"
+	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/spf13/pflag"
 )
@@ -53,7 +58,7 @@ var (
 
 // ClientOptions are the options used to configure the client cli.
 type Options struct {
-	Hosts      []string
+	Hosts      []string `env:"DOCKER_HOST"`
 	TLS        bool
 	TLSVerify  bool
 	TLSOptions *tlsconfig.Options
@@ -82,7 +87,7 @@ func (o *Options) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&tlsOptions.CertFile, "docker-tlscert", "", "Path to TLS certificate file")
 	flags.StringVar(&tlsOptions.KeyFile, "docker-tlskey", "", "Path to TLS key file")
 
-	flags.StringSliceVarP(&o.Hosts, "docker-host", "", []string{"localhost"}, "Daemon socket to connect to")
+	flags.StringSliceVarP(&o.Hosts, "docker-host", "", []string{dockerclient.DefaultDockerHost}, "Daemon socket to connect to")
 	flags.StringVarP(&o.Context, "docker-context", "", "",
 		`Name of the context to use to connect to the daemon (overrides `+client.EnvOverrideHost+` env var and default context set with "docker context use")`)
 }
@@ -117,4 +122,52 @@ func (o *Options) SetDefaultOptions(flags *pflag.FlagSet) {
 			}
 		}
 	}
+}
+
+func (o *Options) Build() (*dockerclient.Client, error) {
+	host := dockerclient.DefaultDockerHost
+	if len(o.Hosts) > 0 {
+		host = o.Hosts[0]
+	}
+
+	hostURL, err := dockerclient.ParseHostURL(host)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := o.defaultDockerHTTPClient(hostURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var opts []dockerclient.Opt = []dockerclient.Opt{
+		dockerclient.WithHTTPClient(client),
+		dockerclient.WithUserAgent("rageta"),
+		dockerclient.WithAPIVersionNegotiation(),
+	}
+
+	if o.TLS {
+		opts = append(opts, dockerclient.WithTLSClientConfig(o.TLSOptions.CAFile, o.TLSOptions.CertFile, o.TLSOptions.KeyFile))
+	}
+
+	return dockerclient.NewClientWithOpts(opts...)
+}
+
+func (o *Options) defaultDockerHTTPClient(hostURL *url.URL) (*http.Client, error) {
+	transport := &http.Transport{}
+
+	if o.TLS || o.TLSVerify {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: o.TLSVerify,
+		}
+	}
+
+	err := sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: dockerclient.CheckRedirect,
+	}, nil
 }

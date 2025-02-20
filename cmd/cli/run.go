@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,8 +15,6 @@ import (
 	"text/template"
 	"time"
 
-	dockerclient "github.com/docker/docker/client"
-	"github.com/docker/go-connections/sockets"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
@@ -57,7 +53,7 @@ type runFlags struct {
 	tee                 bool              `env:"TEE"`
 	containerRuntime    string            `env:"CONTAINER_RUNTIME"`
 	gracefulTermination time.Duration     `env:"GRACEFUL_TERMINATION"`
-	quiet               bool              `env:"QUIT"`
+	dockerQuiet         bool              `env:"DOCKER_QUIT"`
 	report              string            `env:"REPORT"`
 	reportOutput        string            `env:"REPORT_OUTPUT"`
 	pull                string            `env:"PULL"`
@@ -107,7 +103,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	runCmd.Flags().StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 	runCmd.Flags().StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
-	runCmd.Flags().BoolVarP(&runArgs.quiet, "quiet", "q", false, "Suppress the pull output.")
+	runCmd.Flags().BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
 	runArgs.otelOptions.BindFlags(runCmd.Flags())
 	runArgs.dockerOptions.BindFlags(runCmd.Flags())
 	runArgs.ociOptions.BindFlags(runCmd.Flags())
@@ -214,46 +210,19 @@ func isPossiblyInsideKube() bool {
 	return set
 }
 
-func defaultDockerHTTPClient(hostURL *url.URL) (*http.Client, error) {
-	transport := &http.Transport{}
-	err := sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host)
-	if err != nil {
-		return nil, err
-	}
-	return &http.Client{
-		Transport:     transport,
-		CheckRedirect: dockerclient.CheckRedirect,
-	}, nil
-}
-
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (runtime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
-		hostURL, err := dockerclient.ParseHostURL(dockerclient.DefaultDockerHost)
-		if err != nil {
-			return nil, err
-		}
-
-		client, err := defaultDockerHTTPClient(hostURL)
-		if err != nil {
-			return nil, err
-		}
-
-		dockerClient, err := dockerclient.NewClientWithOpts(
-			dockerclient.WithHTTPClient(client),
-			dockerclient.FromEnv,
-			dockerclient.WithAPIVersionNegotiation(),
-		)
-
-		client.Transport = transport.NewLogger(logger, client.Transport)
-
+		c, err := runArgs.dockerOptions.Build()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create docker client: %w", err)
 		}
 
+		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
+
 		runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
 
-		driver := runtime.NewDocker(dockerClient,
+		driver := runtime.NewDocker(c,
 			runtime.WithContext(ctx),
 			runtime.WithLogger(logger),
 			runtime.WithHidePullOutput(hideOutput),
@@ -297,7 +266,7 @@ func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, dr
 			processor.WithMatrix(),
 			processor.WithEnv(envs),
 			processor.WithStdio(),
-			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr),
+			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
 			processor.WithInherit(*builder, store),
 		)
 
@@ -391,7 +360,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	logger.Info("use context directory", "path", contextDir)
 
-	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.quiet, contextDir)
+	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.dockerQuiet, contextDir)
 	if err != nil {
 		return err
 	}
@@ -415,7 +384,7 @@ func runRun(c *cobra.Command, args []string) error {
 	}
 
 	//logger := zap.New(zapbridge.NewOtelZapCore(otelName))
-	tp, err := otelsetup.Tracing(context.Background(), runArgs.otelOptions)
+	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
 	if err != nil {
 		return err
 	}
@@ -438,7 +407,7 @@ func runRun(c *cobra.Command, args []string) error {
 		}
 	}*/
 
-	outputFactory, err := outputFactory()
+	outputFactory, err := outputFactory(cancel)
 	if err != nil {
 		return err
 	}
@@ -590,7 +559,7 @@ func envMap() map[string]string {
 var tuiInstance tui.UI
 var tuiDone chan struct{}
 
-func uiOutput() tui.UI {
+func uiOutput(cancel context.CancelFunc) tui.UI {
 	if runArgs.output != "ui" {
 		return nil
 	}
@@ -610,13 +579,14 @@ func uiOutput() tui.UI {
 	//logger.WithSink(logr.)
 	go func() {
 		tui.Run(tuiInstance)
+		cancel()
 		tuiDone <- struct{}{}
 	}()
 
 	return tuiInstance
 }
 
-func outputFactory() (processor.OutputFactory, error) {
+func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 	var outputHandler processor.OutputFactory
 
 	outputOpt := strings.Split(runArgs.output, "=")
@@ -630,7 +600,7 @@ func outputFactory() (processor.OutputFactory, error) {
 
 	switch renderer {
 	case renderOutputUI.String():
-		outputHandler = output.UI(uiOutput())
+		outputHandler = output.UI(uiOutput(cancel))
 	case renderOutputPrefix.String():
 		outputHandler = output.Prefix(true)
 	case renderOutputPrefixNoColor.String():

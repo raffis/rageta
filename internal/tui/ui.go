@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +25,7 @@ type UI interface {
 
 type model struct {
 	list      list.Model
+	loader    spinner.Model
 	status    StepStatus
 	scanInput textinput.Model
 	scanState bool
@@ -90,6 +92,10 @@ func NewModel() *model {
 		key.WithKeys("tab"),
 		key.WithHelp("↓/j", "down"),
 	)
+
+	m.loader = spinner.New()
+	m.loader.Spinner = spinner.Dot
+	m.loader.Style = lipgloss.NewStyle().Foreground(highlightColor)
 
 	return m
 }
@@ -169,6 +175,7 @@ type tickMsg time.Time
 
 func (m *model) Init() tea.Cmd {
 	return nil
+	//return m.loader.Tick
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -176,6 +183,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
+
+	l, c := m.loader.Update(msg)
+	m.loader = l
+	cmds = append(cmds, c)
 
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
@@ -257,8 +268,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) View() string {
 	selectedItem := m.list.SelectedItem()
 
-	if selectedItem == nil /*|| !task.ready*/ {
-		return "\n  Initializing..."
+	if selectedItem == nil {
+		return m.loader.View()
 	}
 
 	task := selectedItem.(navItem)

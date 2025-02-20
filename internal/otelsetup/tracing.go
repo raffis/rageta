@@ -13,25 +13,25 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-func Tracing(ctx context.Context, opts Options) (*trace.TracerProvider, error) {
-	var providerOpts []trace.TracerProviderOption
+func (o *Options) BuildTracer(ctx context.Context) (*trace.TracerProvider, error) {
+	var providero []trace.TracerProviderOption
 
-	if opts.Endpoint != "" {
+	if o.Endpoint != "" {
 		var grpcOptions []otlptracegrpc.Option
 
-		if opts.Endpoint != "" {
-			grpcOptions = append(grpcOptions, otlptracegrpc.WithEndpoint(opts.Endpoint))
+		if o.Endpoint != "" {
+			grpcOptions = append(grpcOptions, otlptracegrpc.WithEndpoint(o.Endpoint))
 		}
 
-		if opts.Insecure {
+		if o.Insecure {
 			grpcOptions = append(grpcOptions, otlptracegrpc.WithInsecure())
 		} else {
-			tlsOpts, err := opts.getTLSConfig()
+			tlso, err := o.getTLSConfig()
 			if err != nil {
 				return nil, err
 			}
 
-			grpcOptions = append(grpcOptions, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsOpts)))
+			grpcOptions = append(grpcOptions, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlso)))
 
 		}
 
@@ -44,26 +44,26 @@ func Tracing(ctx context.Context, opts Options) (*trace.TracerProvider, error) {
 			return nil, err
 		}
 
-		providerOpts = append(providerOpts, trace.WithBatcher(exporter))
+		providero = append(providero, trace.WithBatcher(exporter))
 	}
 
-	if opts.Stdout {
+	if o.Stdout {
 		exporter, err := stdouttrace.New()
 		if err != nil {
 			return nil, err
 		}
 
-		providerOpts = append(providerOpts, trace.WithBatcher(exporter))
+		providero = append(providero, trace.WithBatcher(exporter))
 	}
 
 	// labels/tags/resources that are common to all traces.
-	providerOpts = append(providerOpts, trace.WithResource(resource.NewWithAttributes(
+	providero = append(providero, trace.WithResource(resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String(opts.ServiceName),
+		semconv.ServiceNameKey.String(o.ServiceName),
 	)))
 
-	providerOpts = append(providerOpts, trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(1))))
-	provider := trace.NewTracerProvider(providerOpts...)
+	providero = append(providero, trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(1))))
+	provider := trace.NewTracerProvider(providero...)
 
 	otel.SetTextMapPropagator(
 		propagation.NewCompositeTextMapPropagator(
