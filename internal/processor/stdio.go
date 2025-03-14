@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +16,7 @@ func WithStdio() ProcessorBuilder {
 		}
 
 		stdio := &Stdio{
+			spec:    spec,
 			streams: spec.Streams,
 		}
 
@@ -25,15 +25,45 @@ func WithStdio() ProcessorBuilder {
 }
 
 type Stdio struct {
+	spec    *v1beta1.Step
 	streams *v1beta1.Streams
 }
 
-func (s *Stdio) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &s.streams)
-}
+func (s *Stdio) Substitute() []*Substitute {
+	var vals []*Substitute
+	if s.streams == nil {
+		return vals
+	}
 
-func (s *Stdio) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.streams)
+	if s.streams.Stdout != nil {
+
+		vals = append(vals, &Substitute{
+			v: s.streams.Stdout.Path,
+			f: func(v interface{}) {
+				fmt.Printf("\nSUBS %#v -- \n\n", v.(string))
+
+				s.streams.Stdout.Path = v.(string)
+			},
+		})
+	}
+	if s.streams.Stderr != nil {
+		vals = append(vals, &Substitute{
+			v: s.streams.Stderr.Path,
+			f: func(v interface{}) {
+				s.streams.Stderr.Path = v.(string)
+			},
+		})
+	}
+	if s.streams.Stdin != nil {
+		vals = append(vals, &Substitute{
+			v: s.streams.Stdin.Path,
+			f: func(v interface{}) {
+				s.streams.Stdin.Path = v.(string)
+			},
+		})
+	}
+
+	return vals
 }
 
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
@@ -41,6 +71,8 @@ func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 		var stdout, stderr io.Writer
 
 		if s.streams.Stdout != nil {
+			fmt.Printf("\n\nSTDOUT %#v -- %#v\n\n", s.spec.Name, stepContext.Output)
+
 			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
 				return stepContext, fmt.Errorf("failed to redirect stdout: %w", err)

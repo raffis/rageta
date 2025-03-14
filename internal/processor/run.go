@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -21,7 +20,7 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 		}
 
 		return &Run{
-			rawStep:           *spec.Run,
+			step:              *spec.Run,
 			stepName:          spec.Name,
 			tee:               tee,
 			outputFactory:     outputFactory,
@@ -40,7 +39,6 @@ type Run struct {
 	stdin             io.Reader
 	stdout            io.Writer
 	stderr            io.Writer
-	rawStep           v1beta1.RunStep
 	step              v1beta1.RunStep
 	tee               bool
 	outputFactory     OutputFactory
@@ -49,18 +47,38 @@ type Run struct {
 	teardown          chan Teardown
 }
 
-func (s *Run) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &s.step)
-}
+func (s *Run) Substitute() []*Substitute {
+	var vals []*Substitute
 
-func (s *Run) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.rawStep)
+	vals = append(vals, &Substitute{
+		v: s.step.Image,
+		f: func(v interface{}) {
+			s.step.Image = v.(string)
+		},
+	}, &Substitute{
+		v: s.step.Args,
+		f: func(v interface{}) {
+			s.step.Args = v.([]string)
+		},
+	}, &Substitute{
+		v: s.step.Command,
+		f: func(v interface{}) {
+			s.step.Command = v.([]string)
+		},
+	}, &Substitute{
+		v: s.step.PWD,
+		f: func(v interface{}) {
+			s.step.PWD = v.(string)
+		},
+	})
+
+	return vals
 }
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		pod := &runtime.Pod{
-			Name: fmt.Sprintf("%s-%s-%s", PrefixName(s.stepName, stepContext.NamePrefix), pipeline.ID(), utils.RandString(5)),
+			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 

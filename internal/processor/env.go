@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"strings"
 
@@ -25,12 +24,15 @@ type Env struct {
 	defaultEnv map[string]string
 }
 
-func (s *Env) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &s.stepEnv)
-}
-
-func (s *Env) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.stepEnv)
+func (s *Env) Substitute() []*Substitute {
+	var vals []*Substitute
+	vals = append(vals, &Substitute{
+		v: s.stepEnv,
+		f: func(v interface{}) {
+			s.stepEnv = v.(map[string]string)
+		},
+	})
+	return vals
 }
 
 func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {

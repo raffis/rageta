@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 
@@ -26,7 +25,7 @@ func WithExpressionParser(celEnv *cel.Env, processors ...Bootstraper) ProcessorB
 		return &ExpressionParser{
 			celEnv:         celEnv,
 			lateVarBinders: lateVarBinders,
-			isMatrix:       spec.Matrix != nil && len(spec.Matrix.Table) > 0,
+			isMatrix:       spec.Matrix != nil && len(spec.Matrix.Params) > 0,
 		}
 	}
 }
@@ -40,8 +39,7 @@ func init() {
 }
 
 type lateVarBinder interface {
-	json.Marshaler
-	json.Unmarshaler
+	Substitute() []*Substitute
 }
 
 type ExpressionParser struct {
@@ -60,18 +58,39 @@ func (s *ExpressionParser) Bootstrap(pipeline Pipeline, next Next) (Next, error)
 				continue
 			}
 
-			b, err := lateVarBinder.MarshalJSON()
-			if err != nil {
-				return stepContext, fmt.Errorf("failed to marshal processor to json: %w", err)
-			}
+			for _, v := range lateVarBinder.Substitute() {
 
-			str, err := s.parseExpression(string(b), stepContext.RuntimeVars())
-			if err != nil {
-				return stepContext, fmt.Errorf("parse expressions `%s` failed: %w", string(b), err)
-			}
+				switch subst := v.v.(type) {
+				case string:
+					result, err := s.parseExpression(subst, stepContext.RuntimeVars())
+					if err != nil {
+						return stepContext, err
+					}
 
-			if err = lateVarBinder.UnmarshalJSON([]byte(str)); err != nil {
-				return stepContext, fmt.Errorf("failed to unmarshal json `%s` to processor failed: %w", str, err)
+					v.f(result)
+				case []string:
+					for k, val := range subst {
+						result, err := s.parseExpression(val, stepContext.RuntimeVars())
+						if err != nil {
+							return stepContext, err
+						}
+
+						subst[k] = result.(string)
+					}
+
+					v.f(subst)
+				case map[string]string:
+					for k, val := range subst {
+						result, err := s.parseExpression(val, stepContext.RuntimeVars())
+						if err != nil {
+							return stepContext, err
+						}
+
+						subst[k] = result.(string)
+					}
+
+					v.f(subst)
+				}
 			}
 		}
 
@@ -79,13 +98,15 @@ func (s *ExpressionParser) Bootstrap(pipeline Pipeline, next Next) (Next, error)
 	}, nil
 }
 
-func (s *ExpressionParser) parseExpression(str string, vars interface{}) (string, error) {
+func (s *ExpressionParser) parseExpression(str string, vars interface{}) (interface{}, error) {
 	var parseError error
-	return expression.ReplaceAllStringFunc(str, func(m string) string {
+	var result interface{}
+
+	newStr := expression.ReplaceAllStringFunc(str, func(m string) string {
 		parts := expression.FindStringSubmatch(m)
 
 		if len(parts) != 3 {
-			err := fmt.Errorf("invalid expression wrapper %s", m)
+			err := fmt.Errorf("invalid expression wrapper %s -- %#v", m, parts)
 			if parseError == nil {
 				parseError = err
 			}
@@ -94,7 +115,7 @@ func (s *ExpressionParser) parseExpression(str string, vars interface{}) (string
 
 		ast, issues := s.celEnv.Compile(parts[2])
 		if issues != nil && issues.Err() != nil {
-			err := fmt.Errorf("expression compilation %s failed: %w", parts[2], issues.Err())
+			err := fmt.Errorf("expression compilation %s failed: %w -- %#v", parts[2], issues.Err(), parts)
 			if parseError == nil {
 				parseError = err
 			}
@@ -115,7 +136,7 @@ func (s *ExpressionParser) parseExpression(str string, vars interface{}) (string
 		val, _, err := prg.Eval(vars)
 
 		if err != nil {
-			err := fmt.Errorf("expression evaluation %s failed: %w", parts[2], err)
+			err := fmt.Errorf("expression evaluation `%s` failed: %w", parts[2], err)
 			if parseError == nil {
 				parseError = err
 			}
@@ -123,13 +144,25 @@ func (s *ExpressionParser) parseExpression(str string, vars interface{}) (string
 			return m
 		}
 
-		v, ok := val.Value().(string)
+		v := val.Value()
+		if str == parts[0] {
+			result = v
+			return m
+		}
+
+		result, ok := v.(string)
 		if !ok {
 			parseError = fmt.Errorf("expression result %s failed, expected string", parts[2])
 		} else {
-			return v
+			return result
 		}
 
 		return ""
-	}), parseError
+	})
+
+	if result != nil {
+		return result, parseError
+	}
+
+	return newStr, parseError
 }

@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/raffis/rageta/internal/storage"
@@ -31,12 +30,15 @@ type Inherit struct {
 	step     v1beta1.InheritStep
 }
 
-func (s *Inherit) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &s.step)
-}
-
-func (s *Inherit) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.step)
+func (s *Inherit) Substitute() []*Substitute {
+	var vals []*Substitute
+	vals = append(vals, &Substitute{
+		v: s.step.Pipeline,
+		f: func(v interface{}) {
+			s.step.Pipeline = v.(string)
+		},
+	})
+	return vals
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {

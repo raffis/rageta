@@ -2,13 +2,15 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func WithMatrix() ProcessorBuilder {
@@ -18,26 +20,86 @@ func WithMatrix() ProcessorBuilder {
 		}
 
 		return &Matrix{
-			rawMatrix: spec.Matrix.Table,
-			failFast:  spec.Matrix.FailFast,
-			stepName:  spec.Name,
+			matrix:   spec.Matrix.Params,
+			failFast: spec.Matrix.FailFast,
+			stepName: spec.Name,
 		}
 	}
 }
 
 type Matrix struct {
-	rawMatrix map[string]json.RawMessage
-	matrix    map[string]interface{}
-	failFast  bool
-	stepName  string
+	matrix   []v1beta1.Param
+	failFast bool
+	stepName string
 }
 
-func (s *Matrix) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, &s.matrix)
+type Substitute struct {
+	v interface{}
+	f func(v interface{})
 }
 
-func (s *Matrix) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.rawMatrix)
+func (s *Matrix) Substitute() []*Substitute {
+	var vals []*Substitute
+	for k, param := range s.matrix {
+		var v interface{}
+		switch param.Value.Type {
+		case v1beta1.ParamTypeString:
+			v = param.Value.StringVal
+		case v1beta1.ParamTypeArray:
+			v = param.Value.ArrayVal
+		}
+
+		vals = append(vals, &Substitute{
+			v: v,
+			f: func(v interface{}) {
+				switch v := v.(type) {
+				case string:
+					s.matrix[k].Value = v1beta1.ParamValue{
+						Type:      v1beta1.ParamTypeString,
+						StringVal: v,
+					}
+				case []string:
+					s.matrix[k].Value = v1beta1.ParamValue{
+						Type:     v1beta1.ParamTypeArray,
+						ArrayVal: v,
+					}
+				case *structpb.ListValue:
+					typedMap := make([]string, len(v.Values))
+					for i, v := range v.Values {
+						if _, ok := v.Kind.(*structpb.Value_StringValue); ok {
+							typedMap[i] = v.GetStringValue()
+						} else {
+							panic("string map")
+						}
+					}
+
+					s.matrix[k].Value = v1beta1.ParamValue{
+						Type:     v1beta1.ParamTypeArray,
+						ArrayVal: typedMap,
+					}
+				case []interface{}:
+					typedMap := make([]string, len(v))
+					for i, v := range v {
+						if v, ok := v.(string); ok {
+							typedMap[i] = v
+						} else {
+							panic("string map")
+						}
+					}
+
+					s.matrix[k].Value = v1beta1.ParamValue{
+						Type:     v1beta1.ParamTypeArray,
+						ArrayVal: typedMap,
+					}
+				default:
+					panic("x")
+				}
+			},
+		})
+
+	}
+
+	return vals
 }
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -71,9 +133,14 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
 			copyContext.Matrix = matrix
-			copyContext.NamePrefix = PrefixName(matrixKey, copyContext.NamePrefix)
 
-			go func(stepContext StepContext) {
+			hasher := sha1.New()
+			hasher.Write([]byte(matrixKey))
+			b := hasher.Sum(nil)
+
+			copyContext.NamePrefix = PrefixName(hex.EncodeToString(b)[:6], copyContext.NamePrefix)
+
+			go func(copyContext StepContext) {
 				t, err := next(ctx, copyContext)
 				results <- concurrentResult{t, err}
 			}(copyContext)
@@ -105,24 +172,27 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Matrix) build(matrix map[string]interface{}) (map[string]map[string]interface{}, error) {
+func (s *Matrix) build(matrix []v1beta1.Param) (map[string]map[string]string, error) {
 	var keys []string
-	for key := range matrix {
-		keys = append(keys, key)
+	mapData := make(map[string]v1beta1.ParamValue)
+
+	for _, param := range matrix {
+		keys = append(keys, param.Name)
+		mapData[param.Name] = param.Value
 	}
 
-	result := make(map[string]map[string]interface{})
+	result := make(map[string]map[string]string)
 
-	s.generateCombinations(matrix, keys, 0, make(map[string]interface{}), &result)
+	s.generateCombinations(mapData, keys, 0, make(map[string]string), &result)
 
 	return result, nil
 }
 
-func (s *Matrix) generateCombinations(mapData map[string]interface{}, keys []string, index int, currentCombination map[string]interface{}, result *map[string]map[string]interface{}) {
+func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, keys []string, index int, currentCombination map[string]string, result *map[string]map[string]string) {
 	// If we've added a value for each key, add the current combination to the result
 	if index == len(keys) {
 		// Create a copy of the current combination
-		combinationCopy := make(map[string]interface{})
+		combinationCopy := make(map[string]string)
 		for k, v := range currentCombination {
 			combinationCopy[k] = v
 		}
@@ -152,18 +222,14 @@ func (s *Matrix) generateCombinations(mapData map[string]interface{}, keys []str
 	currentKey := keys[index]
 	value := mapData[currentKey]
 
-	// If the value is a slice, iterate through it
-	if reflect.TypeOf(value).Kind() == reflect.Slice {
-		// Convert the interface{} value to a slice of interfaces
-		sliceValue := reflect.ValueOf(value)
-		for i := 0; i < sliceValue.Len(); i++ {
-			// Append the value to the current combination and recurse
-			currentCombination[currentKey] = sliceValue.Index(i).Interface()
+	switch value.Type {
+	case v1beta1.ParamTypeString:
+		currentCombination[currentKey] = value.StringVal
+		s.generateCombinations(mapData, keys, index+1, currentCombination, result)
+	case v1beta1.ParamTypeArray:
+		for _, v := range value.ArrayVal {
+			currentCombination[currentKey] = v
 			s.generateCombinations(mapData, keys, index+1, currentCombination, result)
 		}
-	} else {
-		// If it's not a slice, just use the value as the combination for this key
-		currentCombination[currentKey] = value
-		s.generateCombinations(mapData, keys, index+1, currentCombination, result)
 	}
 }

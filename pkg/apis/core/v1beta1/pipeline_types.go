@@ -70,8 +70,8 @@ type StepOptions struct {
 }
 
 type Matrix struct {
-	Table    map[string]json.RawMessage `json:"table,omitempty"`
-	FailFast bool                       `json:"failFast,omitempty"`
+	Params   []Param `json:"params,omitempty"`
+	FailFast bool    `json:"failFast,omitempty"`
 }
 
 type Retry struct {
@@ -117,7 +117,6 @@ type PipeStep struct {
 
 type RunStep struct {
 	Await     AwaitStatus `json:"await,omitempty"`
-	Streams   Streams     `json:"streams,omitempty"`
 	Container `json:",inline"`
 }
 

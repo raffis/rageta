@@ -19,7 +19,7 @@ import (
 type StepContext struct {
 	dir        string
 	dataDir    string
-	Matrix     map[string]interface{}
+	Matrix     map[string]string
 	inputs     map[string]interface{}
 	Steps      map[string]*StepResult
 	Envs       map[string]string
@@ -53,7 +53,7 @@ func NewContext(dir string, inputs map[string]interface{}) StepContext {
 		Steps:      make(map[string]*StepResult),
 		Envs:       make(map[string]string),
 		Containers: make(map[string]cruntime.ContainerStatus),
-		Matrix:     make(map[string]interface{}),
+		Matrix:     make(map[string]string),
 		Stderr:     ioext.New(),
 		Stdout:     ioext.New(),
 	}
@@ -68,6 +68,7 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Steps = maps.Clone(c.Steps)
 	copy.Envs = maps.Clone(c.Envs)
 	copy.Containers = maps.Clone(c.Containers)
+	copy.Matrix = maps.Clone(c.Matrix)
 	return copy
 }
 
@@ -103,6 +104,7 @@ func (t StepContext) Child() StepContext {
 		Steps:      maps.Clone(t.Steps),
 		Envs:       maps.Clone(t.Envs),
 		Containers: maps.Clone(t.Containers),
+		Matrix:     maps.Clone(t.Matrix),
 	}
 }
 
@@ -129,11 +131,11 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
 func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 	vars := &v1beta1.RuntimeVars{
 		TmpDir:     t.dataDir,
-		Envs:       t.Envs,
 		Steps:      make(map[string]*v1beta1.StepResult),
 		Containers: make(map[string]*v1beta1.ContainerStatus),
 		Inputs:     make(map[string]*anypb.Any),
-		Matrix:     make(map[string]*anypb.Any),
+		Matrix:     maps.Clone(t.Matrix),
+		Envs:       maps.Clone(t.Envs),
 		Env:        t.Env,
 		Output:     t.Output,
 		Os:         runtime.GOOS,
@@ -163,11 +165,6 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 		vars.Inputs[k] = _v
 	}
 
-	for k, v := range t.Matrix {
-		_v, _ := InterfaceToAny(v)
-		vars.Matrix[k] = _v
-	}
-
 	return vars
 }
 
@@ -181,7 +178,6 @@ func (t StepContext) RuntimeVars() map[string]interface{} {
 func InterfaceToAny(i interface{}) (*anypb.Any, error) {
 	switch v := i.(type) {
 	case string:
-		return anypb.New(wrapperspb.String(v))
 	case int:
 		return anypb.New(wrapperspb.Int64(int64(v)))
 	case float64:

@@ -375,7 +375,7 @@ func runRun(c *cobra.Command, args []string) error {
 	)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("setup cel env failed: %w", err)
 	}
 
 	imagePullPolicy, err := imagePullPolicy()
