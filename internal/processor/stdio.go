@@ -2,22 +2,25 @@ package processor
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
 
+	"github.com/raffis/rageta/internal/ioext"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithStdio() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Streams == nil {
-			return nil
-		}
+type OutputCloser func(err error)
+type OutputFactory func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
 
+func WithStdio(tee bool, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer) ProcessorBuilder {
+	return func(spec *v1beta1.Step) Bootstraper {
 		stdio := &Stdio{
-			spec:    spec,
-			streams: spec.Streams,
+			stepName:      spec.Name,
+			tee:           tee,
+			spec:          spec,
+			outputFactory: outputFactory,
+			stdin:         stdin,
+			stdout:        stdout,
+			stderr:        stderr,
 		}
 
 		return stdio
@@ -25,78 +28,44 @@ func WithStdio() ProcessorBuilder {
 }
 
 type Stdio struct {
-	spec    *v1beta1.Step
-	streams *v1beta1.Streams
-}
-
-func (s *Stdio) Substitute() []*Substitute {
-	var vals []*Substitute
-	if s.streams == nil {
-		return vals
-	}
-
-	if s.streams.Stdout != nil {
-
-		vals = append(vals, &Substitute{
-			v: s.streams.Stdout.Path,
-			f: func(v interface{}) {
-				fmt.Printf("\nSUBS %#v -- \n\n", v.(string))
-
-				s.streams.Stdout.Path = v.(string)
-			},
-		})
-	}
-	if s.streams.Stderr != nil {
-		vals = append(vals, &Substitute{
-			v: s.streams.Stderr.Path,
-			f: func(v interface{}) {
-				s.streams.Stderr.Path = v.(string)
-			},
-		})
-	}
-	if s.streams.Stdin != nil {
-		vals = append(vals, &Substitute{
-			v: s.streams.Stdin.Path,
-			f: func(v interface{}) {
-				s.streams.Stdin.Path = v.(string)
-			},
-		})
-	}
-
-	return vals
+	stepName      string
+	tee           bool
+	spec          *v1beta1.Step
+	stdin         io.Reader
+	stdout        io.Writer
+	stderr        io.Writer
+	outputFactory OutputFactory
 }
 
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		var stdout, stderr io.Writer
 
-		if s.streams.Stdout != nil {
-			fmt.Printf("\n\nSTDOUT %#v -- %#v\n\n", s.spec.Name, stepContext.Output)
+		_, stdout, stderr, close := s.outputFactory(PrefixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
+		//var stdin io.Reader
 
-			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-			if err != nil {
-				return stepContext, fmt.Errorf("failed to redirect stdout: %w", err)
-			}
-
-			defer outFile.Close()
-			stepContext.Stdout.Add(outFile)
-			stdout = outFile
+		if stepContext.Stdout.Len() > 0 {
+			w := stepContext.Stdout.Unpack()
+			stepContext.Stdout = &ioext.MultiWriter{}
+			stepContext.Stdout.Add(stdout)
+			stepContext.Stdout.Add(w[1:]...)
+		} else {
+			stepContext.Stdout.Add(stdout)
 		}
 
-		if s.streams.Stderr != nil {
-			outFile, err := os.OpenFile(s.streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-			if err != nil {
-				return stepContext, fmt.Errorf("failed to redirect stderr: %w", err)
-			}
-
-			defer outFile.Close()
-			stepContext.Stdout.Add(outFile)
-			stderr = outFile
+		if stepContext.Stderr.Len() > 0 {
+			w := stepContext.Stderr.Unpack()
+			stepContext.Stderr = &ioext.MultiWriter{}
+			stepContext.Stderr.Add(stderr)
+			stepContext.Stderr.Add(w[1:]...)
+		} else {
+			stepContext.Stderr.Add(stderr)
 		}
 
 		stepContext, err := next(ctx, stepContext)
-		stepContext.Stdout.Remove(stdout)
+		close(err)
+
 		stepContext.Stderr.Remove(stderr)
+		stepContext.Stdout.Remove(stdout)
 
 		return stepContext, err
 	}, nil

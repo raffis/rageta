@@ -97,7 +97,13 @@ type Step struct {
 	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
 	Run         *RunStep        `json:"run,omitempty"`
 	Inherit     *InheritStep    `json:"inherit,omitempty"`
+	Expression  *ExpressionStep `json:"expression,omitempty"`
 }
+
+type ExpressionStep struct {
+	Script string `json:"script,omitempty"`
+}
+
 type AndStep struct {
 	Refs []StepReference `json:"refs,omitempty"`
 }

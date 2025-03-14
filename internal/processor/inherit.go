@@ -38,6 +38,16 @@ func (s *Inherit) Substitute() []*Substitute {
 			s.step.Pipeline = v.(string)
 		},
 	})
+
+	for k, v := range s.step.Inputs {
+		vals = append(vals, &Substitute{
+			v: v.Value,
+			f: func(v interface{}) {
+				s.step.Inputs[k].Value = v.(string)
+			},
+		})
+	}
+
 	return vals
 }
 

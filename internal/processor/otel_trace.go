@@ -33,17 +33,19 @@ func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx, span := s.tracer.Start(ctx, s.stepName)
 		defer span.End()
 
-		logger := s.logger.WithValues(
+		ctx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues(
 			"step", s.stepName,
 			"span-id", span.SpanContext().SpanID(),
-			"trace-id", span.SpanContext().TraceID())
+			"trace-id", span.SpanContext().TraceID()),
+		)
 
-		logger.Info("process step")
-		logger.V(1).Info("step context input", "context", stepContext)
-		stepContext, err := next(ctx, stepContext)
-		logger.Info("process step done", "err", err)
-		logger.V(1).Info("step done", "err", err, "context", stepContext)
-
-		return stepContext, err
+		/*
+		   logger.Info("process step")
+		   logger.V(1).Info("step context input", "context", stepContext)
+		   stepContext, err := next(ctx, stepContext)
+		   logger.Info("process step done", "err", err)
+		   logger.V(1).Info("step done", "err", err, "context", stepContext)
+		*/
+		return next(ctx, stepContext)
 	}, nil
 }

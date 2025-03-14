@@ -10,9 +10,6 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type OutputCloser func(err error)
-type OutputFactory func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
-
 func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
@@ -22,12 +19,7 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 		return &Run{
 			step:              *spec.Run,
 			stepName:          spec.Name,
-			tee:               tee,
-			outputFactory:     outputFactory,
 			driver:            driver,
-			stdin:             stdin,
-			stdout:            stdout,
-			stderr:            stderr,
 			defaultPullPolicy: defaultPullPolicy,
 			teardown:          teardown,
 		}
@@ -36,12 +28,7 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 
 type Run struct {
 	stepName          string
-	stdin             io.Reader
-	stdout            io.Writer
-	stderr            io.Writer
 	step              v1beta1.RunStep
-	tee               bool
-	outputFactory     OutputFactory
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
@@ -81,33 +68,9 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
-
-		_, stdout, stderr, close := s.outputFactory(PrefixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
-		var stdin io.Reader
-
-		if stepContext.Stdout.Len() > 0 {
-			if s.tee {
-				stepContext.Stdout.Add(stdout)
-			}
-		} else {
-			stepContext.Stdout.Add(stdout)
-		}
-
-		if stepContext.Stderr.Len() > 0 {
-			if s.tee {
-				stepContext.Stderr.Add(stderr)
-			}
-		} else {
-			stepContext.Stderr.Add(stderr)
-		}
-
-		if stepContext.Stdin != nil {
-			stdin = stepContext.Stdin
-		}
-
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
-			Stdin:           stdin != nil,
+			Stdin:           stepContext.Stdin != nil,
 			TTY:             s.step.TTY,
 			Image:           s.step.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
@@ -119,14 +82,10 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		stepContext, execErr := s.exec(ctx, stepContext, pod, stdin)
-		defer close(execErr)
+		stepContext, err := s.exec(ctx, stepContext, pod, stepContext.Stdin)
 
-		stepContext.Stderr.Remove(stderr)
-		stepContext.Stdout.Remove(stdout)
-
-		if execErr != nil {
-			return stepContext, fmt.Errorf("container %s failed: %w", pod.Name, execErr)
+		if err != nil {
+			return stepContext, fmt.Errorf("container %s failed: %w", pod.Name, err)
 		}
 
 		return next(ctx, stepContext)

@@ -25,6 +25,7 @@ type rootFlags struct {
 
 var rootArgs rootFlags
 var logger logr.Logger
+var zapConfig zap.Config
 
 var rootCmd = &cobra.Command{
 	Use:               "rageta",
@@ -47,7 +48,14 @@ func init() {
 }
 
 func runRoot(cmd *cobra.Command, args []string) error {
-	l, err := buildLogger(zap.NewDevelopmentConfig())
+	zapConfig = zap.NewDevelopmentConfig()
+	zapConfig.Encoding = rootArgs.log.encoding
+	err := zapConfig.Level.UnmarshalText([]byte(rootArgs.log.level))
+	if err != nil {
+		return err
+	}
+	zapConfig.DisableStacktrace = false
+	l, err := buildLogger(zapConfig)
 	if err != nil {
 		return err
 	}
@@ -57,14 +65,6 @@ func runRoot(cmd *cobra.Command, args []string) error {
 }
 
 func buildLogger(logOpts zap.Config) (logr.Logger, error) {
-	logOpts.Encoding = rootArgs.log.encoding
-	err := logOpts.Level.UnmarshalText([]byte(rootArgs.log.level))
-	if err != nil {
-		return logr.Discard(), err
-	}
-
-	logOpts.DisableStacktrace = false
-
 	zapLog, err := logOpts.Build()
 	if err != nil {
 		return logr.Discard(), err

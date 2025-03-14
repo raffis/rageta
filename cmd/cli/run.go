@@ -64,6 +64,8 @@ type runFlags struct {
 	volumes             []string          `env:"VOLUMES"`
 	skipDone            bool              `env:"SKIP_DONE"`
 	skipSteps           []string          `env:"SKIP_STEPS"`
+	logDetached         bool              `env:"LOG_DETACHED"`
+	maxConcurrent       int               `env:"MAX_CONCURRENT"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -265,7 +267,7 @@ func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, dr
 		substitutableProcessors := processor.Builder(&spec,
 			processor.WithMatrix(),
 			processor.WithEnv(envs),
-			processor.WithStdio(),
+			processor.WithStdioRedirect(),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
 			processor.WithInherit(*builder, store),
 		)
@@ -273,7 +275,9 @@ func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, dr
 		processors := processor.Builder(&spec,
 			processor.WithReport(resultStore, uniqueName),
 			processor.WithRetry(),
+			processor.WithStdio(runArgs.tee, outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithOtelTrace(logger, tracer),
+			processor.WithOtelLog(&zapConfig),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
