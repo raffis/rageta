@@ -9,13 +9,13 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func WithMatrix() ProcessorBuilder {
+func WithMatrix(pool pond.Pool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Matrix == nil {
+		if spec.Matrix == nil || pool == nil {
 			return nil
 		}
 
@@ -23,6 +23,7 @@ func WithMatrix() ProcessorBuilder {
 			matrix:   spec.Matrix.Params,
 			failFast: spec.Matrix.FailFast,
 			stepName: spec.Name,
+			pool:     pool,
 		}
 	}
 }
@@ -31,75 +32,11 @@ type Matrix struct {
 	matrix   []v1beta1.Param
 	failFast bool
 	stepName string
+	pool     pond.Pool
 }
 
-type Substitute struct {
-	v interface{}
-	f func(v interface{})
-}
-
-func (s *Matrix) Substitute() []*Substitute {
-	var vals []*Substitute
-	for k, param := range s.matrix {
-		var v interface{}
-		switch param.Value.Type {
-		case v1beta1.ParamTypeString:
-			v = param.Value.StringVal
-		case v1beta1.ParamTypeArray:
-			v = param.Value.ArrayVal
-		}
-
-		vals = append(vals, &Substitute{
-			v: v,
-			f: func(v interface{}) {
-				switch v := v.(type) {
-				case string:
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:      v1beta1.ParamTypeString,
-						StringVal: v,
-					}
-				case []string:
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: v,
-					}
-				case *structpb.ListValue:
-					typedMap := make([]string, len(v.Values))
-					for i, v := range v.Values {
-						if _, ok := v.Kind.(*structpb.Value_StringValue); ok {
-							typedMap[i] = v.GetStringValue()
-						} else {
-							panic("string map")
-						}
-					}
-
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: typedMap,
-					}
-				case []interface{}:
-					typedMap := make([]string, len(v))
-					for i, v := range v {
-						if v, ok := v.(string); ok {
-							typedMap[i] = v
-						} else {
-							panic("string map")
-						}
-					}
-
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: typedMap,
-					}
-				default:
-					panic("x")
-				}
-			},
-		})
-
-	}
-
-	return vals
+func (s *Matrix) Substitute() []interface{} {
+	return []interface{}{s.matrix}
 }
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -118,6 +55,8 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		if err != nil {
 			return stepContext, err
 		}
+
+		fmt.Printf("bBBBBBBBBBBBBBBBBBB %#v\n", s.matrix)
 
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
@@ -140,17 +79,40 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			copyContext.NamePrefix = PrefixName(hex.EncodeToString(b)[:6], copyContext.NamePrefix)
 
-			go func(copyContext StepContext) {
+			s.pool.Go(func() {
 				t, err := next(ctx, copyContext)
 				results <- concurrentResult{t, err}
-			}(copyContext)
+			})
 		}
 
 		var done int
 	WAIT:
 		for res := range results {
 			done++
-			stepContext = stepContext.Merge(res.stepContext)
+
+			for k, step := range res.stepContext.Steps {
+				fmt.Printf("range %s (%s) step.Outputs %#v \n", k, s.stepName, step.Outputs)
+				for paramKey, paramValue := range step.Outputs {
+					fmt.Printf("va %#v \n", paramValue)
+					if paramValue.Type == v1beta1.ParamTypeString {
+						var param v1beta1.ParamValue
+						if _, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
+							param = v1beta1.ParamValue{
+								Type:     v1beta1.ParamTypeArray,
+								ArrayVal: []string{paramValue.StringVal},
+							}
+						} else {
+							param = stepContext.Steps[s.stepName].Outputs[paramKey]
+							param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
+						}
+
+						fmt.Printf("\n\nmat steps)(%s): %#v\n\n", s.stepName, stepContext.Steps[s.stepName])
+
+						stepContext.Steps[s.stepName].Outputs[paramKey] = param
+					}
+				}
+			}
+
 			if res.err != nil && AbortOnError(res.err) {
 				errs = append(errs, res.err)
 

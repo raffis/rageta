@@ -8,8 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/utils"
@@ -58,7 +56,7 @@ func NewBuilder(opts ...builderOption) *builder {
 	return e
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]string) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue) (processor.Executable, error) {
 	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", inputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
@@ -85,13 +83,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 	}
 
 	return func(ctx context.Context) (processor.StepContext, error) {
-		parsed, err := e.parseInputs(pipeline, inputs)
-		if err != nil {
-			return processor.StepContext{}, err
-		}
-
-		e.logger.Info("parsed inputs", "inputs", parsed)
-		stepCtx := processor.NewContext(contextDir, parsed)
+		stepCtx := processor.NewContext(contextDir, inputs)
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
 			return stepCtx, fmt.Errorf("failed to recover context: %w", err)
@@ -154,55 +146,6 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 	}
 
 	return nil
-}
-
-func (e *builder) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
-
-	for _, flagOpts := range pipeline.Inputs {
-		var value interface{}
-		setInput, hasInput := inputs[flagOpts.Name]
-
-		switch {
-		case hasInput:
-			switch flagOpts.Type {
-			case v1beta1.InputTypeStringSlice:
-				value = strings.Split(setInput, ",")
-			case v1beta1.InputTypeString:
-				value = setInput
-			case v1beta1.InputTypeBool:
-				boolValue, err := strconv.ParseBool(setInput)
-				if err != nil {
-					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
-				}
-
-				value = boolValue
-			}
-
-			result[flagOpts.Name] = value
-		case len(flagOpts.Default) > 0 || !flagOpts.Required:
-			switch flagOpts.Type {
-			case v1beta1.InputTypeStringSlice:
-				value = []string{}
-			case v1beta1.InputTypeString:
-				value = ""
-			case v1beta1.InputTypeBool:
-				value = false
-			}
-
-			if len(flagOpts.Default) > 0 {
-				if err := json.Unmarshal(flagOpts.Default, &value); err != nil {
-					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
-				}
-			}
-
-			result[flagOpts.Name] = value
-		case flagOpts.Required:
-			return result, fmt.Errorf("missing required input `%s`", flagOpts.Name)
-		}
-	}
-
-	return result, nil
 }
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {

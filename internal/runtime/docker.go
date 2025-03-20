@@ -32,12 +32,6 @@ import (
 
 type dockerOption func(*docker)
 
-func WithLogger(logger logr.Logger) func(*docker) {
-	return func(d *docker) {
-		d.logger = logger
-	}
-}
-
 func WithContext(ctx context.Context) func(*docker) {
 	return func(d *docker) {
 		d.ctx = ctx
@@ -58,7 +52,6 @@ func WithVolumes(volumes []string) func(*docker) {
 
 type docker struct {
 	client         *dockerclient.Client
-	logger         logr.Logger
 	self           *types.ContainerJSON
 	ctx            context.Context
 	hidePullOutput bool
@@ -69,7 +62,6 @@ func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
 	d := &docker{
 		client: client,
 		ctx:    context.Background(),
-		logger: logr.Discard(),
 	}
 
 	for _, o := range opts {
@@ -107,8 +99,13 @@ func (d *docker) resetContainer(ctx context.Context, containerID string) error {
 }
 
 func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
+	logger, err := logr.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, container := range pod.Spec.InitContainers {
-		createResponse, err := d.createContainer(ctx, pod, container)
+		createResponse, err := d.createContainer(ctx, logger, pod, container)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create init container %s: %w", container.Name, err)
 		}
@@ -117,7 +114,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		defer cancel()
 
 		waitC, _ := d.client.ContainerWait(ctx, createResponse.ID, "next-exit")
-		spec, err := d.startContainer(ctx, createResponse.ID)
+		spec, err := d.startContainer(ctx, logger, createResponse.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create init container %s: %w", container.Name, err)
 		}
@@ -160,7 +157,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		}
 	}
 
-	createResponse, err := d.createContainer(ctx, pod, container)
+	createResponse, err := d.createContainer(ctx, logger, pod, container)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container %s: %w", container.Name, err)
 	}
@@ -178,7 +175,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		return nil, fmt.Errorf("container attach failed: %w", err)
 	}
 
-	spec, err := d.startContainer(ctx, createResponse.ID)
+	spec, err := d.startContainer(ctx, logger, createResponse.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start container %s: %w", container.Name, err)
 	}
@@ -338,7 +335,7 @@ func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error
 	return err
 }
 
-func (d *docker) createContainer(ctx context.Context, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
+func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
 	g, err := os.Getgroups()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user groups: %w", err)
@@ -415,7 +412,7 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 
 	hostConfig.Mounts = mounts
 
-	d.logger.V(1).Info("create new container", "container-spec", containerConfig, "host-config", hostConfig, "network-config", netConfig)
+	logger.V(1).Info("create new container", "container-spec", containerConfig, "host-config", hostConfig, "network-config", netConfig)
 	cont, err := d.client.ContainerCreate(ctx, &containerConfig, &hostConfig, &netConfig, nil, fmt.Sprintf("%s-%s", pod.Name, container.Name))
 
 	if err != nil {
@@ -425,7 +422,7 @@ func (d *docker) createContainer(ctx context.Context, pod *Pod, container Contai
 	return &cont, err
 }
 
-func (d *docker) startContainer(ctx context.Context, containerID string) (*types.ContainerJSON, error) {
+func (d *docker) startContainer(ctx context.Context, logger logr.Logger, containerID string) (*types.ContainerJSON, error) {
 	err := d.client.ContainerStart(ctx, containerID, dockercontainer.StartOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start container: %w", err)
@@ -436,7 +433,7 @@ func (d *docker) startContainer(ctx context.Context, containerID string) (*types
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	d.logger.V(1).Info("container inspect", "container-id", containerID, "container-inspect", specs)
+	logger.V(1).Info("container inspect", "container-id", containerID, "container-inspect", specs)
 	return &specs, nil
 }
 

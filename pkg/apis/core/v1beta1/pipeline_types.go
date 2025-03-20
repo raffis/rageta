@@ -15,8 +15,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"encoding/json"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,33 +32,25 @@ type PipelineSpec struct {
 	Entrypoint       string         `json:"entrypoint,omitempty"`
 	ShortDescription string         `json:"shortDescription,omitempty"`
 	LongDescription  string         `json:"longDescription,omitempty"`
-	Inputs           []Input        `json:"inputs,omitempty"`
+	Inputs           []InputParam   `json:"inputs,omitempty"`
+	Outputs          []OutputParam  `json:"outputs,omitempty"`
 	Steps            []Step         `json:"steps,omitempty"`
 	SubPipelines     []PipelineSpec `json:"subPipelines,omitempty"`
 }
 
-type Input struct {
-	Name        string          `json:"name,omitempty"`
-	Required    bool            `json:"required,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Default     json.RawMessage `json:"default,omitempty"`
-	Type        InputType       `json:"type,omitempty"`
+type InputParam Param
+
+type OutputParam struct {
+	Param `json:",inline"`
+	Step  StepReference `json:"step"`
 }
-
-type InputType string
-
-var (
-	InputTypeStringSlice InputType = "[]string"
-	InputTypeString      InputType = "string"
-	InputTypeBool        InputType = "bool"
-)
 
 type StepOptions struct {
 	If           string          `json:"if,omitempty"`
 	Timeout      metav1.Duration `json:"timeout,omitempty"`
-	Finally      bool            `json:"finally,omitempty"`
 	AllowFailure bool            `json:"allowFailure,omitempty"`
 	Matrix       *Matrix         `json:"matrix,omitempty"`
+	Outputs      []Param         `json:"outputs,omitempty"`
 	Generates    []Generate      `json:"generates,omitempty"`
 	Sources      []Source        `json:"sources,omitempty"`
 	Needs        []StepReference `json:"needs,omitempty"`
@@ -97,11 +87,6 @@ type Step struct {
 	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
 	Run         *RunStep        `json:"run,omitempty"`
 	Inherit     *InheritStep    `json:"inherit,omitempty"`
-	Expression  *ExpressionStep `json:"expression,omitempty"`
-}
-
-type ExpressionStep struct {
-	Script string `json:"script,omitempty"`
 }
 
 type AndStep struct {
@@ -132,7 +117,8 @@ type Container struct {
 	Image         string        `json:"image,omitempty"`
 	Command       []string      `json:"command,omitempty"`
 	Args          []string      `json:"args,omitempty"`
-	PWD           string        `json:"pwd,omitempty"`
+	Script        string        `json:"script,omitempty"`
+	WorkDir       string        `json:"workDir,omitempty"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
 }
 
@@ -152,14 +138,9 @@ var (
 )
 
 type InheritStep struct {
-	Pipeline   string         `json:"pipeline,omitempty"`
-	Entrypoint string         `json:"entrypoint,omitempty"`
-	Inputs     []InheritInput `json:"inputs,omitempty"`
-}
-
-type InheritInput struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
+	Pipeline   string  `json:"pipeline,omitempty"`
+	Entrypoint string  `json:"entrypoint,omitempty"`
+	Inputs     []Param `json:"inputs,omitempty"`
 }
 
 type Streams struct {

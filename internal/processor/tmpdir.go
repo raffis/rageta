@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -34,6 +35,7 @@ func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		stepContext.dataDir = dataDir
 		stepContext, err := next(ctx, stepContext)
+		fmt.Printf("\n\n=>%#v\n", stepContext)
 		stepContext.Steps[s.stepName].DataDir = dataDir
 		return stepContext, err
 	}, nil

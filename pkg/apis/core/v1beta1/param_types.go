@@ -398,6 +398,12 @@ func (paramValues *ParamValue) UnmarshalJSON(value []byte) error {
 		}
 	}
 
+	if value[0] != '"' {
+		paramValues.Type = ParamTypeString
+		paramValues.StringVal = string(value)
+		return nil
+	}
+
 	// By default we unmarshal to string
 	paramValues.Type = ParamTypeString
 	if err := json.Unmarshal(value, &paramValues.StringVal); err == nil {

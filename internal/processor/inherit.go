@@ -30,25 +30,11 @@ type Inherit struct {
 	step     v1beta1.InheritStep
 }
 
-func (s *Inherit) Substitute() []*Substitute {
-	var vals []*Substitute
-	vals = append(vals, &Substitute{
-		v: s.step.Pipeline,
-		f: func(v interface{}) {
-			s.step.Pipeline = v.(string)
-		},
-	})
-
-	for k, v := range s.step.Inputs {
-		vals = append(vals, &Substitute{
-			v: v.Value,
-			f: func(v interface{}) {
-				s.step.Inputs[k].Value = v.(string)
-			},
-		})
+func (s *Inherit) Substitute() []interface{} {
+	return []interface{}{
+		&s.step.Pipeline,
+		s.step.Inputs,
 	}
-
-	return vals
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -72,12 +58,17 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		s.mergeContext(outputContext, stepContext)
+
+		/*for _, result := range command.PipelineSpec.Outputs {
+			stepContext.Steps[s.stepName].Outputs[result.Name] = result.
+		}*/
+
 		return next(ctx, stepContext)
 	}, nil
 }
 
-func (s *Inherit) mapInputs(inputs []v1beta1.InheritInput) map[string]string {
-	m := make(map[string]string)
+func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValue {
+	m := make(map[string]v1beta1.ParamValue)
 	for _, v := range inputs {
 		m[v.Name] = v.Value
 	}

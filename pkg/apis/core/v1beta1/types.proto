@@ -6,7 +6,7 @@ package rageta.core.v1beta1;
 option go_package="github.com/raffis/rageta/pkg/apis/core/v1beta1";
 
 message StepResult {
-  map<string, string> outputs = 1;
+  map<string, google.protobuf.Any> outputs = 1;
   string tmpDir = 2;
 }
 
@@ -19,6 +19,10 @@ message ContainerStatus {
   int32 exitCode = 6;
 }
 
+message Output {
+  string path = 1;
+}
+
 message RuntimeVars {
   repeated string args = 1;
   map<string, google.protobuf.Any> inputs = 2;
@@ -28,7 +32,7 @@ message RuntimeVars {
   string tmpDir = 6;
   map<string, string> matrix = 7;
   string env = 8;
-  string output = 9;
+  map<string, Output> outputs = 9;
   string os = 10;
   string arch = 11;
 }

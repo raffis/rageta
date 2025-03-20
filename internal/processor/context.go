@@ -1,9 +1,10 @@
 package processor
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"maps"
+	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -20,23 +21,28 @@ type StepContext struct {
 	dir        string
 	dataDir    string
 	Matrix     map[string]string
-	inputs     map[string]interface{}
+	inputs     map[string]v1beta1.ParamValue
 	Steps      map[string]*StepResult
 	Envs       map[string]string
 	Containers map[string]cruntime.ContainerStatus
 	NamePrefix string
 	Env        string
 	Parent     string
-	Output     string
+	Outputs    []OutputParam
 	Stdin      io.Reader
 	Stdout     *ioext.MultiWriter
 	Stderr     *ioext.MultiWriter
 }
 
+type OutputParam struct {
+	Name string
+	file *os.File
+}
+
 type StepResult struct {
 	StartedAt time.Time
 	EndedAt   time.Time
-	Outputs   map[string]string
+	Outputs   map[string]v1beta1.ParamValue
 	Error     error
 	DataDir   string
 }
@@ -45,7 +51,7 @@ func (t *StepResult) Duration() time.Duration {
 	return t.EndedAt.Sub(t.StartedAt)
 }
 
-func NewContext(dir string, inputs map[string]interface{}) StepContext {
+func NewContext(dir string, inputs map[string]v1beta1.ParamValue) StepContext {
 	return StepContext{
 		dir:        dir,
 		dataDir:    filepath.Join(dir, "_data"),
@@ -122,7 +128,7 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
 
 	for k, v := range vars.Steps {
 		t.Steps[k] = &StepResult{
-			Outputs: v.Outputs,
+			//Outputs: v.Outputs,
 			DataDir: v.TmpDir,
 		}
 	}
@@ -137,7 +143,7 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 		Matrix:     maps.Clone(t.Matrix),
 		Envs:       maps.Clone(t.Envs),
 		Env:        t.Env,
-		Output:     t.Output,
+		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
 	}
@@ -155,13 +161,24 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
-			Outputs: v.Outputs,
+			Outputs: make(map[string]*anypb.Any),
 			TmpDir:  v.DataDir,
+		}
+
+		for outputKey, outputValue := range v.Outputs {
+			_v, _ := paramValueToAny(outputValue)
+			vars.Steps[k].Outputs[outputKey] = _v
+		}
+	}
+
+	for _, v := range t.Outputs {
+		vars.Outputs[v.Name] = &v1beta1.Output{
+			Path: v.file.Name(),
 		}
 	}
 
 	for k, v := range t.inputs {
-		_v, _ := InterfaceToAny(v)
+		_v, _ := paramValueToAny(v)
 		vars.Inputs[k] = _v
 	}
 
@@ -174,51 +191,24 @@ func (t StepContext) RuntimeVars() map[string]interface{} {
 	}
 }
 
-// Convert interface{} to *anypb.Any (packing)
-func InterfaceToAny(i interface{}) (*anypb.Any, error) {
-	switch v := i.(type) {
-	case string:
-	case int:
-		return anypb.New(wrapperspb.Int64(int64(v)))
-	case float64:
-		return anypb.New(wrapperspb.Double(v))
-	case bool:
-		return anypb.New(wrapperspb.Bool(v))
-
-	// Handle list types explicitly
-	case []string:
+func paramValueToAny(v v1beta1.ParamValue) (*anypb.Any, error) {
+	switch v.Type {
+	case v1beta1.ParamTypeString:
+		return anypb.New(wrapperspb.String(v.StringVal))
+	case v1beta1.ParamTypeArray:
 		list := &structpb.ListValue{}
-		for _, item := range v {
+		for _, item := range v.ArrayVal {
 			list.Values = append(list.Values, structpb.NewStringValue(item))
 		}
 		return anypb.New(list)
-
-	case []int:
-		list := &structpb.ListValue{}
-		for _, item := range v {
-			list.Values = append(list.Values, structpb.NewNumberValue(float64(item)))
+	case v1beta1.ParamTypeObject:
+		obj := &structpb.Struct{}
+		for k, v := range v.ObjectVal {
+			obj.Fields[k] = structpb.NewStringValue(v)
 		}
-		return anypb.New(list)
 
-	case []float64:
-		list := &structpb.ListValue{}
-		for _, item := range v {
-			list.Values = append(list.Values, structpb.NewNumberValue(item))
-		}
-		return anypb.New(list)
-
-	case []bool:
-		list := &structpb.ListValue{}
-		for _, item := range v {
-			list.Values = append(list.Values, structpb.NewBoolValue(item))
-		}
-		return anypb.New(list)
+		return anypb.New(obj)
 	}
 
-	// Fallback: use structpb.NewValue for generic cases
-	val, err := structpb.NewValue(i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert interface{} to Value: %w", err)
-	}
-	return anypb.New(val)
+	return nil, errors.New("can not convert unsupported param")
 }

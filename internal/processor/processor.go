@@ -7,7 +7,7 @@ import (
 )
 
 type PipelineBuilder interface {
-	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]string) (Executable, error)
+	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue) (Executable, error)
 }
 
 type Executable func(ctx context.Context) (StepContext, error)

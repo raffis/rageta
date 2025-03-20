@@ -24,15 +24,8 @@ type Env struct {
 	defaultEnv map[string]string
 }
 
-func (s *Env) Substitute() []*Substitute {
-	var vals []*Substitute
-	vals = append(vals, &Substitute{
-		v: s.stepEnv,
-		f: func(v interface{}) {
-			s.stepEnv = v.(map[string]string)
-		},
-	})
-	return vals
+func (s *Env) Substitute() []interface{} {
+	return []interface{}{s.stepEnv}
 }
 
 func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {

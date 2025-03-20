@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/utils"
@@ -26,6 +27,10 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 	}
 }
 
+const (
+	defaultScriptHeader = "#!/bin/sh\nset -e\n"
+)
+
 type Run struct {
 	stepName          string
 	step              v1beta1.RunStep
@@ -34,6 +39,17 @@ type Run struct {
 	teardown          chan Teardown
 }
 
+func (s *Run) Substitute() []interface{} {
+	return []interface{}{
+		&s.step.Image, 
+		s.step.Args,
+		s.step.Command,
+		&s.step.Script,
+		&s.step.WorkDir,
+
+	}
+}
+/*
 func (s *Run) Substitute() []*Substitute {
 	var vals []*Substitute
 
@@ -53,14 +69,19 @@ func (s *Run) Substitute() []*Substitute {
 			s.step.Command = v.([]string)
 		},
 	}, &Substitute{
-		v: s.step.PWD,
+		v: s.step.Script,
 		f: func(v interface{}) {
-			s.step.PWD = v.(string)
+			s.step.Script = v.(string)
+		},
+	}, &Substitute{
+		v: s.step.WorkDir,
+		f: func(v interface{}) {
+			s.step.WorkDir = v.(string)
 		},
 	})
 
 	return vals
-}
+}*/
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
@@ -68,16 +89,19 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
+
+		command, args := s.commandArgs()
+
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
 			Stdin:           stepContext.Stdin != nil,
 			TTY:             s.step.TTY,
 			Image:           s.step.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
-			Command:         s.step.Command,
-			Args:            s.step.Args,
+			Command:         command,
+			Args:            args,
 			Env:             envSlice(stepContext.Envs),
-			PWD:             s.step.PWD,
+			PWD:             s.step.WorkDir,
 			RestartPolicy:   runtime.RestartPolicy(s.step.RestartPolicy),
 		}
 
@@ -90,6 +114,26 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		return next(ctx, stepContext)
 	}, nil
+}
+
+func (s *Run) commandArgs() ([]string, []string) {
+	script := strings.TrimSpace(s.step.Script)
+	args := s.step.Args
+
+	if script == "" {
+		return s.step.Command, s.step.Args
+	}
+
+	hasShebang := strings.HasPrefix(script, "#!")
+
+	if !hasShebang {
+		script = defaultScriptHeader + script
+	}
+
+	header := strings.Split(script, "\n")[0]
+	shebang := strings.Split(header, "#!")
+	command := []string{shebang[1]}
+	return command, append(args, "-c", script)
 }
 
 func envSlice(env map[string]string) []string {

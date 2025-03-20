@@ -26,6 +26,17 @@ func WithStdioRedirect() ProcessorBuilder {
 type StdioRedirect struct {
 	streams *v1beta1.Streams
 }
+/*
+func (s *Run) Substitute() []interface{} {
+	return []interface{}{
+		&s.step.Image, 
+		s.step.Args,
+		s.step.Command,
+		&s.step.Script,
+		&s.step.WorkDir,
+
+	}
+}
 
 func (s *StdioRedirect) Substitute() []*Substitute {
 	var vals []*Substitute
@@ -59,7 +70,7 @@ func (s *StdioRedirect) Substitute() []*Substitute {
 	}
 
 	return vals
-}
+}*/
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {

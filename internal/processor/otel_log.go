@@ -32,11 +32,6 @@ type OtelLog struct {
 
 func (s *OtelLog) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-
-		logger := []logr.Logger{s.logger}
-
-		delegatedLogger := logr.NewDelegatingLogger()
-
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:      "time",
 			LevelKey:     "level",
@@ -56,8 +51,7 @@ func (s *OtelLog) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		logger := zapr.NewLogger(zapLogger)
 		ctx = logr.NewContext(ctx, logger)
 
-		logger.
-			logger.Info("process step")
+		logger.Info("process step")
 		logger.V(1).Info("step context input", "context", stepContext)
 		stepContext, err := next(ctx, stepContext)
 		logger.Info("process step done", "err", err)
