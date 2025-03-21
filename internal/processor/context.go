@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"errors"
 	"io"
 	"maps"
 	"os"
@@ -12,9 +11,6 @@ import (
 	"github.com/raffis/rageta/internal/ioext"
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type StepContext struct {
@@ -139,9 +135,9 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 		TmpDir:     t.dataDir,
 		Steps:      make(map[string]*v1beta1.StepResult),
 		Containers: make(map[string]*v1beta1.ContainerStatus),
-		Inputs:     make(map[string]*anypb.Any),
 		Matrix:     maps.Clone(t.Matrix),
 		Envs:       maps.Clone(t.Envs),
+		Inputs:     maps.Clone(t.inputs),
 		Env:        t.Env,
 		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
@@ -161,13 +157,12 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
-			Outputs: make(map[string]*anypb.Any),
+			Outputs: make(map[string]v1beta1.ParamValue),
 			TmpDir:  v.DataDir,
 		}
 
 		for outputKey, outputValue := range v.Outputs {
-			_v, _ := paramValueToAny(outputValue)
-			vars.Steps[k].Outputs[outputKey] = _v
+			vars.Steps[k].Outputs[outputKey] = outputValue
 		}
 	}
 
@@ -176,39 +171,69 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 			Path: v.file.Name(),
 		}
 	}
-
-	for k, v := range t.inputs {
-		_v, _ := paramValueToAny(v)
-		vars.Inputs[k] = _v
-	}
-
 	return vars
 }
 
 func (t StepContext) RuntimeVars() map[string]interface{} {
+	vars := t.ToV1Beta1()
+	mappedVars := map[string]interface{}{
+		"tmpDir":     vars.TmpDir,
+		"steps":      make(map[string]interface{}),
+		"inputs":     make(map[string]interface{}),
+		"containers": make(map[string]interface{}),
+		"matrix":     vars.Matrix,
+		"envs":       vars.Envs,
+		"env":        vars.Env,
+		"outputs":    make(map[string]interface{}),
+		"os":         vars.Os,
+		"Arch":       vars.Arch,
+	}
+
+	for k, v := range vars.Outputs {
+		mappedVars["outputs"].(map[string]interface{})[k] = map[string]interface{}{
+			"path": v.Path,
+		}
+	}
+
+	for k, v := range vars.Containers {
+		mappedVars["containers"].(map[string]interface{})[k] = map[string]interface{}{
+			"containerID": v.ContainerID,
+			"ContainerIP": v.ContainerIP,
+			"name":        v.Name,
+			"ready":       v.Ready,
+			"started":     v.Started,
+			"exitCode":    v.ExitCode,
+		}
+	}
+	for k, v := range vars.Inputs {
+		mappedVars["inputs"].(map[string]interface{})[k] = paramValueToAny(v)
+	}
+
+	for k, v := range vars.Steps {
+		mappedVars["steps"].(map[string]interface{})[k] = map[string]interface{}{
+			"tmpDir":  v.TmpDir,
+			"outputs": make(map[string]interface{}),
+		}
+
+		for ok, ov := range v.Outputs {
+			mappedVars["steps"].(map[string]interface{})[k].(map[string]interface{})["outputs"].(map[string]interface{})[ok] = paramValueToAny(ov)
+		}
+	}
+
 	return map[string]interface{}{
-		"context": t.ToV1Beta1(),
+		"context": mappedVars,
 	}
 }
 
-func paramValueToAny(v v1beta1.ParamValue) (*anypb.Any, error) {
+func paramValueToAny(v v1beta1.ParamValue) interface{} {
 	switch v.Type {
 	case v1beta1.ParamTypeString:
-		return anypb.New(wrapperspb.String(v.StringVal))
+		return v.StringVal
 	case v1beta1.ParamTypeArray:
-		list := &structpb.ListValue{}
-		for _, item := range v.ArrayVal {
-			list.Values = append(list.Values, structpb.NewStringValue(item))
-		}
-		return anypb.New(list)
+		return v.ArrayVal
 	case v1beta1.ParamTypeObject:
-		obj := &structpb.Struct{}
-		for k, v := range v.ObjectVal {
-			obj.Fields[k] = structpb.NewStringValue(v)
-		}
-
-		return anypb.New(obj)
+		return v.ObjectVal
 	}
 
-	return nil, errors.New("can not convert unsupported param")
+	return v.StringVal
 }

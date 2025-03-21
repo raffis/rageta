@@ -16,6 +16,7 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 		if spec.Run == nil {
 			return nil
 		}
+		fmt.Printf("INIUT \n\n%#v\n", spec.Run.Script)
 
 		return &Run{
 			step:              *spec.Run,
@@ -41,47 +42,13 @@ type Run struct {
 
 func (s *Run) Substitute() []interface{} {
 	return []interface{}{
-		&s.step.Image, 
+		&s.step.Image,
 		s.step.Args,
 		s.step.Command,
 		&s.step.Script,
 		&s.step.WorkDir,
-
 	}
 }
-/*
-func (s *Run) Substitute() []*Substitute {
-	var vals []*Substitute
-
-	vals = append(vals, &Substitute{
-		v: s.step.Image,
-		f: func(v interface{}) {
-			s.step.Image = v.(string)
-		},
-	}, &Substitute{
-		v: s.step.Args,
-		f: func(v interface{}) {
-			s.step.Args = v.([]string)
-		},
-	}, &Substitute{
-		v: s.step.Command,
-		f: func(v interface{}) {
-			s.step.Command = v.([]string)
-		},
-	}, &Substitute{
-		v: s.step.Script,
-		f: func(v interface{}) {
-			s.step.Script = v.(string)
-		},
-	}, &Substitute{
-		v: s.step.WorkDir,
-		f: func(v interface{}) {
-			s.step.WorkDir = v.(string)
-		},
-	})
-
-	return vals
-}*/
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
@@ -117,6 +84,8 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 }
 
 func (s *Run) commandArgs() ([]string, []string) {
+	fmt.Printf("SSSSSSSSSSS \n\n%#v\n", s.step.Script)
+
 	script := strings.TrimSpace(s.step.Script)
 	args := s.step.Args
 
@@ -133,6 +102,9 @@ func (s *Run) commandArgs() ([]string, []string) {
 	header := strings.Split(script, "\n")[0]
 	shebang := strings.Split(header, "#!")
 	command := []string{shebang[1]}
+
+	fmt.Printf("SSSSSSSSSSS \n\n%#v\n", script)
+
 	return command, append(args, "-c", script)
 }
 

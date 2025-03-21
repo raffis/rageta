@@ -176,9 +176,11 @@ func (s *Substitute) substParam(param *v1beta1.Param, stepContext StepContext) (
 
 			param.Value.ArrayVal[k] = result.(string)
 		}
+
+		return &param.Value, nil
 	}
 
-	return nil, errors.New("unsupported param type")
+	return nil, fmt.Errorf("unsupported param type `%s`", param.Value.Type)
 }
 
 func (s *Substitute) parseExpression(str string, vars interface{}) (interface{}, error) {
@@ -234,6 +236,8 @@ func (s *Substitute) parseExpression(str string, vars interface{}) (interface{},
 		}
 
 		result, ok := v.(string)
+		fmt.Printf("\nRESUUUUUUUUUUlt `%s` -- %#v --- %#v -- %#v\n", result, parts[2], parts, vars)
+
 		if !ok {
 			parseError = fmt.Errorf("expression result %s failed, expected string", parts[2])
 		} else {

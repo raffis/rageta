@@ -101,7 +101,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	runCmd.Flags().StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	runCmd.Flags().StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
-	runCmd.Flags().StringSliceVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
+	runCmd.Flags().StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
 	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	runCmd.Flags().StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
@@ -341,7 +341,6 @@ func runRun(c *cobra.Command, args []string) error {
 	v1beta1.AddToScheme(scheme)
 	factory := serializer.NewCodecFactory(scheme)
 	decoder := factory.UniversalDeserializer()
-	//wire := protobuf.NewSerializer(nil, kruntime.MultiObjectTyper{})
 
 	var ref string
 	if len(args) > 0 {
@@ -390,8 +389,7 @@ func runRun(c *cobra.Command, args []string) error {
 		ext.Math(),
 		ext.Encoders(),
 		ext.Sets(),
-		cel.Types(&v1beta1.RuntimeVars{}),
-		cel.Variable("context", cel.ObjectType("rageta.core.v1beta1.RuntimeVars")),
+		cel.Variable("context", cel.MapType(cel.StringType, cel.DynType)),
 	)
 
 	if err != nil {
@@ -462,7 +460,7 @@ func runRun(c *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	inputs, err := parseInputs(runArgs.inputs)
+	inputs, err := parseInputs(command.Inputs, runArgs.inputs)
 	if err != nil {
 		return err
 	}
@@ -554,7 +552,7 @@ func runRun(c *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseInputs(inputs []string) (map[string]v1beta1.ParamValue, error) {
+func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1beta1.ParamValue, error) {
 	result := make(map[string]v1beta1.ParamValue)
 	steps := make(map[string][]string)
 
@@ -567,21 +565,31 @@ func parseInputs(inputs []string) (map[string]v1beta1.ParamValue, error) {
 		steps[flag[0]] = append(steps[flag[0]], flag[1])
 	}
 
-	for k, v := range steps {
-		param := v1beta1.ParamValue{}
-		if len(v) == 1 {
-			if err := param.UnmarshalJSON([]byte(v[0])); err != nil {
-				return result, fmt.Errorf("failed to decode input: %w", err)
+	for _, v := range params {
+		result[v.Name] = v.Value
+
+		if input, ok := steps[v.Name]; ok {
+			x := result[v.Name]
+
+			if len(input) == 1 {
+				fmt.Printf("PARSE STR %s: %#v \n", v.Name, input)
+				if err := x.UnmarshalJSON([]byte(input[0])); err != nil {
+					return result, fmt.Errorf("failed to decode input: %w", err)
+				}
+				fmt.Printf("RES %s: %#v \n", v.Name, v.Value)
+
+				result[v.Name] = x
+				continue
 			}
+			fmt.Printf("PARSE Array %s: %#v \n", v.Name, input)
 
-			result[k] = param
-			continue
+			x.Type = v1beta1.ParamTypeArray
+			x.ArrayVal = input
+			result[v.Name] = x
+
 		}
-
-		param.Type = v1beta1.ParamTypeArray
-		param.ArrayVal = v
-		result[k] = param
 	}
+	fmt.Printf("============>  %#v \n", result)
 
 	return result, nil
 }
