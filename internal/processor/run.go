@@ -16,7 +16,6 @@ func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime
 		if spec.Run == nil {
 			return nil
 		}
-		fmt.Printf("INIUT \n\n%#v\n", spec.Run.Script)
 
 		return &Run{
 			step:              *spec.Run,
@@ -84,8 +83,6 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 }
 
 func (s *Run) commandArgs() ([]string, []string) {
-	fmt.Printf("SSSSSSSSSSS \n\n%#v\n", s.step.Script)
-
 	script := strings.TrimSpace(s.step.Script)
 	args := s.step.Args
 
@@ -102,8 +99,6 @@ func (s *Run) commandArgs() ([]string, []string) {
 	header := strings.Split(script, "\n")[0]
 	shebang := strings.Split(header, "#!")
 	command := []string{shebang[1]}
-
-	fmt.Printf("SSSSSSSSSSS \n\n%#v\n", script)
 
 	return command, append(args, "-c", script)
 }

@@ -56,9 +56,7 @@ install:
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	rm -fv pkg/apis/*/*/*.pb.go
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/utils/..."
-	protoc --go_out=. --go-grpc_out=. --go-grpc_opt=paths=source_relative --go_opt=paths=source_relative pkg/apis/*/*/*.proto
 
 CONTROLLER_GEN = $(GOBIN)/controller-gen
 .PHONY: controller-gen

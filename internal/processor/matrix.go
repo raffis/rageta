@@ -56,8 +56,6 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, err
 		}
 
-		fmt.Printf("bBBBBBBBBBBBBBBBBBB %#v\n", s.matrix)
-
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err
@@ -90,10 +88,8 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for res := range results {
 			done++
 
-			for k, step := range res.stepContext.Steps {
-				fmt.Printf("range %s (%s) step.Outputs %#v \n", k, s.stepName, step.Outputs)
+			for _, step := range res.stepContext.Steps {
 				for paramKey, paramValue := range step.Outputs {
-					fmt.Printf("va %#v \n", paramValue)
 					if paramValue.Type == v1beta1.ParamTypeString {
 						var param v1beta1.ParamValue
 						if _, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
@@ -105,8 +101,6 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 							param = stepContext.Steps[s.stepName].Outputs[paramKey]
 							param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 						}
-
-						fmt.Printf("\n\nmat steps)(%s): %#v\n\n", s.stepName, stepContext.Steps[s.stepName])
 
 						stepContext.Steps[s.stepName].Outputs[paramKey] = param
 					}

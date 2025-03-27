@@ -27,36 +27,34 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Inherits         []string       `json:"inherits,omitempty"`
 	Name             string         `json:"name,omitempty"`
 	Entrypoint       string         `json:"entrypoint,omitempty"`
 	ShortDescription string         `json:"shortDescription,omitempty"`
 	LongDescription  string         `json:"longDescription,omitempty"`
-	Inputs           []InputParam   `json:"inputs,omitempty"`
-	Outputs          []OutputParam  `json:"outputs,omitempty"`
+	Inputs           InputParams    `json:"inputs,omitempty"`
+	Outputs          OutputParams   `json:"outputs,omitempty"`
 	Steps            []Step         `json:"steps,omitempty"`
 	SubPipelines     []PipelineSpec `json:"subPipelines,omitempty"`
 }
 
-type InputParam Param
-
-type OutputParam struct {
-	Param `json:",inline"`
-	Step  StepReference `json:"step"`
+func (p Pipeline) SetDefaults() {
+	for k := range p.Inputs {
+		p.Inputs[k].SetDefaults()
+	}
 }
 
 type StepOptions struct {
-	If           string          `json:"if,omitempty"`
-	Timeout      metav1.Duration `json:"timeout,omitempty"`
-	AllowFailure bool            `json:"allowFailure,omitempty"`
-	Matrix       *Matrix         `json:"matrix,omitempty"`
-	Outputs      []Param         `json:"outputs,omitempty"`
-	Generates    []Generate      `json:"generates,omitempty"`
-	Sources      []Source        `json:"sources,omitempty"`
-	Needs        []StepReference `json:"needs,omitempty"`
-	Streams      *Streams        `json:"streams,omitempty"`
-	Retry        *Retry          `json:"retry,omitempty"`
-	Env          []string        `json:"env,omitempty"`
+	If           string            `json:"if,omitempty"`
+	Timeout      metav1.Duration   `json:"timeout,omitempty"`
+	AllowFailure bool              `json:"allowFailure,omitempty"`
+	Matrix       *Matrix           `json:"matrix,omitempty"`
+	Outputs      []StepOutputParam `json:"outputs,omitempty"`
+	Generates    []Generate        `json:"generates,omitempty"`
+	Sources      []Source          `json:"sources,omitempty"`
+	Needs        []StepReference   `json:"needs,omitempty"`
+	Streams      *Streams          `json:"streams,omitempty"`
+	Retry        *Retry            `json:"retry,omitempty"`
+	Env          []string          `json:"env,omitempty"`
 }
 
 type Matrix struct {

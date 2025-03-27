@@ -57,6 +57,11 @@ func NewBuilder(opts ...builderOption) *builder {
 }
 
 func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue) (processor.Executable, error) {
+	pipeline.SetDefaults()
+
+	fmt.Printf("inputs %#v -- %#v\n", inputs, len(inputs))
+	fmt.Printf("pipe %#v\n", pipeline.Inputs)
+
 	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", inputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
@@ -93,6 +98,10 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
 
 		if err := storeContext(stepCtx, contextDir); err != nil {
+			if pipelineErr != nil {
+				return stepCtx, fmt.Errorf("failed to store context: %w; pipeline error: %w", err, pipelineErr)
+			}
+
 			return stepCtx, fmt.Errorf("failed to store context: %w", err)
 		}
 

@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -52,6 +53,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		results := make(chan concurrentResult)
 		var stdout *io.PipeReader
+		var errs []error
 
 		for i := range stepEntrypoints {
 			copy := stepContext.DeepCopy()
@@ -96,12 +98,17 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			done++
 			stepContext = stepContext.Merge(res.stepContext)
 			if res.err != nil && AbortOnError(res.err) {
+				errs = append(errs, res.err)
 				cancel()
 			}
 
 			if done == len(steps) {
 				break WAIT
 			}
+		}
+
+		if len(errs) > 0 {
+			return stepContext, errors.Join(errs...)
 		}
 
 		return next(ctx, stepContext)

@@ -281,7 +281,7 @@ func stepBuilder(
 		substitutableProcessors := processor.Builder(&spec,
 			processor.WithMatrix(pool),
 			processor.WithEnv(envs),
-			//processor.WithStdioRedirect(),
+			processor.WithStdioRedirect(),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
 			processor.WithInherit(*builder, store),
 		)
@@ -292,7 +292,7 @@ func stepBuilder(
 			processor.WithRetry(),
 			processor.WithStdio(runArgs.tee, outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithOtelTrace(logger, tracer),
-			processor.WithOtelLog(logger, &zapConfig),
+			processor.WithLogger(logger, &zapConfig),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
@@ -566,30 +566,37 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 	}
 
 	for _, v := range params {
-		result[v.Name] = v.Value
+		fmt.Printf("%#v\n", v)
+		v.SetDefaults()
+		fmt.Printf("%#v\n", v)
+
+		if v.Default == nil {
+			result[v.Name] = v1beta1.ParamValue{
+				Type: v.Type,
+			}
+		} else {
+			result[v.Name] = *v.Default
+		}
 
 		if input, ok := steps[v.Name]; ok {
 			x := result[v.Name]
 
 			if len(input) == 1 {
-				fmt.Printf("PARSE STR %s: %#v \n", v.Name, input)
 				if err := x.UnmarshalJSON([]byte(input[0])); err != nil {
 					return result, fmt.Errorf("failed to decode input: %w", err)
 				}
-				fmt.Printf("RES %s: %#v \n", v.Name, v.Value)
 
 				result[v.Name] = x
 				continue
 			}
-			fmt.Printf("PARSE Array %s: %#v \n", v.Name, input)
 
 			x.Type = v1beta1.ParamTypeArray
 			x.ArrayVal = input
 			result[v.Name] = x
-
 		}
+		fmt.Printf("%#v\n", result[v.Name])
+
 	}
-	fmt.Printf("============>  %#v \n", result)
 
 	return result, nil
 }

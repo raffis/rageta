@@ -24,7 +24,7 @@ func WithOutput() ProcessorBuilder {
 
 type Output struct {
 	stepName string
-	outputs  []v1beta1.Param
+	outputs  []v1beta1.StepOutputParam
 }
 
 func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -43,10 +43,8 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				file: outputTmp,
 			})
 		}
-		fmt.Printf("\n \n ==> step tp(%s) %#v\n\n", s.stepName, stepContext.Outputs)
 
 		stepContext, err := next(ctx, stepContext)
-		fmt.Printf("\n \n ==> step from(%s) %#v\n\n", s.stepName, stepContext.Outputs)
 		if err != nil {
 			return stepContext, err
 		}
@@ -61,12 +59,9 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			value := v1beta1.ParamValue{}
 
-			fmt.Printf("\n \n ==> UNMARH %#v\n\n", string(b))
-
 			if err := value.UnmarshalJSON(b); err != nil {
 				return stepContext, fmt.Errorf("param output failed: %w", err)
 			}
-			fmt.Printf("\n \n ==> UNMARH DONE %#v\n\n", string(b))
 
 			stepContext.Steps[s.stepName].Outputs[output.Name] = value
 

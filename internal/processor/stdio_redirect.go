@@ -26,51 +26,22 @@ func WithStdioRedirect() ProcessorBuilder {
 type StdioRedirect struct {
 	streams *v1beta1.Streams
 }
-/*
-func (s *Run) Substitute() []interface{} {
-	return []interface{}{
-		&s.step.Image, 
-		s.step.Args,
-		s.step.Command,
-		&s.step.Script,
-		&s.step.WorkDir,
 
-	}
-}
-
-func (s *StdioRedirect) Substitute() []*Substitute {
-	var vals []*Substitute
-	if s.streams == nil {
-		return vals
-	}
+func (s *StdioRedirect) Substitute() []interface{} {
+	vars := []interface{}{}
 
 	if s.streams.Stdout != nil {
-		vals = append(vals, &Substitute{
-			v: s.streams.Stdout.Path,
-			f: func(v interface{}) {
-				s.streams.Stdout.Path = v.(string)
-			},
-		})
+		vars = append(vars, &s.streams.Stdout.Path)
 	}
 	if s.streams.Stderr != nil {
-		vals = append(vals, &Substitute{
-			v: s.streams.Stderr.Path,
-			f: func(v interface{}) {
-				s.streams.Stderr.Path = v.(string)
-			},
-		})
+		vars = append(vars, &s.streams.Stderr.Path)
 	}
 	if s.streams.Stdin != nil {
-		vals = append(vals, &Substitute{
-			v: s.streams.Stdin.Path,
-			f: func(v interface{}) {
-				s.streams.Stdin.Path = v.(string)
-			},
-		})
+		vars = append(vars, &s.streams.Stdin.Path)
 	}
 
-	return vals
-}*/
+	return vars
+}
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {

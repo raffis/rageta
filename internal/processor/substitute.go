@@ -25,6 +25,7 @@ func WithSubstitute(celEnv *cel.Env, processors ...Bootstraper) ProcessorBuilder
 		}
 
 		return &Substitute{
+			n:             spec.Name,
 			celEnv:        celEnv,
 			substitutions: substitutions,
 			isMatrix:      spec.Matrix != nil && len(spec.Matrix.Params) > 0,
@@ -48,17 +49,22 @@ type Substitute struct {
 	celEnv        *cel.Env
 	substitutions []Substitutor
 	isMatrix      bool
+	n             string
 }
 
 func (s *Substitute) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		for _, substitution := range s.substitutions {
+			fmt.Printf("subst 1 %s -- %#v\n", s.n, stepContext.Matrix)
+
 			//If the step has a matrix we only parse expressions from the matrix processor
 			//This is due that any other steps could depend on matrix context which is not evaluated in a matrix parent
 			_, isMatrixProcessor := substitution.(*Matrix)
 			if s.isMatrix && len(stepContext.Matrix) == 0 && !isMatrixProcessor {
 				continue
 			}
+
+			fmt.Printf("subst 2 %s -- %#v\n", s.n, stepContext.Matrix)
 
 			for _, subst := range substitution.Substitute() {
 				switch v := subst.(type) {
@@ -236,8 +242,6 @@ func (s *Substitute) parseExpression(str string, vars interface{}) (interface{},
 		}
 
 		result, ok := v.(string)
-		fmt.Printf("\nRESUUUUUUUUUUlt `%s` -- %#v --- %#v -- %#v\n", result, parts[2], parts, vars)
-
 		if !ok {
 			parseError = fmt.Errorf("expression result %s failed, expected string", parts[2])
 		} else {

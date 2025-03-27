@@ -198,7 +198,7 @@ func (t StepContext) RuntimeVars() map[string]interface{} {
 	for k, v := range vars.Containers {
 		mappedVars["containers"].(map[string]interface{})[k] = map[string]interface{}{
 			"containerID": v.ContainerID,
-			"ContainerIP": v.ContainerIP,
+			"containerIP": v.ContainerIP,
 			"name":        v.Name,
 			"ready":       v.Ready,
 			"started":     v.Started,
