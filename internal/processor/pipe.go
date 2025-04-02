@@ -10,7 +10,7 @@ import (
 
 func WithPipe() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Pipe == nil {
+		if spec.Pipe == nil || len(spec.Pipe.Refs) == 0 {
 			return nil
 		}
 

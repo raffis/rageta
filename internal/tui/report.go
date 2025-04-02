@@ -28,6 +28,10 @@ func (t *report) getViewport() *pager.Model {
 	return t.viewport
 }
 
+func (t *report) Matrix() string {
+	return ""
+}
+
 func (t *report) GetName() string {
 	return lipgloss.NewStyle().Foreground(highlightColor).Bold(true).Render("Report")
 }

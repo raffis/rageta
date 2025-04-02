@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/alitto/pond/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
@@ -278,18 +280,12 @@ func stepBuilder(
 			ui.AddTasks(tui.NewTask(uniqueName))
 		}*/
 
-		substitutableProcessors := processor.Builder(&spec,
-			processor.WithMatrix(pool),
-			processor.WithEnv(envs),
-			processor.WithStdioRedirect(),
-			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
-			processor.WithInherit(*builder, store),
-		)
-
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
 			processor.WithReport(resultStore, uniqueName),
 			processor.WithRetry(),
+			processor.WithInput(celEnv),
+			processor.WithMatrix(pool),
 			processor.WithStdio(runArgs.tee, outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig),
@@ -304,17 +300,14 @@ func stepBuilder(
 			processor.WithIf(celEnv),
 			processor.WithNeeds(),
 			processor.WithTmpDir(),
-			processor.WithSubstitute(celEnv, substitutableProcessors...),
-		)
-
-		processors = append(processors, substitutableProcessors...)
-
-		operators := processor.Builder(&spec,
+			processor.WithEnv(envs),
+			processor.WithStdioRedirect(),
+			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
+			processor.WithInherit(*builder, store),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
 			processor.WithPipe(),
 		)
-		processors = append(processors, operators...)
 
 		logger.V(1).Info("register step", "spec", spec)
 		for _, processor := range processors {
@@ -389,7 +382,14 @@ func runRun(c *cobra.Command, args []string) error {
 		ext.Math(),
 		ext.Encoders(),
 		ext.Sets(),
-		cel.Variable("context", cel.MapType(cel.StringType, cel.DynType)),
+		ext.NativeTypes(ext.ParseStructTags(true),
+			reflect.TypeOf(&v1beta1.Context{}),
+			/*			reflect.TypeOf(&v1beta1.StepResult{}),
+						reflect.TypeOf(&v1beta1.ParamValue{}),
+						reflect.TypeOf(&v1beta1.Output{}),
+						reflect.TypeOf(&v1beta1.ContainerStatus{}),*/
+		),
+		cel.Variable("context", cel.ObjectType("v1beta1.Context")),
 	)
 
 	if err != nil {
@@ -475,10 +475,14 @@ func runRun(c *cobra.Command, args []string) error {
 	}
 
 	if tuiDone != nil {
+		if errors.Is(result, pipeline.ErrInvalidInput) {
+			tuiApp.Quit()
+		}
+
 		if result != nil {
-			tuiInstance.SetStatus(tui.StepStatusFailed)
+			tuiModel.SetStatus(tui.StepStatusFailed)
 		} else {
-			tuiInstance.SetStatus(tui.StepStatusDone)
+			tuiModel.SetStatus(tui.StepStatusDone)
 		}
 
 		if resultStore, ok := resultStore.(*report.Store); ok {
@@ -488,7 +492,7 @@ func runRun(c *cobra.Command, args []string) error {
 				fmt.Fprintln(buf, err)
 			}
 
-			tuiInstance.Report(buf.Bytes())
+			tuiModel.Report(buf.Bytes())
 		}
 
 		<-tuiDone
@@ -520,7 +524,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	wg.Wait()
 
-	if resultStore, ok := resultStore.(*report.Store); ok {
+	if resultStore, ok := resultStore.(*report.Store); ok && len(resultStore.Ordered()) != 0 {
 		outputPath := runArgs.reportOutput
 		var output *os.File
 		if outputPath == "/dev/stdout" || outputPath == "" {
@@ -566,18 +570,7 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 	}
 
 	for _, v := range params {
-		fmt.Printf("%#v\n", v)
-		v.SetDefaults()
-		fmt.Printf("%#v\n", v)
-
-		if v.Default == nil {
-			result[v.Name] = v1beta1.ParamValue{
-				Type: v.Type,
-			}
-		} else {
-			result[v.Name] = *v.Default
-		}
-
+		//v.SetDefaults()
 		if input, ok := steps[v.Name]; ok {
 			x := result[v.Name]
 
@@ -594,8 +587,8 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 			x.ArrayVal = input
 			result[v.Name] = x
 		}
-		fmt.Printf("%#v\n", result[v.Name])
 
+		return result, nil
 	}
 
 	return result, nil
@@ -630,34 +623,37 @@ func envMap() map[string]string {
 	return envs
 }
 
-var tuiInstance tui.UI
+var tuiModel tui.UI
 var tuiDone chan struct{}
+var tuiApp *tea.Program
 
 func uiOutput(cancel context.CancelFunc) tui.UI {
 	if runArgs.output != "ui" {
 		return nil
 	}
 
-	if tuiInstance != nil {
-		return tuiInstance
+	if tuiModel != nil {
+		return tuiModel
 	}
 
 	tuiDone = make(chan struct{})
-	tuiInstance = tui.NewModel()
+	tuiModel = tui.NewModel()
+	tuiApp = tui.Program(tuiModel)
 
 	/*if logger.GetV() > 0 {
 		loggerTask := tui.NewTask("main()")
-		tuiInstance.AddTasks(loggerTask)
+		tuiModel.AddTasks(loggerTask)
 	}*/
 
 	//logger.WithSink(logr.)
 	go func() {
-		tui.Run(tuiInstance)
+		tuiApp.Run()
+		tuiApp.ReleaseTerminal()
 		cancel()
 		tuiDone <- struct{}{}
 	}()
 
-	return tuiInstance
+	return tuiModel
 }
 
 func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {

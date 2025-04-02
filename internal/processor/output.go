@@ -64,7 +64,6 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			stepContext.Steps[s.stepName].Outputs[output.Name] = value
-
 			stepContext.Outputs = append(stepContext.Outputs[:i], stepContext.Outputs[i+1:]...)
 
 		}

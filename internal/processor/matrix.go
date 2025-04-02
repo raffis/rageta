@@ -15,7 +15,7 @@ import (
 
 func WithMatrix(pool pond.Pool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Matrix == nil || pool == nil {
+		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 || pool == nil {
 			return nil
 		}
 
@@ -35,18 +35,22 @@ type Matrix struct {
 	pool     pond.Pool
 }
 
-func (s *Matrix) Substitute() []interface{} {
-	return []interface{}{s.matrix}
-}
+var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		//Only proceed if we are not in a a matrix child context
-		if len(stepContext.Matrix) > 0 {
+		/*if len(stepContext.Matrix) > 0 {
 			return next(ctx, stepContext)
+		}*/
+
+		if err := Subst(stepContext.ToV1Beta1(),
+			s.matrix,
+		); err != nil {
+			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
 
-		step, err := pipeline.Step(s.stepName)
+		/*step, err := pipeline.Step(s.stepName)
 		if err != nil {
 			return stepContext, err
 		}
@@ -54,11 +58,15 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		next, err := step.Entrypoint()
 		if err != nil {
 			return stepContext, err
-		}
+		}*/
 
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err
+		}
+
+		if len(matrixes) == 0 {
+			return stepContext, ErrEmptyMatrix
 		}
 
 		results := make(chan concurrentResult)

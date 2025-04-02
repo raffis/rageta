@@ -39,36 +39,37 @@ type Run struct {
 	teardown          chan Teardown
 }
 
-func (s *Run) Substitute() []interface{} {
-	return []interface{}{
-		&s.step.Image,
-		s.step.Args,
-		s.step.Command,
-		&s.step.Script,
-		&s.step.WorkDir,
-	}
-}
-
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		run := s.step.DeepCopy()
+
+		if err := Subst(stepContext.ToV1Beta1(),
+			&run.Image,
+			run.Args,
+			run.Command,
+			&run.Script,
+			&run.WorkDir,
+		); err != nil {
+			return stepContext, err
+		}
+
 		pod := &runtime.Pod{
 			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 
-		command, args := s.commandArgs()
-
+		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
 			Stdin:           stepContext.Stdin != nil,
-			TTY:             s.step.TTY,
-			Image:           s.step.Image,
+			TTY:             run.TTY,
+			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
 			Args:            args,
 			Env:             envSlice(stepContext.Envs),
-			PWD:             s.step.WorkDir,
-			RestartPolicy:   runtime.RestartPolicy(s.step.RestartPolicy),
+			PWD:             run.WorkDir,
+			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
@@ -82,12 +83,12 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Run) commandArgs() ([]string, []string) {
-	script := strings.TrimSpace(s.step.Script)
-	args := s.step.Args
+func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
+	script := strings.TrimSpace(run.Script)
+	args := run.Args
 
 	if script == "" {
-		return s.step.Command, s.step.Args
+		return run.Command, run.Args
 	}
 
 	hasShebang := strings.HasPrefix(script, "#!")

@@ -27,25 +27,25 @@ type StdioRedirect struct {
 	streams *v1beta1.Streams
 }
 
-func (s *StdioRedirect) Substitute() []interface{} {
-	vars := []interface{}{}
-
-	if s.streams.Stdout != nil {
-		vars = append(vars, &s.streams.Stdout.Path)
-	}
-	if s.streams.Stderr != nil {
-		vars = append(vars, &s.streams.Stderr.Path)
-	}
-	if s.streams.Stdin != nil {
-		vars = append(vars, &s.streams.Stdin.Path)
-	}
-
-	return vars
-}
-
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		var stdoutRedirect, stderrRedirect io.Writer
+
+		vars := []interface{}{}
+		if s.streams.Stdout != nil {
+			vars = append(vars, &s.streams.Stdout.Path)
+		}
+		if s.streams.Stderr != nil {
+			vars = append(vars, &s.streams.Stderr.Path)
+		}
+		if s.streams.Stdin != nil {
+			vars = append(vars, &s.streams.Stdin.Path)
+		}
+
+		if err := Subst(stepContext.ToV1Beta1(), vars...,
+		); err != nil {
+			return stepContext, err
+		}
 
 		if s.streams.Stdout != nil {
 			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)

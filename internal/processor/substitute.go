@@ -1,186 +1,88 @@
 package processor
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"regexp"
 
-	"github.com/google/cel-go/cel"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func WithSubstitute(celEnv *cel.Env, processors ...Bootstraper) ProcessorBuilder {
-	var substitutions []Substitutor
-	for _, processor := range processors {
-		if v, ok := processor.(Substitutor); ok {
-			substitutions = append(substitutions, v)
-		}
-	}
+var substituteExpression = regexp.MustCompile(`\$\(([^)($]+)\)`)
 
-	return func(spec *v1beta1.Step) Bootstraper {
-		if len(substitutions) == 0 {
-			return nil
-		}
-
-		return &Substitute{
-			n:             spec.Name,
-			celEnv:        celEnv,
-			substitutions: substitutions,
-			isMatrix:      spec.Matrix != nil && len(spec.Matrix.Params) > 0,
-		}
-	}
+type Indexable interface {
+	Index() map[string]string
 }
 
-var (
-	expression *regexp.Regexp
-)
+func Subst(index Indexable, substitute ...any) error {
+	vars := index.Index()
 
-func init() {
-	expression = regexp.MustCompile(`(\$\{\{([^}}]+)\}\})`)
-}
-
-type Substitutor interface {
-	Substitute() []interface{}
-}
-
-type Substitute struct {
-	celEnv        *cel.Env
-	substitutions []Substitutor
-	isMatrix      bool
-	n             string
-}
-
-func (s *Substitute) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		for _, substitution := range s.substitutions {
-			fmt.Printf("subst 1 %s -- %#v\n", s.n, stepContext.Matrix)
-
-			//If the step has a matrix we only parse expressions from the matrix processor
-			//This is due that any other steps could depend on matrix context which is not evaluated in a matrix parent
-			_, isMatrixProcessor := substitution.(*Matrix)
-			if s.isMatrix && len(stepContext.Matrix) == 0 && !isMatrixProcessor {
-				continue
+	for _, subst := range substitute {
+		switch v := subst.(type) {
+		case *string:
+			result, err := parseExpression(*v, vars)
+			if err != nil {
+				return err
 			}
 
-			fmt.Printf("subst 2 %s -- %#v\n", s.n, stepContext.Matrix)
-
-			for _, subst := range substitution.Substitute() {
-				switch v := subst.(type) {
-				case *string:
-					result, err := s.parseExpression(*v, stepContext.RuntimeVars())
-					if err != nil {
-						return stepContext, err
-					}
-
-					*v = result.(string)
-				case []string:
-					for k, val := range v {
-						result, err := s.parseExpression(val, stepContext.RuntimeVars())
-						if err != nil {
-							return stepContext, err
-						}
-
-						v[k] = result.(string)
-					}
-				case map[string]string:
-					for k, val := range v {
-						result, err := s.parseExpression(val, stepContext.RuntimeVars())
-						if err != nil {
-							return stepContext, err
-						}
-
-						v[k] = result.(string)
-					}
-				case []v1beta1.Param:
-					for k, val := range v {
-						if param, err := s.substParam(&val, stepContext); err != nil {
-							return stepContext, err
-						} else {
-							v[k].Value = *param
-						}
-					}
-				case *v1beta1.Param:
-					if param, err := s.substParam(v, stepContext); err != nil {
-						return stepContext, err
-					} else {
-						v.Value = *param
-					}
-				default:
-					return stepContext, fmt.Errorf("type `%T` not substitutable", v)
-				}
-
-			}
-		}
-
-		return next(ctx, stepContext)
-	}, nil
-}
-
-func (s *Substitute) substParam(param *v1beta1.Param, stepContext StepContext) (*v1beta1.ParamValue, error) {
-	toParam := func(v interface{}) (*v1beta1.ParamValue, error) {
-		switch v := v.(type) {
-		case string:
-			return &v1beta1.ParamValue{
-				Type:      v1beta1.ParamTypeString,
-				StringVal: v,
-			}, nil
+			*v = result
 		case []string:
-			return &v1beta1.ParamValue{
-				Type:     v1beta1.ParamTypeArray,
-				ArrayVal: v,
-			}, nil
-		case *structpb.ListValue:
-			typedMap := make([]string, len(v.Values))
-			for i, v := range v.Values {
-				if _, ok := v.Kind.(*structpb.Value_StringValue); ok {
-					typedMap[i] = v.GetStringValue()
+			for k, val := range v {
+				result, err := parseExpression(val, vars)
+				if err != nil {
+					return err
+				}
+
+				v[k] = result
+			}
+		case map[string]string:
+			for k, val := range v {
+				result, err := parseExpression(val, vars)
+				if err != nil {
+					return err
+				}
+
+				v[k] = result
+			}
+		case []v1beta1.Param:
+			for k, val := range v {
+				if param, err := substParam(&val, vars); err != nil {
+					return err
 				} else {
-					return nil, errors.New("arrays can only contain strings")
+					v[k].Value = *param
 				}
 			}
-
-			return &v1beta1.ParamValue{
-				Type:     v1beta1.ParamTypeArray,
-				ArrayVal: typedMap,
-			}, nil
-		case []interface{}:
-			typedMap := make([]string, len(v))
-			for i, v := range v {
-				if v, ok := v.(string); ok {
-					typedMap[i] = v
-				} else {
-					return nil, errors.New("arrays can only contain strings")
-				}
+		case *v1beta1.Param:
+			if param, err := substParam(v, vars); err != nil {
+				return err
+			} else {
+				v.Value = *param
 			}
-
-			return &v1beta1.ParamValue{
-				Type:     v1beta1.ParamTypeArray,
-				ArrayVal: typedMap,
-			}, nil
 		default:
-			return nil, errors.New("can not convert result to param")
+			return fmt.Errorf("type `%T` not substitutable", v)
 		}
 	}
 
+	return nil
+}
+
+func substParam(param *v1beta1.Param, vars map[string]string) (*v1beta1.ParamValue, error) {
 	switch param.Value.Type {
 	case v1beta1.ParamTypeString:
-		result, err := s.parseExpression(param.Value.StringVal, stepContext.RuntimeVars())
+		result, err := parseExpression(param.Value.StringVal, vars)
 		if err != nil {
 			return nil, err
 		}
 
-		return toParam(result)
-
+		err = param.Value.UnmarshalJSON([]byte(result))
+		return &param.Value, err
 	case v1beta1.ParamTypeArray:
 		for k, val := range param.Value.ArrayVal {
-			result, err := s.parseExpression(val, stepContext.RuntimeVars())
+			result, err := parseExpression(val, vars)
 			if err != nil {
 				return nil, err
 			}
 
-			param.Value.ArrayVal[k] = result.(string)
+			param.Value.ArrayVal[k] = result
 		}
 
 		return &param.Value, nil
@@ -189,14 +91,12 @@ func (s *Substitute) substParam(param *v1beta1.Param, stepContext StepContext) (
 	return nil, fmt.Errorf("unsupported param type `%s`", param.Value.Type)
 }
 
-func (s *Substitute) parseExpression(str string, vars interface{}) (interface{}, error) {
+func parseExpression(str string, vars map[string]string) (string, error) {
 	var parseError error
-	var result interface{}
 
-	newStr := expression.ReplaceAllStringFunc(str, func(m string) string {
-		parts := expression.FindStringSubmatch(m)
-
-		if len(parts) != 3 {
+	newStr := substituteExpression.ReplaceAllStringFunc(str, func(m string) string {
+		parts := substituteExpression.FindStringSubmatch(m)
+		if len(parts) != 2 {
 			err := fmt.Errorf("invalid expression wrapper %s -- %#v", m, parts)
 			if parseError == nil {
 				parseError = err
@@ -204,56 +104,12 @@ func (s *Substitute) parseExpression(str string, vars interface{}) (interface{},
 			return m
 		}
 
-		ast, issues := s.celEnv.Compile(parts[2])
-		if issues != nil && issues.Err() != nil {
-			err := fmt.Errorf("expression compilation %s failed: %w -- %#v", parts[2], issues.Err(), parts)
-			if parseError == nil {
-				parseError = err
-			}
-
-			return m
-		}
-
-		prg, err := s.celEnv.Program(ast)
-		if err != nil {
-			err := fmt.Errorf("expression ast %s failed: %w", parts[2], err)
-			if parseError == nil {
-				parseError = err
-			}
-
-			return m
-		}
-
-		val, _, err := prg.Eval(vars)
-
-		if err != nil {
-			err := fmt.Errorf("expression evaluation `%s` failed: %w", parts[2], err)
-			if parseError == nil {
-				parseError = err
-			}
-
-			return m
-		}
-
-		v := val.Value()
-		if str == parts[0] {
-			result = v
-			return m
-		}
-
-		result, ok := v.(string)
-		if !ok {
-			parseError = fmt.Errorf("expression result %s failed, expected string", parts[2])
+		if v, ok := vars[parts[1]]; ok {
+			return v
 		} else {
-			return result
+			return parts[0]
 		}
-
-		return ""
 	})
-
-	if result != nil {
-		return result, parseError
-	}
 
 	return newStr, parseError
 }

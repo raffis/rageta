@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,7 +10,7 @@ import (
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string) *Task {
+func NewTask(name string, matrix map[string]string) *Task {
 	viewport := pager.New(0, 0)
 	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
@@ -21,6 +22,7 @@ func NewTask(name string) *Task {
 		viewport: &viewport,
 		name:     name,
 		status:   StepStatusWaiting,
+		matrix:   matrix,
 	}
 
 	return task
@@ -33,6 +35,7 @@ type Task struct {
 	ready    bool
 	started  time.Time
 	finished time.Time
+	matrix   map[string]string
 }
 
 func (t *Task) getViewport() *pager.Model {
@@ -66,6 +69,15 @@ func (t *Task) SetStatus(status StepStatus) {
 	}
 
 	t.status = status
+}
+
+func (t *Task) Matrix() string {
+	var params []string
+	for k, v := range t.matrix {
+		params = append(params, fmt.Sprintf("%s: %s", k, v))
+	}
+
+	return strings.Join(params, " · ")
 }
 
 func (t *Task) Title() string {

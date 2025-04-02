@@ -8,8 +8,8 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type OutputCloser func(err error)
-type OutputFactory func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
+type OutputCloser func(err error) error
+type OutputFactory func(ctx context.Context, stepContext StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
 
 func WithStdio(tee bool, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
@@ -40,7 +40,7 @@ type Stdio struct {
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 
-		_, stdout, stderr, close := s.outputFactory(PrefixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
+		_, stdout, stderr, close := s.outputFactory(ctx, stepContext, PrefixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
 		//var stdin io.Reader
 
 		if stepContext.Stdout.Len() > 0 {
@@ -62,7 +62,10 @@ func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 		}
 
 		stepContext, err := next(ctx, stepContext)
-		close(err)
+
+		if err := close(err); err != nil {
+			return stepContext, err
+		}
 
 		stepContext.Stderr.Remove(stderr)
 		stepContext.Stdout.Remove(stdout)

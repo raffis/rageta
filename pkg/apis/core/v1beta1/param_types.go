@@ -33,6 +33,9 @@ const ParamsPrefix = "params"
 type InputParam struct {
 	// Name declares the name by which a parameter is referenced.
 	Name string `json:"name"`
+
+	CelExpression *string `json:"celExpression,omitempty"`
+
 	// Type is the user-specified type of the parameter. The possible types
 	// are currently "string", "array" and "object", and "string" is the default.
 	// +optional
@@ -375,10 +378,10 @@ var AllParamTypes = []ParamType{ParamTypeString, ParamTypeArray, ParamTypeObject
 // either an individual string or an array of strings.
 type ParamValue struct {
 	Type      ParamType // Represents the stored type of ParamValues.
-	StringVal string
+	StringVal string    `cel:"string"`
 	// +listType=atomic
-	ArrayVal  []string
-	ObjectVal map[string]string
+	ArrayVal  []string          `cel:"array"`
+	ObjectVal map[string]string `cel:"object"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaller interface.

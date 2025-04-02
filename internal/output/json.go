@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"io"
 
 	"github.com/go-logr/zapr"
@@ -9,10 +10,12 @@ import (
 )
 
 func JSON() processor.OutputFactory {
-	return func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
-		stdout, stderr = jsonWriter(name, stdout, stderr)
+	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
+		stdout, stderr = jsonWriter(stepName, stdout, stderr)
 
-		return stdin, stdout, stderr, func(err error) {}
+		return stdin, stdout, stderr, func(err error) error {
+			return nil
+		}
 	}
 }
 

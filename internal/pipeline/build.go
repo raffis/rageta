@@ -56,13 +56,45 @@ func NewBuilder(opts ...builderOption) *builder {
 	return e
 }
 
+func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1beta1.ParamValue) (map[string]v1beta1.ParamValue, error) {
+	result := make(map[string]v1beta1.ParamValue)
+	for _, v := range params {
+		v.SetDefaults()
+		input, hasInput := inputs[v.Name]
+
+		if v.Default == nil {
+			result[v.Name] = v1beta1.ParamValue{
+				Type: v.Type,
+			}
+		} else {
+			result[v.Name] = *v.Default
+		}
+
+		if v.Default == nil && !hasInput {
+			return result, NewErrMissingInput(v)
+		}
+
+		if hasInput {
+			if input.Type != v.Type {
+				return result, NewErrWrongInputType(v)
+			}
+
+			result[v.Name] = input
+		}
+	}
+
+	return result, nil
+}
+
 func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue) (processor.Executable, error) {
 	pipeline.SetDefaults()
 
-	fmt.Printf("inputs %#v -- %#v\n", inputs, len(inputs))
-	fmt.Printf("pipe %#v\n", pipeline.Inputs)
+	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
+	if err != nil {
+		return nil, err
+	}
 
-	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", inputs)
+	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", mappedInputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
 		return nil, err
@@ -88,7 +120,8 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 	}
 
 	return func(ctx context.Context) (processor.StepContext, error) {
-		stepCtx := processor.NewContext(contextDir, inputs)
+		stepCtx := processor.NewContext(contextDir)
+		stepCtx.Inputs = mappedInputs
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
 			return stepCtx, fmt.Errorf("failed to recover context: %w", err)
@@ -139,7 +172,7 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 
 		defer f.Close()
 
-		vars := &v1beta1.RuntimeVars{}
+		vars := &v1beta1.Context{}
 
 		b, err := io.ReadAll(f)
 		if err != nil {

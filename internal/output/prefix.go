@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"io"
 	"sync"
 
@@ -32,7 +33,7 @@ func Prefix(color bool) processor.OutputFactory {
 	writers := make(map[io.Writer]chan prefixMessage)
 	var count int32
 
-	return func(name string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
+	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
 		var stdoutCh chan prefixMessage
 		var stderrCh chan prefixMessage
 
@@ -55,9 +56,9 @@ func Prefix(color bool) processor.OutputFactory {
 			go writeBytes(stderr, writers[stderr])
 		}
 
-		stdoutWrapper, stderrWrapper := prefixWriter(name, stdoutCh, stderrCh, color)
+		stdoutWrapper, stderrWrapper := prefixWriter(stepName, stdoutCh, stderrCh, color)
 
-		return stdin, stdoutWrapper, stderrWrapper, func(err error) {
+		return stdin, stdoutWrapper, stderrWrapper, func(err error) error {
 			mu.Lock()
 			defer mu.Unlock()
 
@@ -68,6 +69,8 @@ func Prefix(color bool) processor.OutputFactory {
 				delete(writers, stdout)
 				delete(writers, stderr)
 			}
+
+			return nil
 		}
 	}
 }

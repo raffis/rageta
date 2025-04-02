@@ -25,14 +25,13 @@ var (
 	windowStyle    = lipgloss.NewStyle()
 	listStyle      = lipgloss.NewStyle().
 			BorderForeground(highlightColor).
-			Border(lipgloss.BlockBorder(), false, true, false, false).
-			PaddingTop(1)
+			Border(lipgloss.BlockBorder(), false, true, false, false)
 	listPaginatorStyle = lipgloss.NewStyle().Padding(1, 0, 2, 2)
 
 	leftFooterPaddingStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("#874BFD")).
-				Padding(0, 1).
-				Height(1)
+		//		Padding(0, 1).
+		Height(1)
 
 	scrollPercentageStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#000000")).

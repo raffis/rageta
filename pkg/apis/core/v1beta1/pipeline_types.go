@@ -44,7 +44,8 @@ func (p Pipeline) SetDefaults() {
 }
 
 type StepOptions struct {
-	If           string            `json:"if,omitempty"`
+	If           []IfCondition     `json:"if,omitempty"`
+	Inputs       []InputParam      `json:"inputs,omitempty"`
 	Timeout      metav1.Duration   `json:"timeout,omitempty"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
@@ -55,6 +56,10 @@ type StepOptions struct {
 	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Env          []string          `json:"env,omitempty"`
+}
+
+type IfCondition struct {
+	CelExpression *string `json:"celExpression,omitempty"`
 }
 
 type Matrix struct {

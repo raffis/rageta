@@ -30,23 +30,25 @@ type Inherit struct {
 	step     v1beta1.InheritStep
 }
 
-func (s *Inherit) Substitute() []interface{} {
-	return []interface{}{
-		&s.step.Pipeline,
-		s.step.Inputs,
-	}
-}
-
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		command, err := s.store.Lookup(ctx, s.step.Pipeline)
+		inherit := s.step.DeepCopy()
+
+		if err := Subst(stepContext.ToV1Beta1(),
+			&inherit.Pipeline,
+			inherit.Inputs,
+		); err != nil {
+			return stepContext, err
+		}
+
+		command, err := s.store.Lookup(ctx, inherit.Pipeline)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
 		command.PipelineSpec.Name = PrefixName(s.stepName, stepContext.NamePrefix)
 
-		cmd, err := s.builder.Build(command, s.step.Entrypoint, s.mapInputs(s.step.Inputs))
+		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs))
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to build pipeline: %w", err)
 		}

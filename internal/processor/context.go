@@ -17,7 +17,7 @@ type StepContext struct {
 	dir        string
 	dataDir    string
 	Matrix     map[string]string
-	inputs     map[string]v1beta1.ParamValue
+	Inputs     map[string]v1beta1.ParamValue
 	Steps      map[string]*StepResult
 	Envs       map[string]string
 	Containers map[string]cruntime.ContainerStatus
@@ -47,13 +47,13 @@ func (t *StepResult) Duration() time.Duration {
 	return t.EndedAt.Sub(t.StartedAt)
 }
 
-func NewContext(dir string, inputs map[string]v1beta1.ParamValue) StepContext {
+func NewContext(dir string) StepContext {
 	return StepContext{
 		dir:        dir,
 		dataDir:    filepath.Join(dir, "_data"),
-		inputs:     inputs,
-		Steps:      make(map[string]*StepResult),
 		Envs:       make(map[string]string),
+		Steps:      make(map[string]*StepResult),
+		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
 		Stderr:     ioext.New(),
@@ -62,12 +62,13 @@ func NewContext(dir string, inputs map[string]v1beta1.ParamValue) StepContext {
 }
 
 func (c StepContext) DeepCopy() StepContext {
-	copy := NewContext(c.dir, maps.Clone(c.inputs))
+	copy := NewContext(c.dir)
 	copy.NamePrefix = c.NamePrefix
 	copy.dataDir = c.dataDir
 	copy.Stdout.Add(c.Stdout.Unpack()...)
 	copy.Stderr.Add(c.Stderr.Unpack()...)
 	copy.Steps = maps.Clone(c.Steps)
+	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
 	copy.Containers = maps.Clone(c.Containers)
 	copy.Matrix = maps.Clone(c.Matrix)
@@ -79,8 +80,8 @@ func (t StepContext) Merge(c StepContext) StepContext {
 		t.Envs[k] = v
 	}
 
-	for k, v := range c.inputs {
-		t.inputs[k] = v
+	for k, v := range c.Inputs {
+		t.Inputs[k] = v
 	}
 
 	for k, v := range c.Steps {
@@ -102,7 +103,7 @@ func (t StepContext) Child() StepContext {
 	return StepContext{
 		dir:        t.dir,
 		dataDir:    t.dataDir,
-		inputs:     maps.Clone(t.inputs),
+		Inputs:     maps.Clone(t.Inputs),
 		Steps:      maps.Clone(t.Steps),
 		Envs:       maps.Clone(t.Envs),
 		Containers: maps.Clone(t.Containers),
@@ -110,7 +111,7 @@ func (t StepContext) Child() StepContext {
 	}
 }
 
-func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
+func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
 	for k, v := range vars.Containers {
 		t.Containers[k] = cruntime.ContainerStatus{
 			ContainerID: v.ContainerID,
@@ -130,14 +131,14 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.RuntimeVars) {
 	}
 }
 
-func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
-	vars := &v1beta1.RuntimeVars{
+func (t StepContext) ToV1Beta1() *v1beta1.Context {
+	vars := &v1beta1.Context{
 		TmpDir:     t.dataDir,
 		Steps:      make(map[string]*v1beta1.StepResult),
 		Containers: make(map[string]*v1beta1.ContainerStatus),
 		Matrix:     maps.Clone(t.Matrix),
 		Envs:       maps.Clone(t.Envs),
-		Inputs:     maps.Clone(t.inputs),
+		Inputs:     maps.Clone(t.Inputs),
 		Env:        t.Env,
 		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
@@ -172,68 +173,4 @@ func (t StepContext) ToV1Beta1() *v1beta1.RuntimeVars {
 		}
 	}
 	return vars
-}
-
-func (t StepContext) RuntimeVars() map[string]interface{} {
-	vars := t.ToV1Beta1()
-	mappedVars := map[string]interface{}{
-		"tmpDir":     vars.TmpDir,
-		"steps":      make(map[string]interface{}),
-		"inputs":     make(map[string]interface{}),
-		"containers": make(map[string]interface{}),
-		"matrix":     vars.Matrix,
-		"envs":       vars.Envs,
-		"env":        vars.Env,
-		"outputs":    make(map[string]interface{}),
-		"os":         vars.Os,
-		"Arch":       vars.Arch,
-	}
-
-	for k, v := range vars.Outputs {
-		mappedVars["outputs"].(map[string]interface{})[k] = map[string]interface{}{
-			"path": v.Path,
-		}
-	}
-
-	for k, v := range vars.Containers {
-		mappedVars["containers"].(map[string]interface{})[k] = map[string]interface{}{
-			"containerID": v.ContainerID,
-			"containerIP": v.ContainerIP,
-			"name":        v.Name,
-			"ready":       v.Ready,
-			"started":     v.Started,
-			"exitCode":    v.ExitCode,
-		}
-	}
-	for k, v := range vars.Inputs {
-		mappedVars["inputs"].(map[string]interface{})[k] = paramValueToAny(v)
-	}
-
-	for k, v := range vars.Steps {
-		mappedVars["steps"].(map[string]interface{})[k] = map[string]interface{}{
-			"tmpDir":  v.TmpDir,
-			"outputs": make(map[string]interface{}),
-		}
-
-		for ok, ov := range v.Outputs {
-			mappedVars["steps"].(map[string]interface{})[k].(map[string]interface{})["outputs"].(map[string]interface{})[ok] = paramValueToAny(ov)
-		}
-	}
-
-	return map[string]interface{}{
-		"context": mappedVars,
-	}
-}
-
-func paramValueToAny(v v1beta1.ParamValue) interface{} {
-	switch v.Type {
-	case v1beta1.ParamTypeString:
-		return v.StringVal
-	case v1beta1.ParamTypeArray:
-		return v.ArrayVal
-	case v1beta1.ParamTypeObject:
-		return v.ObjectVal
-	}
-
-	return v.StringVal
 }

@@ -24,14 +24,16 @@ type Env struct {
 	defaultEnv map[string]string
 }
 
-func (s *Env) Substitute() []interface{} {
-	return []interface{}{s.stepEnv}
-}
-
 func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		if len(stepContext.Envs) == 0 && s.defaultEnv != nil {
 			stepContext.Envs = s.defaultEnv
+		}
+
+		if err := Subst(stepContext.ToV1Beta1(),
+			s.stepEnv,
+		); err != nil {
+			return stepContext, err
 		}
 
 		for k, v := range s.stepEnv {

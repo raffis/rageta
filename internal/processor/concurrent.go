@@ -10,7 +10,7 @@ import (
 
 func WithConcurrent(pool pond.Pool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Concurrent == nil || pool == nil {
+		if spec.Concurrent == nil || len(spec.Concurrent.Refs) == 0 || pool == nil {
 			return nil
 		}
 

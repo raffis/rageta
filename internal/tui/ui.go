@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -36,7 +35,14 @@ func (m *model) AddTasks(tasks ...*Task) {
 	for _, task := range tasks {
 		if m.sizeMsg != nil {
 			task.viewport.Width = m.sizeMsg.Width
-			task.viewport.Height = m.sizeMsg.Height - 1
+			task.viewport.Height = m.sizeMsg.Height - 2
+
+			if task.Matrix() == "" {
+				task.viewport.Height = m.sizeMsg.Height - 2
+			} else {
+				task.viewport.Height = m.sizeMsg.Height - 3
+			}
+
 			task.ready = true
 		}
 
@@ -100,7 +106,7 @@ func NewModel() *model {
 	return m
 }
 
-func Run(model tea.Model) {
+func Program(model tea.Model) *tea.Program {
 	zone.NewGlobal()
 
 	p := tea.NewProgram(
@@ -115,15 +121,13 @@ func Run(model tea.Model) {
 		}
 	}()
 
-	if _, err := p.Run(); err != nil {
-		fmt.Println("could not run program:", err)
-		os.Exit(1)
-	}
+	return p
 }
 
 type navItem interface {
 	getViewport() *pager.Model
 	GetName() string
+	Matrix() string
 }
 
 func (m *model) Report(b []byte) {
@@ -231,14 +235,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		h, _ := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-1)
+		m.list.SetSize(msg.Width-h, msg.Height-2)
 
 		for _, task := range m.list.Items() {
 			if task != nil {
 				task.(navItem).getViewport().Width = msg.Width
-				task.(navItem).getViewport().Height = msg.Height - 1
-			}
 
+				if task.(navItem).Matrix() == "" {
+					task.(navItem).getViewport().Height = msg.Height - 2
+				} else {
+					task.(navItem).getViewport().Height = msg.Height - 3
+				}
+			}
 		}
 
 		m.sizeMsg = &msg
@@ -272,21 +280,38 @@ func (m *model) View() string {
 		return m.loader.View()
 	}
 
-	task := selectedItem.(navItem)
-
 	list := listStyle.Render(m.list.View())
+	task := selectedItem.(navItem)
+	matrix := task.Matrix()
+
+	var right []string
+	if matrix == "" {
+		right = []string{
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(task.GetName()),
+			zone.Mark("pager", task.getViewport().View()),
+			m.queryView(lipgloss.Width(list)),
+		}
+	} else {
+		right = []string{
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(task.GetName()),
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(matrix),
+			zone.Mark("pager", task.getViewport().View()),
+			m.queryView(lipgloss.Width(list)),
+		}
+	}
+
 	return zone.Scan(
 		lipgloss.JoinHorizontal(
 			lipgloss.Bottom,
 			lipgloss.JoinVertical(
 				lipgloss.Top,
+				leftFooterPaddingStyle.Width(lipgloss.Width(list)).Render(""),
 				zone.Mark("tasks", list),
 				m.footerLeftView(lipgloss.Width(list)),
 			),
 			lipgloss.JoinVertical(
 				lipgloss.Top,
-				zone.Mark("pager", task.getViewport().View()),
-				m.queryView(lipgloss.Width(list)),
+				right...,
 			),
 		),
 	)
