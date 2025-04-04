@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithStdioRedirect() ProcessorBuilder {
+func WithStdioRedirect(tee bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Streams == nil {
 			return nil
@@ -17,6 +18,7 @@ func WithStdioRedirect() ProcessorBuilder {
 
 		stdio := &StdioRedirect{
 			streams: spec.Streams,
+			tee:     tee,
 		}
 
 		return stdio
@@ -25,6 +27,7 @@ func WithStdioRedirect() ProcessorBuilder {
 
 type StdioRedirect struct {
 	streams *v1beta1.Streams
+	tee     bool
 }
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
@@ -48,30 +51,42 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 		}
 
 		if s.streams.Stdout != nil {
+			if !s.tee {
+				stepContext.Stdout = io.Discard
+			}
+
 			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
 				return stepContext, fmt.Errorf("failed to redirect stdout: %w", err)
 			}
 
 			defer outFile.Close()
-			stepContext.Stdout.Add(outFile)
+			stepContext.AdditionalStdout = append(stepContext.AdditionalStdout, outFile)
 			stdoutRedirect = outFile
 		}
 
 		if s.streams.Stderr != nil {
+			if !s.tee {
+				stepContext.Stdout = io.Discard
+			}
+
 			outFile, err := os.OpenFile(s.streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
 				return stepContext, fmt.Errorf("failed to redirect stderr: %w", err)
 			}
 
 			defer outFile.Close()
-			stepContext.Stdout.Add(outFile)
+			stepContext.AdditionalStderr = append(stepContext.AdditionalStderr, outFile)
 			stderrRedirect = outFile
 		}
 
 		stepContext, err := next(ctx, stepContext)
-		stepContext.Stdout.Remove(stdoutRedirect)
-		stepContext.Stderr.Remove(stderrRedirect)
+		stepContext.AdditionalStdout = slices.DeleteFunc(stepContext.AdditionalStdout, func(w io.Writer) bool {
+			return w == stdoutRedirect
+		})
+		stepContext.AdditionalStderr = slices.DeleteFunc(stepContext.AdditionalStderr, func(w io.Writer) bool {
+			return w == stderrRedirect
+		})
 
 		return stepContext, err
 	}, nil

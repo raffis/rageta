@@ -11,7 +11,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer, teardown chan Teardown) ProcessorBuilder {
+func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
 			return nil
@@ -73,7 +73,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		stepContext, err := s.exec(ctx, stepContext, pod, stepContext.Stdin)
+		stepContext, err := s.exec(ctx, stepContext, pod)
 
 		if err != nil {
 			return stepContext, fmt.Errorf("container %s failed: %w", pod.Name, err)
@@ -113,8 +113,12 @@ func envSlice(env map[string]string) []string {
 	return envs
 }
 
-func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod, stdin io.Reader) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, stdin, stepContext.Stdout, stepContext.Stderr)
+func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod) (StepContext, error) {
+	await, err := s.driver.CreatePod(ctx, pod, stepContext.Stdin,
+		io.MultiWriter(append(stepContext.AdditionalStdout, stepContext.Stdout)...),
+		io.MultiWriter(append(stepContext.AdditionalStderr, stepContext.Stderr)...),
+	)
+
 	if err != nil {
 		return stepContext, err
 	}

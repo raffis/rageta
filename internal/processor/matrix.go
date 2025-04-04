@@ -50,16 +50,6 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
 
-		/*step, err := pipeline.Step(s.stepName)
-		if err != nil {
-			return stepContext, err
-		}
-
-		next, err := step.Entrypoint()
-		if err != nil {
-			return stepContext, err
-		}*/
-
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err
@@ -98,20 +88,24 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			for _, step := range res.stepContext.Steps {
 				for paramKey, paramValue := range step.Outputs {
+					var param v1beta1.ParamValue
+
+					if _, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
+						param = v1beta1.ParamValue{
+							Type: v1beta1.ParamTypeArray,
+						}
+					} else {
+						param = stepContext.Steps[s.stepName].Outputs[paramKey]
+					}
+
 					if paramValue.Type == v1beta1.ParamTypeString {
-						var param v1beta1.ParamValue
-						if _, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
-							param = v1beta1.ParamValue{
-								Type:     v1beta1.ParamTypeArray,
-								ArrayVal: []string{paramValue.StringVal},
-							}
-						} else {
+						if paramValue.StringVal != "" {
 							param = stepContext.Steps[s.stepName].Outputs[paramKey]
 							param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 						}
-
-						stepContext.Steps[s.stepName].Outputs[paramKey] = param
 					}
+
+					stepContext.Steps[s.stepName].Outputs[paramKey] = param
 				}
 			}
 

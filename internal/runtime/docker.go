@@ -196,6 +196,10 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
+
+	//	fmt.Printf("\nmult stdout %#v\n\n", stdout)
+	//	fmt.Printf("\nmult stderr %#v\n\n", stderr)
+
 		_, err = stdcopy.StdCopy(stdout, stderr, streams.Reader)
 		if err != nil {
 			return fmt.Errorf("demux container streams failed: %w", err)

@@ -8,26 +8,26 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/raffis/rageta/internal/ioext"
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 type StepContext struct {
-	dir        string
-	dataDir    string
-	Matrix     map[string]string
-	Inputs     map[string]v1beta1.ParamValue
-	Steps      map[string]*StepResult
-	Envs       map[string]string
-	Containers map[string]cruntime.ContainerStatus
-	NamePrefix string
-	Env        string
-	Parent     string
-	Outputs    []OutputParam
-	Stdin      io.Reader
-	Stdout     *ioext.MultiWriter
-	Stderr     *ioext.MultiWriter
+	dir              string
+	dataDir          string
+	Matrix           map[string]string
+	Inputs           map[string]v1beta1.ParamValue
+	Steps            map[string]*StepResult
+	Envs             map[string]string
+	Containers       map[string]cruntime.ContainerStatus
+	NamePrefix       string
+	Env              string
+	Outputs          []OutputParam
+	Stdin            io.Reader
+	Stdout           io.Writer
+	Stderr           io.Writer
+	AdditionalStdout []io.Writer
+	AdditionalStderr []io.Writer
 }
 
 type OutputParam struct {
@@ -56,8 +56,6 @@ func NewContext(dir string) StepContext {
 		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
-		Stderr:     ioext.New(),
-		Stdout:     ioext.New(),
 	}
 }
 
@@ -65,8 +63,11 @@ func (c StepContext) DeepCopy() StepContext {
 	copy := NewContext(c.dir)
 	copy.NamePrefix = c.NamePrefix
 	copy.dataDir = c.dataDir
-	copy.Stdout.Add(c.Stdout.Unpack()...)
-	copy.Stderr.Add(c.Stderr.Unpack()...)
+	copy.Stdout = c.Stdout
+	copy.Stderr = c.Stderr
+	copy.Stdin = c.Stdin
+	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
+	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
 	copy.Steps = maps.Clone(c.Steps)
 	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
@@ -97,18 +98,6 @@ func (t StepContext) Merge(c StepContext) StepContext {
 
 func (t StepContext) TmpDir() string {
 	return t.dir
-}
-
-func (t StepContext) Child() StepContext {
-	return StepContext{
-		dir:        t.dir,
-		dataDir:    t.dataDir,
-		Inputs:     maps.Clone(t.Inputs),
-		Steps:      maps.Clone(t.Steps),
-		Envs:       maps.Clone(t.Envs),
-		Containers: maps.Clone(t.Containers),
-		Matrix:     maps.Clone(t.Matrix),
-	}
 }
 
 func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
