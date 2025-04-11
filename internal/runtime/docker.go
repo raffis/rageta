@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/distribution/reference"
@@ -44,18 +43,11 @@ func WithHidePullOutput(hide bool) func(*docker) {
 	}
 }
 
-func WithVolumes(volumes []string) func(*docker) {
-	return func(d *docker) {
-		d.volumes = volumes
-	}
-}
-
 type docker struct {
 	client         *dockerclient.Client
 	self           *types.ContainerJSON
 	ctx            context.Context
 	hidePullOutput bool
-	volumes        []string
 }
 
 func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
@@ -196,10 +188,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
-
-	//	fmt.Printf("\nmult stdout %#v\n\n", stdout)
-	//	fmt.Printf("\nmult stderr %#v\n\n", stderr)
-
 		_, err = stdcopy.StdCopy(stdout, stderr, streams.Reader)
 		if err != nil {
 			return fmt.Errorf("demux container streams failed: %w", err)
@@ -374,21 +362,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	}
 
 	mounts := []mount.Mount{}
-
-	for _, volume := range d.volumes {
-		v := strings.Split(volume, ":")
-		if len(v) != 2 {
-			return nil, errors.New("invalid volume mount provided")
-		}
-
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: v[0],
-			Target: v[1],
-		})
-	}
-
-	for _, volume := range pod.Spec.Volumes {
+	for _, volume := range container.Volumes {
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: volume.HostPath,

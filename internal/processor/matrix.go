@@ -39,11 +39,6 @@ var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		//Only proceed if we are not in a a matrix child context
-		/*if len(stepContext.Matrix) > 0 {
-			return next(ctx, stepContext)
-		}*/
-
 		if err := Subst(stepContext.ToV1Beta1(),
 			s.matrix,
 		); err != nil {
@@ -86,23 +81,28 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for res := range results {
 			done++
 
-			for _, step := range res.stepContext.Steps {
+			for stepName, step := range res.stepContext.Steps {
+				//Copy matrix step result to current context
+				if _, ok := stepContext.Steps[stepName]; ok {
+					continue
+				}
+
+				stepContext.Steps[PrefixName(stepName, res.stepContext.NamePrefix)] = step
+
+				//Unify matrix outputs into an array output for the current step
 				for paramKey, paramValue := range step.Outputs {
 					var param v1beta1.ParamValue
 
-					if _, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
+					if val, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
 						param = v1beta1.ParamValue{
 							Type: v1beta1.ParamTypeArray,
 						}
 					} else {
-						param = stepContext.Steps[s.stepName].Outputs[paramKey]
+						param = val
 					}
 
-					if paramValue.Type == v1beta1.ParamTypeString {
-						if paramValue.StringVal != "" {
-							param = stepContext.Steps[s.stepName].Outputs[paramKey]
-							param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
-						}
+					if paramValue.Type == v1beta1.ParamTypeString && paramValue.StringVal != "" {
+						param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 					}
 
 					stepContext.Steps[s.stepName].Outputs[paramKey] = param

@@ -8,8 +8,12 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithProgress() ProcessorBuilder {
+func WithProgress(progress bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
+		if !progress {
+			return nil
+		}
+
 		return &Progress{
 			stepName: spec.Name,
 		}
@@ -29,13 +33,17 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			quit <- struct{}{}
 		}()
 
+		progress := func() {
+			if stepContext.Stderr != nil {
+				stepContext.Stderr.Write([]byte(fmt.Sprintf("Waiting for %s to finish\n", s.stepName)))
+			}
+		}
+
 		go func() {
 			for {
 				select {
 				case <-ticker.C:
-					if stepContext.Stderr != nil {
-						stepContext.Stderr.Write([]byte(fmt.Sprintf("Waiting for %s to finish\n", s.stepName)))
-					}
+					progress()
 				case <-quit:
 					ticker.Stop()
 					return
@@ -43,6 +51,7 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}()
 
+		progress()
 		return next(ctx, stepContext)
 	}, nil
 }

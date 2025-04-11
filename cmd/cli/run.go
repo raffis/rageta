@@ -70,6 +70,7 @@ type runFlags struct {
 	logDetached         bool          `env:"LOG_DETACHED"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	deep                bool          `env:"DEEP"`
+	noProgress          bool          `env:"NO_PROGRESS"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -97,6 +98,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], raw]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `none` dumps all tasks directly without any modification.")
 	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
 	runCmd.Flags().BoolVarP(&runArgs.deep, "deep", "", false, "Add steps from inherited pipelines to report")
+	runCmd.Flags().BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
 	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
@@ -226,12 +228,9 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 
 		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
 
-		runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
-
 		driver := runtime.NewDocker(c,
 			runtime.WithContext(ctx),
 			runtime.WithHidePullOutput(hideOutput),
-			runtime.WithVolumes(runArgs.volumes),
 		)
 
 		return driver, err
@@ -274,6 +273,7 @@ func stepBuilder(
 	builder *processor.PipelineBuilder,
 	store storage.Interface,
 	pool pond.Pool,
+	template v1beta1.Template,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper {
 		/*if ui := uiOutput(); ui != nil && spec.Run != nil {
@@ -284,9 +284,10 @@ func stepBuilder(
 			processor.WithRecover(),
 			processor.WithReport(resultStore, uniqueName),
 			processor.WithRetry(),
-			processor.WithProgress(),
+			processor.WithProgress(!runArgs.noProgress),
 			processor.WithInput(celEnv),
 			processor.WithResult(),
+			processor.WithOutput(),
 			processor.WithMatrix(pool),
 			processor.WithStdio(outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithOtelTrace(logger, tracer),
@@ -295,11 +296,11 @@ func stepBuilder(
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
 			processor.WithAllowFailure(),
-			processor.WithOutput(),
 			processor.WithTimeout(),
 			processor.WithSkipDone(runArgs.skipDone),
 			processor.WithIf(celEnv),
 			processor.WithNeeds(),
+			processor.WithTemplate(template),
 			processor.WithTmpDir(),
 			processor.WithEnv(envs),
 			processor.WithStdioRedirect(runArgs.tee),
@@ -327,6 +328,11 @@ func runRun(c *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if rootArgs.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, rootArgs.timeout)
+		defer cancel()
+	}
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
@@ -381,6 +387,7 @@ func runRun(c *cobra.Command, args []string) error {
 	celEnv, err := cel.NewEnv(
 		ext.Strings(),
 		ext.Math(),
+		ext.Lists(),
 		ext.Encoders(),
 		ext.Sets(),
 		ext.NativeTypes(ext.ParseStructTags(true),
@@ -447,10 +454,14 @@ func runRun(c *cobra.Command, args []string) error {
 	}()
 
 	pool := pond.NewPool(runArgs.maxConcurrent)
+	template, err := buildTemplate(contextDir)
+	if err != nil {
+		return fmt.Errorf("failed to create template: %w", err)
+	}
 
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(stepBuilder(logger, envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool)),
+		pipeline.WithStepBuilder(stepBuilder(logger, envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool, template)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -468,11 +479,11 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var result error
 	command.PipelineSpec.Name = ""
-	cmd, err := builder.Build(command, runArgs.entrypoint, inputs)
+	cmd, err := builder.Build(command, runArgs.entrypoint, inputs, nil)
 	if err != nil {
 		result = err
 	} else {
-		_, result = cmd(ctx)
+		_, _, result = cmd(ctx)
 	}
 
 	if tuiDone != nil {
@@ -497,6 +508,7 @@ func runRun(c *cobra.Command, args []string) error {
 		}
 
 		<-tuiDone
+		tuiApp.ReleaseTerminal()
 	}
 
 	cancel()
@@ -555,6 +567,27 @@ func runRun(c *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func buildTemplate(contextDir string) (v1beta1.Template, error) {
+	tmpl := v1beta1.Template{}
+
+	runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
+
+	for i, volume := range runArgs.volumes {
+		v := strings.Split(volume, ":")
+		if len(v) != 2 {
+			return tmpl, errors.New("invalid volume mount provided")
+		}
+
+		tmpl.VolumeMounts = append(tmpl.VolumeMounts, v1beta1.VolumeMount{
+			Name:       fmt.Sprintf("volume-%d", i),
+			MountPath:  v[1],
+			SourcePath: v[0],
+		})
+	}
+
+	return tmpl, nil
 }
 
 func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1beta1.ParamValue, error) {

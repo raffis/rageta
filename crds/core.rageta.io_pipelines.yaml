@@ -322,6 +322,17 @@ spec:
                       type: boolean
                     tty:
                       type: boolean
+                    volumeMounts:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                          sourcePath:
+                            type: string
+                        type: object
+                      type: array
                     workDir:
                       type: string
                   type: object
@@ -355,6 +366,40 @@ spec:
                         path:
                           type: string
                       type: object
+                  type: object
+                template:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    image:
+                      type: string
+                    restartPolicy:
+                      type: string
+                    script:
+                      type: string
+                    stdin:
+                      type: boolean
+                    tty:
+                      type: boolean
+                    volumeMounts:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                          sourcePath:
+                            type: string
+                        type: object
+                      type: array
+                    workDir:
+                      type: string
                   type: object
                 timeout:
                   type: string

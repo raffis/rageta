@@ -9,8 +9,10 @@ var (
 	taskWarningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00"))
 	taskRunningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFC0CB"))
 
+	taskTitle = lipgloss.NewStyle().Bold(true)
+
 	lineNumberPrefixStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#333333")).
+				Background(lipgloss.AdaptiveColor{Light: "#174BFD", Dark: "#1D56F4"}).
 				Foreground(lipgloss.Color("#FFFFFF")).
 				MarginRight(1).
 				AlignHorizontal(lipgloss.Right)

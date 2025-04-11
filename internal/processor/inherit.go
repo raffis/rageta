@@ -15,19 +15,21 @@ func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuil
 		}
 
 		return &Inherit{
-			stepName: spec.Name,
-			step:     *spec.Inherit,
-			store:    store,
-			builder:  builder,
+			stepName:          spec.Name,
+			step:              *spec.Inherit,
+			store:             store,
+			builder:           builder,
+			propagateTemplate: spec.Inherit.PropagateTemplate,
 		}
 	}
 }
 
 type Inherit struct {
-	builder  PipelineBuilder
-	store    storage.Interface
-	stepName string
-	step     v1beta1.InheritStep
+	builder           PipelineBuilder
+	store             storage.Interface
+	stepName          string
+	step              v1beta1.InheritStep
+	propagateTemplate bool
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -48,12 +50,17 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		command.PipelineSpec.Name = PrefixName(s.stepName, stepContext.NamePrefix)
 
-		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs))
+		var template *v1beta1.Template
+		if s.propagateTemplate {
+			template = stepContext.Template
+		}
+
+		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), template)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		outputContext, err := cmd(ctx)
+		outputContext, outputs, err := cmd(ctx)
 
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to execute pipeline: %w", err)
@@ -61,9 +68,9 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		s.mergeContext(outputContext, stepContext)
 
-		/*for _, result := range command.PipelineSpec.Outputs {
-			stepContext.Steps[s.stepName].Outputs[result.Name] = result.
-		}*/
+		for name, result := range outputs {
+			stepContext.Steps[s.stepName].Outputs[name] = result
+		}
 
 		return next(ctx, stepContext)
 	}, nil

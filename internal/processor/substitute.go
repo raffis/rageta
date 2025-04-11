@@ -7,7 +7,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-var substituteExpression = regexp.MustCompile(`\$\(([^)($]+)\)`)
+var substituteExpression = regexp.MustCompile(`(\$?\$)\(([^)($]+)\)`)
 
 type Indexable interface {
 	Index() map[string]string
@@ -96,15 +96,19 @@ func parseExpression(str string, vars map[string]string) (string, error) {
 
 	newStr := substituteExpression.ReplaceAllStringFunc(str, func(m string) string {
 		parts := substituteExpression.FindStringSubmatch(m)
-		if len(parts) != 2 {
-			err := fmt.Errorf("invalid expression wrapper %s -- %#v", m, parts)
+		if len(parts) != 3 {
+			err := fmt.Errorf("invalid expression wrapper `%s` -- %#v", m, parts)
 			if parseError == nil {
 				parseError = err
 			}
 			return m
 		}
 
-		if v, ok := vars[parts[1]]; ok {
+		if parts[1] == `$$` {
+			return fmt.Sprintf("$(%s)", parts[2])
+		}
+
+		if v, ok := vars[parts[2]]; ok {
 			return v
 		} else {
 			return parts[0]

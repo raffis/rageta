@@ -81,7 +81,7 @@ func (t *Task) Matrix() string {
 }
 
 func (t *Task) Title() string {
-	return zone.Mark(t.name, fmt.Sprintf("%s %s", t.status.Render(), t.name))
+	return zone.Mark(t.name, fmt.Sprintf("%s %s", t.status.Render(), ellipsis(t.name, 30)))
 }
 
 func (t *Task) Description() string {
@@ -93,6 +93,17 @@ func (t *Task) Description() string {
 		return zone.Mark(t.name, fmt.Sprintf("[%s]", t.finished.Sub(t.started).Round(time.Millisecond*10)))
 	}
 
+}
+
+func ellipsis(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	if maxLen < 3 {
+		maxLen = 3
+	}
+	return string(runes[0:maxLen-3]) + "..."
 }
 
 func (t *Task) FilterValue() string {

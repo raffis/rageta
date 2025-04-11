@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
@@ -60,6 +61,18 @@ func (p *pipeline) withStep(name string, processors []processor.Bootstraper) err
 	})
 
 	return nil
+}
+
+func (p *pipeline) EntrypointName() (string, error) {
+	if p.entrypoint == "" {
+		if len(p.steps) == 0 {
+			return "", errors.New("no steps defined")
+		}
+
+		return p.steps[0].name, nil
+	}
+
+	return p.entrypoint, nil
 }
 
 func (p *pipeline) Entrypoint(name string) (processor.Next, error) {

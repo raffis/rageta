@@ -287,13 +287,13 @@ func (m *model) View() string {
 	var right []string
 	if matrix == "" {
 		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(task.GetName()),
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
 			zone.Mark("pager", task.getViewport().View()),
 			m.queryView(lipgloss.Width(list)),
 		}
 	} else {
 		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(task.GetName()),
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
 			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(matrix),
 			zone.Mark("pager", task.getViewport().View()),
 			m.queryView(lipgloss.Width(list)),

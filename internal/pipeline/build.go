@@ -86,7 +86,7 @@ func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1bet
 	return result, nil
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, template *v1beta1.Template) (processor.Executable, error) {
 	pipeline.SetDefaults()
 
 	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
@@ -119,28 +119,45 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		}
 	}
 
-	return func(ctx context.Context) (processor.StepContext, error) {
+	return func(ctx context.Context) (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx := processor.NewContext(contextDir)
 		stepCtx.Inputs = mappedInputs
+		stepCtx.Template = template
+		outputs := make(map[string]v1beta1.ParamValue)
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
-			return stepCtx, fmt.Errorf("failed to recover context: %w", err)
+			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
 		}
 
 		stepCtx.NamePrefix = pipeline.PipelineSpec.Name
 		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
 
-		if err := storeContext(stepCtx, contextDir); err != nil {
-			if pipelineErr != nil {
-				return stepCtx, fmt.Errorf("failed to store context: %w; pipeline error: %w", err, pipelineErr)
+		for _, pipelineOutput := range pipeline.Outputs {
+			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {
+				continue
 			}
 
-			return stepCtx, fmt.Errorf("failed to store context: %w", err)
+			from := pipelineOutput.Name
+			if pipelineOutput.From != "" {
+				from = pipelineOutput.From
+			}
+
+			if output, ok := stepCtx.Steps[pipelineOutput.Step.Name].Outputs[from]; ok {
+				outputs[pipelineOutput.Name] = output
+			}
+		}
+
+		if err := storeContext(stepCtx, contextDir); err != nil {
+			if pipelineErr != nil {
+				return stepCtx, outputs, fmt.Errorf("failed to store context: %w; pipeline error: %w", err, pipelineErr)
+			}
+
+			return stepCtx, outputs, fmt.Errorf("failed to store context: %w", err)
 		}
 
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
 
-		return stepCtx, pipelineErr
+		return stepCtx, outputs, pipelineErr
 	}, nil
 }
 

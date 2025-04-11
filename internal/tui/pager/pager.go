@@ -427,11 +427,20 @@ func (m Model) View() string {
 	var lines []string
 	if m.ShowLineNumbers {
 		lineNumber := max(0, m.YOffset)
-		width := lipgloss.Width(fmt.Sprintf("%d", clamp(m.YOffset+m.Height, lineNumber, len(m.lines))))
+		maxLines := len(m.lines)
+		if maxLines < h {
+			maxLines = h
+		}
+
+		width := lipgloss.Width(fmt.Sprintf("%d", clamp(m.YOffset+m.Height, lineNumber, maxLines)))
 		for _, line := range m.visibleLines() {
 			lineNumber++
 			//line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
+		}
+
+		for ; lineNumber < h; lineNumber++ {
+			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
 		lines = m.visibleLines()

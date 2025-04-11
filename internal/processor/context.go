@@ -3,7 +3,6 @@ package processor
 import (
 	"io"
 	"maps"
-	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -28,11 +27,12 @@ type StepContext struct {
 	Stderr           io.Writer
 	AdditionalStdout []io.Writer
 	AdditionalStderr []io.Writer
+	Template         *v1beta1.Template
 }
 
 type OutputParam struct {
 	Name string
-	file *os.File
+	Path string
 }
 
 type StepResult struct {
@@ -68,11 +68,25 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Stdin = c.Stdin
 	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
 	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
-	copy.Steps = maps.Clone(c.Steps)
+
+	for k, v := range c.Steps {
+		copy.Steps[k] = &StepResult{
+			StartedAt: v.StartedAt,
+			EndedAt:   v.EndedAt,
+			Outputs:   maps.Clone(v.Outputs),
+			Error:     v.Error,
+			DataDir:   v.DataDir,
+		}
+	}
+
 	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
 	copy.Containers = maps.Clone(c.Containers)
 	copy.Matrix = maps.Clone(c.Matrix)
+	if c.Template != nil {
+		copy.Template = c.Template.DeepCopy()
+	}
+
 	return copy
 }
 
@@ -158,7 +172,7 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 
 	for _, v := range t.Outputs {
 		vars.Outputs[v.Name] = &v1beta1.Output{
-			Path: v.file.Name(),
+			Path: v.Path,
 		}
 	}
 	return vars

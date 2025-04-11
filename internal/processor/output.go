@@ -29,6 +29,8 @@ type Output struct {
 
 func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		outputs := make(map[string]*os.File, len(s.outputs))
+
 		for _, output := range s.outputs {
 			outputTmp, err := os.CreateTemp(stepContext.TmpDir(), "output")
 			if err != nil {
@@ -40,8 +42,10 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			stepContext.Outputs = append(stepContext.Outputs, OutputParam{
 				Name: output.Name,
-				file: outputTmp,
+				Path: outputTmp.Name(),
 			})
+
+			outputs[output.Name] = outputTmp
 		}
 
 		stepContext, err := next(ctx, stepContext)
@@ -49,10 +53,9 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, err
 		}
 
-		for i, output := range stepContext.Outputs {
-			output.file.Sync()
-
-			b, err := io.ReadAll(output.file)
+		for name, output := range outputs {
+			output.Sync()
+			b, err := io.ReadAll(output)
 			if err != nil {
 				return stepContext, err
 			}
@@ -63,8 +66,7 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return stepContext, fmt.Errorf("param output failed: %w", err)
 			}
 
-			stepContext.Steps[s.stepName].Outputs[output.Name] = value
-			stepContext.Outputs = append(stepContext.Outputs[:i], stepContext.Outputs[i+1:]...)
+			stepContext.Steps[s.stepName].Outputs[name] = value
 		}
 
 		return stepContext, err

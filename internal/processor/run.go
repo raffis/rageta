@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/raffis/rageta/internal/runtime"
@@ -72,6 +73,21 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
 
+		for _, vol := range run.VolumeMounts {
+			srcPath, err := filepath.Abs(vol.SourcePath)
+			if err != nil {
+				return stepContext, fmt.Errorf("failed to get absolute path: %w", err)
+			}
+
+			container.Volumes = append(container.Volumes, runtime.Volume{
+				Name:     vol.Name,
+				HostPath: srcPath,
+				Path:     vol.MountPath,
+			})
+		}
+
+		s.containerSpec(&container, stepContext.Template)
+
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
 		stepContext, err := s.exec(ctx, stepContext, pod)
 
@@ -81,6 +97,45 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		return next(ctx, stepContext)
 	}, nil
+}
+
+func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
+	if template == nil {
+		return
+	}
+
+	if len(container.Args) == 0 {
+		container.Args = template.Args
+	}
+	if len(container.Command) == 0 {
+		container.Command = template.Command
+	}
+
+	if container.PWD == "" {
+		container.PWD = template.WorkDir
+	}
+
+	if container.Image == "" {
+		container.Image = template.Image
+	}
+
+	for _, templateVol := range template.VolumeMounts {
+		hasVolume := false
+		for _, containerVol := range container.Volumes {
+			if templateVol.Name == containerVol.Name {
+				hasVolume = true
+				break
+			}
+		}
+
+		if !hasVolume {
+			container.Volumes = append(container.Volumes, runtime.Volume{
+				Name:     templateVol.Name,
+				HostPath: templateVol.SourcePath,
+				Path:     templateVol.MountPath,
+			})
+		}
+	}
 }
 
 func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
@@ -131,16 +186,13 @@ func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Po
 		done := make(chan error)
 		go func() {
 			if err := await.Wait(); err != nil {
-				fmt.Printf("\nWAIT ERR %#v\n\n", err)
 				done <- err
 			}
-			fmt.Printf("\nWAIT done\n\n", err)
 
 			done <- nil
 		}()
 
 		s.teardown <- func(ctx context.Context) error {
-			fmt.Printf("\n\nTEARDOWN\n\n")
 			return <-done
 		}
 

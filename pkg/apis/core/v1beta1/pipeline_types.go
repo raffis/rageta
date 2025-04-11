@@ -27,14 +27,13 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Name             string         `json:"name,omitempty"`
-	Entrypoint       string         `json:"entrypoint,omitempty"`
-	ShortDescription string         `json:"shortDescription,omitempty"`
-	LongDescription  string         `json:"longDescription,omitempty"`
-	Inputs           InputParams    `json:"inputs,omitempty"`
-	Outputs          OutputParams   `json:"outputs,omitempty"`
-	Steps            []Step         `json:"steps,omitempty"`
-	SubPipelines     []PipelineSpec `json:"subPipelines,omitempty"`
+	Name             string       `json:"name,omitempty"`
+	Entrypoint       string       `json:"entrypoint,omitempty"`
+	ShortDescription string       `json:"shortDescription,omitempty"`
+	LongDescription  string       `json:"longDescription,omitempty"`
+	Inputs           InputParams  `json:"inputs,omitempty"`
+	Outputs          OutputParams `json:"outputs,omitempty"`
+	Steps            []Step       `json:"steps,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -48,6 +47,7 @@ type StepOptions struct {
 	Inputs       []InputParam      `json:"inputs,omitempty"`
 	Timeout      metav1.Duration   `json:"timeout,omitempty"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
+	Template     *Template         `json:"template,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []StepOutputParam `json:"outputs,omitempty"`
 	Generates    []Generate        `json:"generates,omitempty"`
@@ -114,6 +114,8 @@ type RunStep struct {
 	Container `json:",inline"`
 }
 
+type Template Container
+
 type Container struct {
 	Stdin         bool          `json:"stdin,omitempty"`
 	TTY           bool          `json:"tty,omitempty"`
@@ -123,6 +125,13 @@ type Container struct {
 	Script        string        `json:"script,omitempty"`
 	WorkDir       string        `json:"workDir,omitempty"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
+	VolumeMounts  []VolumeMount `json:"volumeMounts,omitempty"`
+}
+
+type VolumeMount struct {
+	Name       string `json:"name,omitempty"`
+	MountPath  string `json:"mountPath,omitempty"`
+	SourcePath string `json:"sourcePath,omitempty"`
 }
 
 type AwaitStatus string
@@ -141,9 +150,10 @@ var (
 )
 
 type InheritStep struct {
-	Pipeline   string  `json:"pipeline,omitempty"`
-	Entrypoint string  `json:"entrypoint,omitempty"`
-	Inputs     []Param `json:"inputs,omitempty"`
+	Pipeline          string  `json:"pipeline,omitempty"`
+	Entrypoint        string  `json:"entrypoint,omitempty"`
+	PropagateTemplate bool    `json:"propagateTemplate,omitempty"`
+	Inputs            []Param `json:"inputs,omitempty"`
 }
 
 type Streams struct {
