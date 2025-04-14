@@ -69,6 +69,7 @@ func substParam(param *v1beta1.Param, vars map[string]string) (*v1beta1.ParamVal
 	switch param.Value.Type {
 	case v1beta1.ParamTypeString:
 		result, err := parseExpression(param.Value.StringVal, vars)
+
 		if err != nil {
 			return nil, err
 		}

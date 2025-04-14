@@ -391,6 +391,7 @@ func (paramValues *ParamValue) UnmarshalJSON(value []byte) error {
 	// data so we need to check if it is empty.
 	if len(value) == 0 {
 		paramValues.Type = ParamTypeString
+		paramValues.StringVal = ""
 		return nil
 	}
 	if value[0] == '[' {

@@ -63,8 +63,14 @@ type IfCondition struct {
 }
 
 type Matrix struct {
-	Params   []Param `json:"params,omitempty"`
-	FailFast bool    `json:"failFast,omitempty"`
+	Params   []Param        `json:"params,omitempty"`
+	Include  []IncludeParam `json:"include,omitempty"`
+	FailFast bool           `json:"failFast,omitempty"`
+}
+
+type IncludeParam struct {
+	Name   string  `json:"name,omitempty"`
+	Params []Param `json:"params,omitempty"`
 }
 
 type Retry struct {

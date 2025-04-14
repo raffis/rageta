@@ -21,6 +21,7 @@ func WithMatrix(pool pond.Pool) ProcessorBuilder {
 
 		return &Matrix{
 			matrix:   spec.Matrix.Params,
+			include:  spec.Matrix.Include,
 			failFast: spec.Matrix.FailFast,
 			stepName: spec.Name,
 			pool:     pool,
@@ -30,6 +31,7 @@ func WithMatrix(pool pond.Pool) ProcessorBuilder {
 
 type Matrix struct {
 	matrix   []v1beta1.Param
+	include  []v1beta1.IncludeParam
 	failFast bool
 	stepName string
 	pool     pond.Pool
@@ -39,13 +41,20 @@ var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		substitute := []any{s.matrix}
+		for _, group := range s.include {
+			substitute = append(substitute, group.Params)
+		}
+
+		//fmt.Printf("%#v ================> %#v\n", stepContext.Inputs, stepContext.ToV1Beta1().Index())
+
 		if err := Subst(stepContext.ToV1Beta1(),
-			s.matrix,
+			substitute...,
 		); err != nil {
 			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
 
-		matrixes, err := s.build(s.matrix)
+		matrixes, err := s.build(s.matrix, s.include)
 		if err != nil {
 			return stepContext, err
 		}
@@ -130,11 +139,11 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Matrix) build(matrix []v1beta1.Param) (map[string]map[string]string, error) {
+func (s *Matrix) build(params []v1beta1.Param, include []v1beta1.IncludeParam) (map[string]map[string]string, error) {
 	var keys []string
 	mapData := make(map[string]v1beta1.ParamValue)
 
-	for _, param := range matrix {
+	for _, param := range params {
 		keys = append(keys, param.Name)
 		mapData[param.Name] = param.Value
 	}
@@ -142,8 +151,33 @@ func (s *Matrix) build(matrix []v1beta1.Param) (map[string]map[string]string, er
 	result := make(map[string]map[string]string)
 
 	s.generateCombinations(mapData, keys, 0, make(map[string]string), &result)
+	s.combineIncludes(result, include)
 
 	return result, nil
+}
+
+func (s *Matrix) combineIncludes(matrix map[string]map[string]string, include []v1beta1.IncludeParam) {
+	for matrixKey, matrixParams := range matrix {
+
+		for currentMatrixKey, currentMatrixValue := range matrixParams {
+			for _, includeGroup := range include {
+				combine := false
+				for _, includeParam := range includeGroup.Params {
+					if includeParam.Name == currentMatrixKey && includeParam.Value.StringVal == currentMatrixValue {
+						combine = true
+					}
+				}
+
+				if combine {
+					for _, includeParam := range includeGroup.Params {
+						matrixParams[includeParam.Name] = includeParam.Value.StringVal
+					}
+				}
+
+				matrix[matrixKey] = matrixParams
+			}
+		}
+	}
 }
 
 func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, keys []string, index int, currentCombination map[string]string, result *map[string]map[string]string) {
@@ -170,6 +204,7 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 				combinationValues = append(combinationValues, fmt.Sprintf("%v", val))
 			}
 		}
+
 		// Join the values using "-" as a delimiter to form the unique key
 		uniqueKey := strings.Join(combinationValues, "-")
 		(*result)[uniqueKey] = combinationCopy
