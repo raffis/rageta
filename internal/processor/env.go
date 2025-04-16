@@ -3,17 +3,16 @@ package processor
 import (
 	"context"
 	"os"
-	"strings"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithEnv(defaultEnv map[string]string) ProcessorBuilder {
+func WithEnv(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		return &Env{
 			stepName:   spec.Name,
 			defaultEnv: defaultEnv,
-			stepEnv:    envMap(spec.Env),
+			stepEnv:    envMap(spec.Env, osEnv),
 		}
 	}
 }
@@ -40,7 +39,7 @@ func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			stepContext.Envs[k] = v
 		}
 
-		envTmp, err := os.CreateTemp(stepContext.TmpDir(), "env")
+		envTmp, err := os.CreateTemp(stepContext.Dir, "env")
 		if err != nil {
 			return stepContext, err
 		}
@@ -66,11 +65,18 @@ func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func envMap(envs []string) map[string]string {
+func envMap(envs []v1beta1.EnvVar, osEnv map[string]string) map[string]string {
 	env := make(map[string]string)
 	for _, e := range envs {
-		s := strings.SplitN(e, "=", 2)
-		env[s[0]] = s[1]
+		if e.Value == nil {
+			if v, ok := osEnv[e.Name]; ok {
+				env[e.Name] = v
+			}
+
+			continue
+		}
+
+		env[e.Name] = *e.Value
 	}
 
 	return env

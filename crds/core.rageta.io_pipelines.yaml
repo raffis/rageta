@@ -98,6 +98,8 @@ spec:
           outputs:
             items:
               properties:
+                from:
+                  type: string
                 name:
                   description: Name declares the name by which a parameter is referenced.
                   type: string
@@ -145,7 +147,12 @@ spec:
                   type: string
                 env:
                   items:
-                    type: string
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
                   type: array
                 generates:
                   items:
@@ -181,6 +188,8 @@ spec:
                       type: array
                     pipeline:
                       type: string
+                    propagateTemplate:
+                      type: boolean
                   type: object
                 inputs:
                   items:
@@ -240,6 +249,27 @@ spec:
                   properties:
                     failFast:
                       type: boolean
+                    include:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          params:
+                            items:
+                              description: Param declares an ParamValues to use for
+                                the parameter called name.
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                        type: object
+                      type: array
                     params:
                       items:
                         description: Param declares an ParamValues to use for the
@@ -404,9 +434,6 @@ spec:
                 timeout:
                   type: string
               type: object
-            type: array
-          subPipelines:
-            items: {}
             type: array
         type: object
     served: true

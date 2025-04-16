@@ -46,15 +46,13 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			substitute = append(substitute, group.Params)
 		}
 
-		//fmt.Printf("%#v ================> %#v\n", stepContext.Inputs, stepContext.ToV1Beta1().Index())
-
 		if err := Subst(stepContext.ToV1Beta1(),
 			substitute...,
 		); err != nil {
 			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
 
-		matrixes, err := s.build(s.matrix, s.include)
+		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err
 		}
@@ -71,13 +69,18 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
+			for paramKey, paramValue := range matrix {
+				copyContext.Tags[fmt.Sprintf("matrix/%s", paramKey)] = paramValue
+			}
+
+			s.combineIncludes(matrix, s.include)
 			copyContext.Matrix = matrix
 
 			hasher := sha1.New()
 			hasher.Write([]byte(matrixKey))
 			b := hasher.Sum(nil)
 
-			copyContext.NamePrefix = PrefixName(hex.EncodeToString(b)[:6], copyContext.NamePrefix)
+			copyContext.NamePrefix = PrefixName(copyContext.NamePrefix, hex.EncodeToString(b)[:6])
 
 			s.pool.Go(func() {
 				t, err := next(ctx, copyContext)
@@ -139,7 +142,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Matrix) build(params []v1beta1.Param, include []v1beta1.IncludeParam) (map[string]map[string]string, error) {
+func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, error) {
 	var keys []string
 	mapData := make(map[string]v1beta1.ParamValue)
 
@@ -151,30 +154,24 @@ func (s *Matrix) build(params []v1beta1.Param, include []v1beta1.IncludeParam) (
 	result := make(map[string]map[string]string)
 
 	s.generateCombinations(mapData, keys, 0, make(map[string]string), &result)
-	s.combineIncludes(result, include)
 
 	return result, nil
 }
 
-func (s *Matrix) combineIncludes(matrix map[string]map[string]string, include []v1beta1.IncludeParam) {
-	for matrixKey, matrixParams := range matrix {
+func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1beta1.IncludeParam) {
+	for currentMatrixKey, currentMatrixValue := range matrixParams {
+		for _, includeGroup := range include {
+			combine := false
+			for _, includeParam := range includeGroup.Params {
+				if includeParam.Name == currentMatrixKey && includeParam.Value.StringVal == currentMatrixValue {
+					combine = true
+				}
+			}
 
-		for currentMatrixKey, currentMatrixValue := range matrixParams {
-			for _, includeGroup := range include {
-				combine := false
+			if combine {
 				for _, includeParam := range includeGroup.Params {
-					if includeParam.Name == currentMatrixKey && includeParam.Value.StringVal == currentMatrixValue {
-						combine = true
-					}
+					matrixParams[includeParam.Name] = includeParam.Value.StringVal
 				}
-
-				if combine {
-					for _, includeParam := range includeGroup.Params {
-						matrixParams[includeParam.Name] = includeParam.Value.StringVal
-					}
-				}
-
-				matrix[matrixKey] = matrixParams
 			}
 		}
 	}

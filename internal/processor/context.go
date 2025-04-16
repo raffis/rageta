@@ -3,7 +3,6 @@ package processor
 import (
 	"io"
 	"maps"
-	"path/filepath"
 	"runtime"
 	"time"
 
@@ -12,13 +11,14 @@ import (
 )
 
 type StepContext struct {
-	dir              string
-	dataDir          string
+	Dir              string
+	DataDir          string
 	Matrix           map[string]string
 	Inputs           map[string]v1beta1.ParamValue
 	Steps            map[string]*StepResult
 	Envs             map[string]string
 	Containers       map[string]cruntime.ContainerStatus
+	Tags             map[string]string
 	NamePrefix       string
 	Env              string
 	Outputs          []OutputParam
@@ -47,22 +47,22 @@ func (t *StepResult) Duration() time.Duration {
 	return t.EndedAt.Sub(t.StartedAt)
 }
 
-func NewContext(dir string) StepContext {
+func NewContext() StepContext {
 	return StepContext{
-		dir:        dir,
-		dataDir:    filepath.Join(dir, "_data"),
 		Envs:       make(map[string]string),
 		Steps:      make(map[string]*StepResult),
 		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
+		Tags:       make(map[string]string),
 	}
 }
 
 func (c StepContext) DeepCopy() StepContext {
-	copy := NewContext(c.dir)
+	copy := NewContext()
 	copy.NamePrefix = c.NamePrefix
-	copy.dataDir = c.dataDir
+	copy.Dir = c.Dir
+	copy.DataDir = c.DataDir
 	copy.Stdout = c.Stdout
 	copy.Stderr = c.Stderr
 	copy.Stdin = c.Stdin
@@ -79,6 +79,7 @@ func (c StepContext) DeepCopy() StepContext {
 		}
 	}
 
+	copy.Tags = maps.Clone(c.Tags)
 	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
 	copy.Containers = maps.Clone(c.Containers)
@@ -110,10 +111,6 @@ func (t StepContext) Merge(c StepContext) StepContext {
 	return t
 }
 
-func (t StepContext) TmpDir() string {
-	return t.dir
-}
-
 func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
 	for k, v := range vars.Containers {
 		t.Containers[k] = cruntime.ContainerStatus{
@@ -136,7 +133,7 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
 
 func (t StepContext) ToV1Beta1() *v1beta1.Context {
 	vars := &v1beta1.Context{
-		TmpDir:     t.dataDir,
+		TmpDir:     t.DataDir,
 		Steps:      make(map[string]*v1beta1.StepResult),
 		Containers: make(map[string]*v1beta1.ContainerStatus),
 		Matrix:     maps.Clone(t.Matrix),

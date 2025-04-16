@@ -48,8 +48,8 @@ func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 }
 
 func PrefixName(name, prefix string) string {
-	if prefix == "" {
-		return name
+	if name == "" {
+		return prefix
 	}
 
 	return fmt.Sprintf("%s-%s", prefix, name)

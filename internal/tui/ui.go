@@ -37,7 +37,7 @@ func (m *model) AddTasks(tasks ...*Task) {
 			task.viewport.Width = m.sizeMsg.Width
 			task.viewport.Height = m.sizeMsg.Height - 2
 
-			if task.Matrix() == "" {
+			if task.TagsAsString() == "" {
 				task.viewport.Height = m.sizeMsg.Height - 2
 			} else {
 				task.viewport.Height = m.sizeMsg.Height - 3
@@ -127,7 +127,7 @@ func Program(model tea.Model) *tea.Program {
 type navItem interface {
 	getViewport() *pager.Model
 	GetName() string
-	Matrix() string
+	TagsAsString() string
 }
 
 func (m *model) Report(b []byte) {
@@ -241,7 +241,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if task != nil {
 				task.(navItem).getViewport().Width = msg.Width
 
-				if task.(navItem).Matrix() == "" {
+				if task.(navItem).TagsAsString() == "" {
 					task.(navItem).getViewport().Height = msg.Height - 2
 				} else {
 					task.(navItem).getViewport().Height = msg.Height - 3
@@ -282,10 +282,10 @@ func (m *model) View() string {
 
 	list := listStyle.Render(m.list.View())
 	task := selectedItem.(navItem)
-	matrix := task.Matrix()
+	tags := task.TagsAsString()
 
 	var right []string
-	if matrix == "" {
+	if tags == "" {
 		right = []string{
 			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
 			zone.Mark("pager", task.getViewport().View()),
@@ -294,7 +294,7 @@ func (m *model) View() string {
 	} else {
 		right = []string{
 			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(matrix),
+			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(tags),
 			zone.Mark("pager", task.getViewport().View()),
 			m.queryView(lipgloss.Width(list)),
 		}

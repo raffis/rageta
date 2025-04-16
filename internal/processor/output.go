@@ -32,7 +32,7 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		outputs := make(map[string]*os.File, len(s.outputs))
 
 		for _, output := range s.outputs {
-			outputTmp, err := os.CreateTemp(stepContext.TmpDir(), "output")
+			outputTmp, err := os.CreateTemp(stepContext.Dir, "output")
 			if err != nil {
 				return stepContext, err
 			}

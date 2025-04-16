@@ -48,14 +48,10 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
-		command.PipelineSpec.Name = PrefixName(s.stepName, stepContext.NamePrefix)
+		inheritCtx := stepContext.DeepCopy()
+		inheritCtx.NamePrefix = PrefixName(s.stepName, stepContext.NamePrefix)
 
-		var template *v1beta1.Template
-		if s.propagateTemplate {
-			template = stepContext.Template
-		}
-
-		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), template)
+		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to build pipeline: %w", err)
 		}

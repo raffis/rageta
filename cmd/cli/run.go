@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,7 +29,7 @@ import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/report"
-	"github.com/raffis/rageta/internal/runtime"
+	cruntime "github.com/raffis/rageta/internal/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -98,6 +99,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], raw]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `none` dumps all tasks directly without any modification.")
 	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
 	runCmd.Flags().BoolVarP(&runArgs.deep, "deep", "", false, "Add steps from inherited pipelines to report")
+	runCmd.Flags().IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
 	runCmd.Flags().BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
 	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
@@ -218,7 +220,7 @@ func isPossiblyInsideKube() bool {
 	return set
 }
 
-func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (runtime.Interface, error) {
+func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (cruntime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
 		c, err := runArgs.dockerOptions.Build()
@@ -228,7 +230,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 
 		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
 
-		driver := runtime.NewDocker(c,
+		driver := cruntime.NewDocker(c,
 			runtime.WithContext(ctx),
 			runtime.WithHidePullOutput(hideOutput),
 		)
@@ -262,10 +264,11 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 
 func stepBuilder(
 	logger logr.Logger,
+	osEnv,
 	envs map[string]string,
 	celEnv *cel.Env,
-	driver runtime.Interface,
-	imagePullPolicy runtime.PullImagePolicy,
+	driver cruntime.Interface,
+	imagePullPolicy cruntime.PullImagePolicy,
 	tracer trace.Tracer, meter metric.Meter,
 	outputFactory processor.OutputFactory,
 	resultStore processor.ResultStore,
@@ -275,14 +278,10 @@ func stepBuilder(
 	pool pond.Pool,
 	template v1beta1.Template,
 ) pipeline.StepBuilder {
-	return func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper {
-		/*if ui := uiOutput(); ui != nil && spec.Run != nil {
-			ui.AddTasks(tui.NewTask(uniqueName))
-		}*/
-
+	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
-			processor.WithReport(resultStore, uniqueName),
+			processor.WithReport(resultStore),
 			processor.WithRetry(),
 			processor.WithProgress(!runArgs.noProgress),
 			processor.WithInput(celEnv),
@@ -302,7 +301,7 @@ func stepBuilder(
 			processor.WithNeeds(),
 			processor.WithTemplate(template),
 			processor.WithTmpDir(),
-			processor.WithEnv(envs),
+			processor.WithEnv(osEnv, envs),
 			processor.WithStdioRedirect(runArgs.tee),
 			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, teardown),
 			processor.WithInherit(*builder, store),
@@ -461,7 +460,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(stepBuilder(logger, envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool, template)),
+		pipeline.WithStepBuilder(stepBuilder(logger, osEnvMap(), envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool, template)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -479,7 +478,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var result error
 	command.PipelineSpec.Name = ""
-	cmd, err := builder.Build(command, runArgs.entrypoint, inputs, nil)
+	cmd, err := builder.Build(command, runArgs.entrypoint, inputs, processor.NewContext())
 	if err != nil {
 		result = err
 	} else {
@@ -604,7 +603,6 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 	}
 
 	for _, v := range params {
-		//v.SetDefaults()
 		if input, ok := steps[v.Name]; ok {
 			x := result[v.Name]
 
@@ -621,24 +619,32 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 			x.ArrayVal = input
 			result[v.Name] = x
 		}
-
-		return result, nil
 	}
 
 	return result, nil
 }
 
-func imagePullPolicy() (runtime.PullImagePolicy, error) {
+func imagePullPolicy() (cruntime.PullImagePolicy, error) {
 	switch runArgs.pull {
 	case pullImageAlways.String():
-		return runtime.PullImagePolicyAlways, nil
+		return cruntime.PullImagePolicyAlways, nil
 	case pullImageMissing.String():
-		return runtime.PullImagePolicyMissing, nil
+		return cruntime.PullImagePolicyMissing, nil
 	case pullImageNever.String():
-		return runtime.PullImagePolicyNever, nil
+		return cruntime.PullImagePolicyNever, nil
 	default:
 		return "", fmt.Errorf("invalid pull policy given: %s", runArgs.pull)
 	}
+}
+
+func osEnvMap() map[string]string {
+	envs := make(map[string]string)
+	for _, v := range os.Environ() {
+		s := strings.SplitN(v, "=", 2)
+		envs[s[0]] = s[1]
+	}
+
+	return envs
 }
 
 func envMap() map[string]string {

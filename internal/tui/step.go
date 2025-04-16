@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -10,7 +12,7 @@ import (
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string, matrix map[string]string) *Task {
+func NewTask(name string, tags map[string]string) *Task {
 	viewport := pager.New(0, 0)
 	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
@@ -22,7 +24,7 @@ func NewTask(name string, matrix map[string]string) *Task {
 		viewport: &viewport,
 		name:     name,
 		status:   StepStatusWaiting,
-		matrix:   matrix,
+		tags:     tags,
 	}
 
 	return task
@@ -35,7 +37,7 @@ type Task struct {
 	ready    bool
 	started  time.Time
 	finished time.Time
-	matrix   map[string]string
+	tags     map[string]string
 }
 
 func (t *Task) getViewport() *pager.Model {
@@ -71,10 +73,10 @@ func (t *Task) SetStatus(status StepStatus) {
 	t.status = status
 }
 
-func (t *Task) Matrix() string {
-	var params []string
-	for k, v := range t.matrix {
-		params = append(params, fmt.Sprintf("%s: %s", k, v))
+func (t *Task) TagsAsString() string {
+	params := make([]string, len(t.tags))
+	for _, tagName := range slices.Sorted(maps.Keys(t.tags)) {
+		params = append(params, fmt.Sprintf("%s: %s", tagName, t.tags[tagName]))
 	}
 
 	return strings.Join(params, " · ")

@@ -13,7 +13,7 @@ func UI(ui tui.UI) processor.OutputFactory {
 	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
 		task, err := ui.GetTask(stepName)
 		if err != nil {
-			task = tui.NewTask(stepName, stepContext.Matrix)
+			task = tui.NewTask(stepName, stepContext.Tags)
 			ui.AddTasks(task)
 		}
 

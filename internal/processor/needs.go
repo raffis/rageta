@@ -47,7 +47,9 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return stepContext, err
 			}
 
-			outCtx, err := next(ctx, NewContext(stepContext.dir))
+			parentCtx := NewContext()
+			parentCtx.Dir = stepContext.Dir
+			outCtx, err := next(ctx, parentCtx)
 			outCtx.Inputs = stepContext.Inputs
 			stepContext.Merge(outCtx)
 

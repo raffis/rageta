@@ -55,7 +55,12 @@ type StepOptions struct {
 	Needs        []StepReference   `json:"needs,omitempty"`
 	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
-	Env          []string          `json:"env,omitempty"`
+	Env          []EnvVar          `json:"env,omitempty"`
+}
+
+type EnvVar struct {
+	Name  string  `json:"name,omitempty"`
+	Value *string `json:"value,omitempty"`
 }
 
 type IfCondition struct {

@@ -23,7 +23,7 @@ type TmpDir struct {
 
 func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		dataDir := filepath.Join(stepContext.dir, PrefixName(s.stepName, stepContext.NamePrefix), "_data")
+		dataDir := filepath.Join(stepContext.Dir, PrefixName(s.stepName, stepContext.NamePrefix), "_data")
 
 		if _, err := os.Stat(dataDir); errors.Is(err, os.ErrNotExist) {
 			err := os.MkdirAll(dataDir, 0700)
@@ -32,7 +32,7 @@ func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		stepContext.dataDir = dataDir
+		stepContext.DataDir = dataDir
 		stepContext, err := next(ctx, stepContext)
 		stepContext.Steps[s.stepName].DataDir = dataDir
 		return stepContext, err

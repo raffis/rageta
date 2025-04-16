@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
@@ -23,7 +24,7 @@ type builder struct {
 }
 
 type builderOption func(*builder)
-type StepBuilder func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper
+type StepBuilder func(spec v1beta1.Step) []processor.Bootstraper
 
 func WithLogger(logger logr.Logger) func(*builder) {
 	return func(s *builder) {
@@ -86,7 +87,7 @@ func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1bet
 	return result, nil
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, template *v1beta1.Template) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.StepContext) (processor.Executable, error) {
 	pipeline.SetDefaults()
 
 	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
@@ -120,16 +121,18 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 	}
 
 	return func(ctx context.Context) (processor.StepContext, map[string]v1beta1.ParamValue, error) {
-		stepCtx := processor.NewContext(contextDir)
+		stepCtx.Dir = contextDir
+		stepCtx.DataDir = filepath.Join(contextDir, "_data")
+		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
+		stepCtx.Steps = make(map[string]*processor.StepResult)
 		stepCtx.Inputs = mappedInputs
-		stepCtx.Template = template
+
 		outputs := make(map[string]v1beta1.ParamValue)
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
 			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
 		}
 
-		stepCtx.NamePrefix = pipeline.PipelineSpec.Name
 		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
 
 		for _, pipelineOutput := range pipeline.Outputs {
@@ -217,7 +220,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	for _, spec := range command.Steps {
 		name := spec.Name
 		origName := name
-		processors := e.stepBuilder(spec, processor.PrefixName(spec.Name, command.PipelineSpec.Name))
+		processors := e.stepBuilder(spec)
 
 		if err := p.withStep(origName, processors); err != nil {
 			return p, err
