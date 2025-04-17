@@ -134,7 +134,7 @@ type Container struct {
 	Command       []string      `json:"command,omitempty"`
 	Args          []string      `json:"args,omitempty"`
 	Script        string        `json:"script,omitempty"`
-	WorkDir       string        `json:"workDir,omitempty"`
+	WorkingDir    string        `json:"workingDir,omitempty"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
 	VolumeMounts  []VolumeMount `json:"volumeMounts,omitempty"`
 }

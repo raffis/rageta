@@ -231,8 +231,8 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
 
 		driver := cruntime.NewDocker(c,
-			runtime.WithContext(ctx),
-			runtime.WithHidePullOutput(hideOutput),
+			cruntime.WithContext(ctx),
+			cruntime.WithHidePullOutput(hideOutput),
 		)
 
 		return driver, err
@@ -558,7 +558,7 @@ func runRun(c *cobra.Command, args []string) error {
 	if result != nil {
 		fmt.Fprintln(os.Stderr, result.Error())
 
-		if res, ok := result.(*runtime.Result); ok {
+		if res, ok := result.(*cruntime.Result); ok {
 			os.Exit(res.ExitCode)
 		}
 
@@ -687,8 +687,12 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 
 	//logger.WithSink(logr.)
 	go func() {
-		tuiApp.Run()
-		tuiApp.ReleaseTerminal()
+		_, err := tuiApp.Run()
+
+		if err == nil {
+			tuiApp.ReleaseTerminal()
+		}
+
 		cancel()
 		tuiDone <- struct{}{}
 	}()

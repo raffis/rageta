@@ -48,8 +48,8 @@ func (s *Template) merge(to *v1beta1.Template, from *v1beta1.Template) error {
 		to.Command = from.Command
 	}
 
-	if to.WorkDir == "" {
-		to.WorkDir = from.WorkDir
+	if to.WorkingDir == "" {
+		to.WorkingDir = from.WorkingDir
 	}
 
 	if to.Image == "" {

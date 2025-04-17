@@ -84,6 +84,12 @@ func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1bet
 		}
 	}
 
+	for name := range inputs {
+		if _, ok := result[name]; !ok {
+			return result, NewErrUnknownInput(name)
+		}
+	}
+
 	return result, nil
 }
 

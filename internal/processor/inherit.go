@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/raffis/rageta/internal/storage"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -63,10 +64,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		s.mergeContext(outputContext, stepContext)
-
-		for name, result := range outputs {
-			stepContext.Steps[s.stepName].Outputs[name] = result
-		}
+		maps.Copy(stepContext.Steps[s.stepName].Outputs, outputs)
 
 		return next(ctx, stepContext)
 	}, nil

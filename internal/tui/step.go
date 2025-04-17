@@ -74,7 +74,7 @@ func (t *Task) SetStatus(status StepStatus) {
 }
 
 func (t *Task) TagsAsString() string {
-	params := make([]string, len(t.tags))
+	var params []string
 	for _, tagName := range slices.Sorted(maps.Keys(t.tags)) {
 		params = append(params, fmt.Sprintf("%s: %s", tagName, t.tags[tagName]))
 	}

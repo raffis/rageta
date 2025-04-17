@@ -49,7 +49,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			run.Args,
 			run.Command,
 			&run.Script,
-			&run.WorkDir,
+			&run.WorkingDir,
 		); err != nil {
 			return stepContext, err
 		}
@@ -69,7 +69,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Command:         command,
 			Args:            args,
 			Env:             envSlice(stepContext.Envs),
-			PWD:             run.WorkDir,
+			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
 
@@ -112,7 +112,7 @@ func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.
 	}
 
 	if container.PWD == "" {
-		container.PWD = template.WorkDir
+		container.PWD = template.WorkingDir
 	}
 
 	if container.Image == "" {
