@@ -2,25 +2,28 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithPipe() ProcessorBuilder {
+func WithPipe(tee bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Pipe == nil {
+		if spec.Pipe == nil || len(spec.Pipe.Refs) == 0 {
 			return nil
 		}
 
 		return &Pipe{
 			refs: refSlice(spec.Pipe.Refs),
+			tee:  tee,
 		}
 	}
 }
 
 type Pipe struct {
 	refs []string
+	tee  bool
 }
 
 type stepWrapper struct {
@@ -52,9 +55,14 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		results := make(chan concurrentResult)
 		var stdout *io.PipeReader
+		var errs []error
 
 		for i := range stepEntrypoints {
 			copy := stepContext.DeepCopy()
+
+			if !s.tee {
+				copy.Stdout = io.Discard
+			}
 
 			if len(steps) == i+1 {
 				copy.Stdin = stdout
@@ -67,7 +75,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					copy.Stdin = stdout
 				}
 
-				copy.Stdout.Add(w)
+				copy.AdditionalStdout = append(copy.AdditionalStdout, w)
 				stdout = r
 			}
 
@@ -96,12 +104,17 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			done++
 			stepContext = stepContext.Merge(res.stepContext)
 			if res.err != nil && AbortOnError(res.err) {
+				errs = append(errs, res.err)
 				cancel()
 			}
 
 			if done == len(steps) {
 				break WAIT
 			}
+		}
+
+		if len(errs) > 0 {
+			return stepContext, errors.Join(errs...)
 		}
 
 		return next(ctx, stepContext)

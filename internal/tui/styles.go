@@ -9,8 +9,10 @@ var (
 	taskWarningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00"))
 	taskRunningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFC0CB"))
 
+	taskTitle = lipgloss.NewStyle().Bold(true)
+
 	lineNumberPrefixStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#333333")).
+				Background(lipgloss.AdaptiveColor{Light: "#174BFD", Dark: "#1D56F4"}).
 				Foreground(lipgloss.Color("#FFFFFF")).
 				MarginRight(1).
 				AlignHorizontal(lipgloss.Right)
@@ -25,14 +27,13 @@ var (
 	windowStyle    = lipgloss.NewStyle()
 	listStyle      = lipgloss.NewStyle().
 			BorderForeground(highlightColor).
-			Border(lipgloss.BlockBorder(), false, true, false, false).
-			PaddingTop(1)
+			Border(lipgloss.BlockBorder(), false, true, false, false)
 	listPaginatorStyle = lipgloss.NewStyle().Padding(1, 0, 2, 2)
 
 	leftFooterPaddingStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("#874BFD")).
-				Padding(0, 1).
-				Height(1)
+		//		Padding(0, 1).
+		Height(1)
 
 	scrollPercentageStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#000000")).

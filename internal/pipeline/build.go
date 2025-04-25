@@ -8,10 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
@@ -25,7 +24,7 @@ type builder struct {
 }
 
 type builderOption func(*builder)
-type StepBuilder func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper
+type StepBuilder func(spec v1beta1.Step) []processor.Bootstraper
 
 func WithLogger(logger logr.Logger) func(*builder) {
 	return func(s *builder) {
@@ -58,8 +57,51 @@ func NewBuilder(opts ...builderOption) *builder {
 	return e
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]string) (processor.Executable, error) {
-	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", inputs)
+func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1beta1.ParamValue) (map[string]v1beta1.ParamValue, error) {
+	result := make(map[string]v1beta1.ParamValue)
+	for _, v := range params {
+		v.SetDefaults()
+		input, hasInput := inputs[v.Name]
+
+		if v.Default == nil {
+			result[v.Name] = v1beta1.ParamValue{
+				Type: v.Type,
+			}
+		} else {
+			result[v.Name] = *v.Default
+		}
+
+		if v.Default == nil && !hasInput {
+			return result, NewErrMissingInput(v)
+		}
+
+		if hasInput {
+			if input.Type != v.Type {
+				return result, NewErrWrongInputType(v)
+			}
+
+			result[v.Name] = input
+		}
+	}
+
+	for name := range inputs {
+		if _, ok := result[name]; !ok {
+			return result, NewErrUnknownInput(name)
+		}
+	}
+
+	return result, nil
+}
+
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.StepContext) (processor.Executable, error) {
+	pipeline.SetDefaults()
+
+	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", mappedInputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
 		return nil, err
@@ -84,29 +126,47 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		}
 	}
 
-	return func(ctx context.Context) (processor.StepContext, error) {
-		parsed, err := e.parseInputs(pipeline, inputs)
-		if err != nil {
-			return processor.StepContext{}, err
-		}
+	return func(ctx context.Context) (processor.StepContext, map[string]v1beta1.ParamValue, error) {
+		stepCtx.Dir = contextDir
+		stepCtx.DataDir = filepath.Join(contextDir, "_data")
+		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
+		stepCtx.Steps = make(map[string]*processor.StepResult)
+		stepCtx.Inputs = mappedInputs
 
-		e.logger.Info("parsed inputs", "inputs", parsed)
-		stepCtx := processor.NewContext(contextDir, parsed)
+		outputs := make(map[string]v1beta1.ParamValue)
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
-			return stepCtx, fmt.Errorf("failed to recover context: %w", err)
+			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
 		}
 
-		stepCtx.NamePrefix = pipeline.PipelineSpec.Name
 		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
 
+		for _, pipelineOutput := range pipeline.Outputs {
+			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {
+				continue
+			}
+
+			from := pipelineOutput.Name
+			if pipelineOutput.From != "" {
+				from = pipelineOutput.From
+			}
+
+			if output, ok := stepCtx.Steps[pipelineOutput.Step.Name].Outputs[from]; ok {
+				outputs[pipelineOutput.Name] = output
+			}
+		}
+
 		if err := storeContext(stepCtx, contextDir); err != nil {
-			return stepCtx, fmt.Errorf("failed to store context: %w", err)
+			if pipelineErr != nil {
+				return stepCtx, outputs, fmt.Errorf("failed to store context: %w; pipeline error: %w", err, pipelineErr)
+			}
+
+			return stepCtx, outputs, fmt.Errorf("failed to store context: %w", err)
 		}
 
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
 
-		return stepCtx, pipelineErr
+		return stepCtx, outputs, pipelineErr
 	}, nil
 }
 
@@ -138,7 +198,7 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 
 		defer f.Close()
 
-		vars := &v1beta1.RuntimeVars{}
+		vars := &v1beta1.Context{}
 
 		b, err := io.ReadAll(f)
 		if err != nil {
@@ -156,55 +216,6 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 	return nil
 }
 
-func (e *builder) parseInputs(pipeline v1beta1.Pipeline, inputs map[string]string) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
-
-	for _, flagOpts := range pipeline.Inputs {
-		var value interface{}
-		setInput, hasInput := inputs[flagOpts.Name]
-
-		switch {
-		case hasInput:
-			switch flagOpts.Type {
-			case v1beta1.InputTypeStringSlice:
-				value = strings.Split(setInput, ",")
-			case v1beta1.InputTypeString:
-				value = setInput
-			case v1beta1.InputTypeBool:
-				boolValue, err := strconv.ParseBool(setInput)
-				if err != nil {
-					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
-				}
-
-				value = boolValue
-			}
-
-			result[flagOpts.Name] = value
-		case len(flagOpts.Default) > 0 || !flagOpts.Required:
-			switch flagOpts.Type {
-			case v1beta1.InputTypeStringSlice:
-				value = []string{}
-			case v1beta1.InputTypeString:
-				value = ""
-			case v1beta1.InputTypeBool:
-				value = false
-			}
-
-			if len(flagOpts.Default) > 0 {
-				if err := json.Unmarshal(flagOpts.Default, &value); err != nil {
-					return result, fmt.Errorf("failed parse input %s: %w", flagOpts.Name, err)
-				}
-			}
-
-			result[flagOpts.Name] = value
-		case flagOpts.Required:
-			return result, fmt.Errorf("missing required input `%s`", flagOpts.Name)
-		}
-	}
-
-	return result, nil
-}
-
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
 		name:       command.PipelineSpec.Name,
@@ -215,7 +226,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	for _, spec := range command.Steps {
 		name := spec.Name
 		origName := name
-		processors := e.stepBuilder(spec, processor.PrefixName(spec.Name, command.PipelineSpec.Name))
+		processors := e.stepBuilder(spec)
 
 		if err := p.withStep(origName, processors); err != nil {
 			return p, err

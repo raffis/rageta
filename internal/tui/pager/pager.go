@@ -106,6 +106,7 @@ func (m Model) ScrollPercent() float64 {
 // Sync command should also be called.
 func (m *Model) SetContent(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n") // normalize line endings
+	s = strings.ReplaceAll(s, "\r", "")     // remove carriage returns (avoid breaking the ui)
 	m.lines = strings.Split(s, "\n")
 
 	if m.YOffset > len(m.lines)-1 || m.AutoScroll {
@@ -122,6 +123,7 @@ func (m *Model) Write(b []byte) (int, error) {
 
 	s := string(b)
 	s = strings.ReplaceAll(s, "\r\n", "\n") // normalize line endings
+	s = strings.ReplaceAll(s, "\r", "")     // remove carriage returns (avoid breaking the ui)
 
 	if len(m.lines) > 0 && !m.lineEnd {
 		lastLine := m.lines[len(m.lines)-1]
@@ -426,12 +428,26 @@ func (m Model) View() string {
 
 	var lines []string
 	if m.ShowLineNumbers {
-		lineNumber := max(0, m.YOffset)
-		width := lipgloss.Width(fmt.Sprintf("%d", clamp(m.YOffset+m.Height, lineNumber, len(m.lines))))
+		firstLine := m.YOffset
+		if firstLine == 0 {
+			firstLine = 1
+		}
+
+		lineNumber := max(0, firstLine)
+		maxLines := len(m.lines)
+		if maxLines < h {
+			maxLines = h
+		}
+
+		width := lipgloss.Width(fmt.Sprintf("%d", clamp(firstLine+m.Height, lineNumber, maxLines)))
 		for _, line := range m.visibleLines() {
-			lineNumber++
 			//line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
+			lineNumber++
+		}
+
+		for ; lineNumber <= h; lineNumber++ {
+			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
 		lines = m.visibleLines()

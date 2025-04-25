@@ -4,18 +4,20 @@ import (
 	"context"
 	"errors"
 
+	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithConcurrent() ProcessorBuilder {
+func WithConcurrent(pool pond.Pool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Concurrent == nil {
+		if spec.Concurrent == nil || len(spec.Concurrent.Refs) == 0 || pool == nil {
 			return nil
 		}
 
 		return &Concurrent{
 			refs:     refSlice(spec.Concurrent.Refs),
 			failFast: spec.Concurrent.FailFast,
+			pool:     pool,
 		}
 	}
 }
@@ -23,6 +25,7 @@ func WithConcurrent() ProcessorBuilder {
 type Concurrent struct {
 	failFast bool
 	refs     []string
+	pool     pond.Pool
 }
 
 type concurrentResult struct {
@@ -57,10 +60,10 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for _, next := range stepEntrypoints {
 			next := next
 			stepContext := stepContext.DeepCopy()
-			go func() {
+			s.pool.Go(func() {
 				t, err := next(ctx, stepContext)
 				results <- concurrentResult{t, err}
-			}()
+			})
 		}
 
 		var done int

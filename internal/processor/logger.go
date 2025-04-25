@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -10,13 +11,13 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func WithOtelLog(logger logr.Logger, zapConfig *zap.Config) ProcessorBuilder {
+func WithLogger(logger logr.Logger, zapConfig *zap.Config) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if zapConfig == nil && logger.IsZero() {
 			return nil
 		}
 
-		return &OtelLog{
+		return &Logger{
 			stepName:  spec.Name,
 			zapConfig: zapConfig,
 			logger:    logger,
@@ -24,18 +25,19 @@ func WithOtelLog(logger logr.Logger, zapConfig *zap.Config) ProcessorBuilder {
 	}
 }
 
-type OtelLog struct {
+type Logger struct {
 	stepName  string
 	zapConfig *zap.Config
 	logger    logr.Logger
 }
 
-func (s *OtelLog) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-
-		logger := []logr.Logger{s.logger}
-
-		delegatedLogger := logr.NewDelegatingLogger()
+		/*s.zapConfig.
+			logger, err := s.zapConfig.Build()
+		if err != nil {
+			return stepContext, fmt.Errorf("failed setup step logger %w", err)
+		}*/
 
 		encoderConfig := zapcore.EncoderConfig{
 			TimeKey:      "time",
@@ -46,18 +48,27 @@ func (s *OtelLog) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			EncodeCaller: zapcore.ShortCallerEncoder,
 		}
 
+		var encoder zapcore.Encoder
+		switch s.zapConfig.Encoding {
+		case "json":
+			encoder = zapcore.NewJSONEncoder(encoderConfig)
+		case "console":
+			encoder = zapcore.NewConsoleEncoder(encoderConfig)
+		default:
+			return stepContext, fmt.Errorf("failed setup step logger: no such log encoder `%s`", s.zapConfig.Encoding)
+		}
+
 		core := zapcore.NewCore(
-			zapcore.NewJSONEncoder(encoderConfig),
+			encoder,
 			zapcore.AddSync(stepContext.Stderr),
-			zapcore.DebugLevel,
+			s.zapConfig.Level,
 		)
 
 		zapLogger := zap.New(core)
 		logger := zapr.NewLogger(zapLogger)
 		ctx = logr.NewContext(ctx, logger)
 
-		logger.
-			logger.Info("process step")
+		logger.Info("process step")
 		logger.V(1).Info("step context input", "context", stepContext)
 		stepContext, err := next(ctx, stepContext)
 		logger.Info("process step done", "err", err)

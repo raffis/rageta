@@ -9,119 +9,56 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func WithMatrix() ProcessorBuilder {
+func WithMatrix(pool pond.Pool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Matrix == nil {
+		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 || pool == nil {
 			return nil
 		}
 
 		return &Matrix{
 			matrix:   spec.Matrix.Params,
+			include:  spec.Matrix.Include,
 			failFast: spec.Matrix.FailFast,
 			stepName: spec.Name,
+			pool:     pool,
 		}
 	}
 }
 
 type Matrix struct {
 	matrix   []v1beta1.Param
+	include  []v1beta1.IncludeParam
 	failFast bool
 	stepName string
+	pool     pond.Pool
 }
 
-type Substitute struct {
-	v interface{}
-	f func(v interface{})
-}
-
-func (s *Matrix) Substitute() []*Substitute {
-	var vals []*Substitute
-	for k, param := range s.matrix {
-		var v interface{}
-		switch param.Value.Type {
-		case v1beta1.ParamTypeString:
-			v = param.Value.StringVal
-		case v1beta1.ParamTypeArray:
-			v = param.Value.ArrayVal
-		}
-
-		vals = append(vals, &Substitute{
-			v: v,
-			f: func(v interface{}) {
-				switch v := v.(type) {
-				case string:
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:      v1beta1.ParamTypeString,
-						StringVal: v,
-					}
-				case []string:
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: v,
-					}
-				case *structpb.ListValue:
-					typedMap := make([]string, len(v.Values))
-					for i, v := range v.Values {
-						if _, ok := v.Kind.(*structpb.Value_StringValue); ok {
-							typedMap[i] = v.GetStringValue()
-						} else {
-							panic("string map")
-						}
-					}
-
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: typedMap,
-					}
-				case []interface{}:
-					typedMap := make([]string, len(v))
-					for i, v := range v {
-						if v, ok := v.(string); ok {
-							typedMap[i] = v
-						} else {
-							panic("string map")
-						}
-					}
-
-					s.matrix[k].Value = v1beta1.ParamValue{
-						Type:     v1beta1.ParamTypeArray,
-						ArrayVal: typedMap,
-					}
-				default:
-					panic("x")
-				}
-			},
-		})
-
-	}
-
-	return vals
-}
+var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		//Only proceed if we are not in a a matrix child context
-		if len(stepContext.Matrix) > 0 {
-			return next(ctx, stepContext)
+		substitute := []any{s.matrix}
+		for _, group := range s.include {
+			substitute = append(substitute, group.Params)
 		}
 
-		step, err := pipeline.Step(s.stepName)
-		if err != nil {
-			return stepContext, err
-		}
-
-		next, err := step.Entrypoint()
-		if err != nil {
-			return stepContext, err
+		if err := Subst(stepContext.ToV1Beta1(),
+			substitute...,
+		); err != nil {
+			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
 
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
 			return stepContext, err
+		}
+
+		if len(matrixes) == 0 {
+			return stepContext, ErrEmptyMatrix
 		}
 
 		results := make(chan concurrentResult)
@@ -132,25 +69,58 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
+			for paramKey, paramValue := range matrix {
+				copyContext.Tags[fmt.Sprintf("matrix/%s", paramKey)] = paramValue
+			}
+
+			s.combineIncludes(matrix, s.include)
 			copyContext.Matrix = matrix
 
 			hasher := sha1.New()
 			hasher.Write([]byte(matrixKey))
 			b := hasher.Sum(nil)
 
-			copyContext.NamePrefix = PrefixName(hex.EncodeToString(b)[:6], copyContext.NamePrefix)
+			copyContext.NamePrefix = PrefixName(copyContext.NamePrefix, hex.EncodeToString(b)[:6])
 
-			go func(copyContext StepContext) {
+			s.pool.Go(func() {
 				t, err := next(ctx, copyContext)
 				results <- concurrentResult{t, err}
-			}(copyContext)
+			})
 		}
 
 		var done int
 	WAIT:
 		for res := range results {
 			done++
-			stepContext = stepContext.Merge(res.stepContext)
+
+			for stepName, step := range res.stepContext.Steps {
+				//Copy matrix step result to current context
+				if _, ok := stepContext.Steps[stepName]; ok {
+					continue
+				}
+
+				stepContext.Steps[PrefixName(stepName, res.stepContext.NamePrefix)] = step
+
+				//Unify matrix outputs into an array output for the current step
+				for paramKey, paramValue := range step.Outputs {
+					var param v1beta1.ParamValue
+
+					if val, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
+						param = v1beta1.ParamValue{
+							Type: v1beta1.ParamTypeArray,
+						}
+					} else {
+						param = val
+					}
+
+					if paramValue.Type == v1beta1.ParamTypeString && paramValue.StringVal != "" {
+						param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
+					}
+
+					stepContext.Steps[s.stepName].Outputs[paramKey] = param
+				}
+			}
+
 			if res.err != nil && AbortOnError(res.err) {
 				errs = append(errs, res.err)
 
@@ -172,11 +142,11 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Matrix) build(matrix []v1beta1.Param) (map[string]map[string]string, error) {
+func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, error) {
 	var keys []string
 	mapData := make(map[string]v1beta1.ParamValue)
 
-	for _, param := range matrix {
+	for _, param := range params {
 		keys = append(keys, param.Name)
 		mapData[param.Name] = param.Value
 	}
@@ -186,6 +156,25 @@ func (s *Matrix) build(matrix []v1beta1.Param) (map[string]map[string]string, er
 	s.generateCombinations(mapData, keys, 0, make(map[string]string), &result)
 
 	return result, nil
+}
+
+func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1beta1.IncludeParam) {
+	for currentMatrixKey, currentMatrixValue := range matrixParams {
+		for _, includeGroup := range include {
+			combine := false
+			for _, includeParam := range includeGroup.Params {
+				if includeParam.Name == currentMatrixKey && includeParam.Value.StringVal == currentMatrixValue {
+					combine = true
+				}
+			}
+
+			if combine {
+				for _, includeParam := range includeGroup.Params {
+					matrixParams[includeParam.Name] = includeParam.Value.StringVal
+				}
+			}
+		}
+	}
 }
 
 func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, keys []string, index int, currentCombination map[string]string, result *map[string]map[string]string) {
@@ -212,6 +201,7 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 				combinationValues = append(combinationValues, fmt.Sprintf("%v", val))
 			}
 		}
+
 		// Join the values using "-" as a delimiter to form the unique key
 		uniqueKey := strings.Join(combinationValues, "-")
 		(*result)[uniqueKey] = combinationCopy

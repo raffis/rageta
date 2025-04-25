@@ -15,7 +15,7 @@ builds:
 archives:
 - id: rageta
   name_template: "rageta_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-  builds:
+  ids:
   - rageta
 
 source:

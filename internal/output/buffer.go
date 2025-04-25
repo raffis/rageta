@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 	"text/template"
@@ -17,21 +18,23 @@ type bufferVars struct {
 func Buffer(tmpl *template.Template) processor.OutputFactory {
 	mu := sync.RWMutex{}
 
-	return func(name string, stdin io.Reader, stdout, _ io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
+	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, _ io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
 		buffer := &bytes.Buffer{}
 
-		return stdin, buffer, buffer, func(err error) {
+		return stdin, buffer, buffer, func(err error) error {
 			mu.Lock()
 			defer mu.Unlock()
 
 			err = tmpl.Execute(stdout, bufferVars{
-				StepName: name,
+				StepName: stepContext.NamePrefix,
 				Buffer:   buffer,
 			})
 
 			if err != nil {
-				panic(err)
+				return err
 			}
+
+			return nil
 		}
 	}
 }

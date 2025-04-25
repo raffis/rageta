@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/raffis/rageta/internal/storage"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -15,69 +16,62 @@ func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuil
 		}
 
 		return &Inherit{
-			stepName: spec.Name,
-			step:     *spec.Inherit,
-			store:    store,
-			builder:  builder,
+			stepName:          spec.Name,
+			step:              *spec.Inherit,
+			store:             store,
+			builder:           builder,
+			propagateTemplate: spec.Inherit.PropagateTemplate,
 		}
 	}
 }
 
 type Inherit struct {
-	builder  PipelineBuilder
-	store    storage.Interface
-	stepName string
-	step     v1beta1.InheritStep
-}
-
-func (s *Inherit) Substitute() []*Substitute {
-	var vals []*Substitute
-	vals = append(vals, &Substitute{
-		v: s.step.Pipeline,
-		f: func(v interface{}) {
-			s.step.Pipeline = v.(string)
-		},
-	})
-
-	for k, v := range s.step.Inputs {
-		vals = append(vals, &Substitute{
-			v: v.Value,
-			f: func(v interface{}) {
-				s.step.Inputs[k].Value = v.(string)
-			},
-		})
-	}
-
-	return vals
+	builder           PipelineBuilder
+	store             storage.Interface
+	stepName          string
+	step              v1beta1.InheritStep
+	propagateTemplate bool
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		command, err := s.store.Lookup(ctx, s.step.Pipeline)
+		inherit := s.step.DeepCopy()
+
+		if err := Subst(stepContext.ToV1Beta1(),
+			&inherit.Pipeline,
+			inherit.Inputs,
+		); err != nil {
+			return stepContext, err
+		}
+
+		command, err := s.store.Lookup(ctx, inherit.Pipeline)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
-		command.PipelineSpec.Name = PrefixName(s.stepName, stepContext.NamePrefix)
+		inheritCtx := stepContext.DeepCopy()
+		inheritCtx.NamePrefix = PrefixName(s.stepName, stepContext.NamePrefix)
 
-		cmd, err := s.builder.Build(command, s.step.Entrypoint, s.mapInputs(s.step.Inputs))
+		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		outputContext, err := cmd(ctx)
+		outputContext, outputs, err := cmd(ctx)
 
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to execute pipeline: %w", err)
 		}
 
 		s.mergeContext(outputContext, stepContext)
+		maps.Copy(stepContext.Steps[s.stepName].Outputs, outputs)
+
 		return next(ctx, stepContext)
 	}, nil
 }
 
-func (s *Inherit) mapInputs(inputs []v1beta1.InheritInput) map[string]string {
-	m := make(map[string]string)
+func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValue {
+	m := make(map[string]v1beta1.ParamValue)
 	for _, v := range inputs {
 		m[v.Name] = v.Value
 	}

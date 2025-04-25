@@ -24,10 +24,10 @@ type Pod struct {
 type PodSpec struct {
 	Containers     []ContainerSpec
 	InitContainers []ContainerSpec
-	Volumes        []Volume
 }
 
 type Volume struct {
+	Name     string
 	Path     string
 	HostPath string
 }
@@ -50,6 +50,7 @@ type ContainerSpec struct {
 	User            string
 	PWD             string
 	RestartPolicy   RestartPolicy
+	Volumes         []Volume
 }
 
 type ContainerStatus struct {

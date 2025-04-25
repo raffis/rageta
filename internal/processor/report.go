@@ -10,13 +10,11 @@ type ResultStore interface {
 	Add(stepName string, result *StepResult)
 }
 
-func WithReport(store ResultStore, uniqueName string) ProcessorBuilder {
+func WithReport(store ResultStore) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if store == nil {
 			return nil
 		}
-
-		//store.Add(uniqueName, nil)
 
 		return &Report{
 			stepName: spec.Name,

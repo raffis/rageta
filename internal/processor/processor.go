@@ -7,14 +7,15 @@ import (
 )
 
 type PipelineBuilder interface {
-	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]string) (Executable, error)
+	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx StepContext) (Executable, error)
 }
 
-type Executable func(ctx context.Context) (StepContext, error)
+type Executable func(ctx context.Context) (StepContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
 	Step(name string) (Step, error)
 	Entrypoint(name string) (Next, error)
+	EntrypointName() (string, error)
 	Name() string
 	ID() string
 }

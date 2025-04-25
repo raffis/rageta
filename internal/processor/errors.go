@@ -12,6 +12,8 @@ func AbortOnError(err error) bool {
 		return false
 	case errors.Is(err, ErrSkipBlacklist):
 		return false
+	case errors.Is(err, ErrEmptyMatrix):
+		return false
 	case err != nil:
 		return true
 	default:

@@ -45,6 +45,10 @@ func (s *Store) Ordered() []stepResult {
 			return false
 		}
 
+		if s.steps[j].result == nil {
+			return false
+		}
+
 		return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
 	})
 

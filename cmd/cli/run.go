@@ -9,12 +9,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"text/template"
 	"time"
 
+	"github.com/alitto/pond/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
@@ -25,7 +29,7 @@ import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/report"
-	"github.com/raffis/rageta/internal/runtime"
+	cruntime "github.com/raffis/rageta/internal/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -47,25 +51,27 @@ var runCmd = &cobra.Command{
 }
 
 type runFlags struct {
-	dbPath              string            `env:"DB_PATH"`
-	output              string            `env:"OUTPUT"`
-	noGC                bool              `env:"NO_GC"`
-	tee                 bool              `env:"TEE"`
-	containerRuntime    string            `env:"CONTAINER_RUNTIME"`
-	gracefulTermination time.Duration     `env:"GRACEFUL_TERMINATION"`
-	dockerQuiet         bool              `env:"DOCKER_QUIT"`
-	report              string            `env:"REPORT"`
-	reportOutput        string            `env:"REPORT_OUTPUT"`
-	pull                string            `env:"PULL"`
-	entrypoint          string            `env:"ENTRYPOINT"`
-	contextDir          string            `env:"CONTEXT_DIR"`
-	inputs              map[string]string `env:"INPUTS"`
-	envs                []string          `env:"ENVS"`
-	volumes             []string          `env:"VOLUMES"`
-	skipDone            bool              `env:"SKIP_DONE"`
-	skipSteps           []string          `env:"SKIP_STEPS"`
-	logDetached         bool              `env:"LOG_DETACHED"`
-	maxConcurrent       int               `env:"MAX_CONCURRENT"`
+	dbPath              string        `env:"DB_PATH"`
+	output              string        `env:"OUTPUT"`
+	noGC                bool          `env:"NO_GC"`
+	tee                 bool          `env:"TEE"`
+	containerRuntime    string        `env:"CONTAINER_RUNTIME"`
+	gracefulTermination time.Duration `env:"GRACEFUL_TERMINATION"`
+	dockerQuiet         bool          `env:"DOCKER_QUIT"`
+	report              string        `env:"REPORT"`
+	reportOutput        string        `env:"REPORT_OUTPUT"`
+	pull                string        `env:"PULL"`
+	entrypoint          string        `env:"ENTRYPOINT"`
+	contextDir          string        `env:"CONTEXT_DIR"`
+	inputs              []string      `env:"INPUTS"`
+	envs                []string      `env:"ENVS"`
+	volumes             []string      `env:"VOLUMES"`
+	skipDone            bool          `env:"SKIP_DONE"`
+	skipSteps           []string      `env:"SKIP_STEPS"`
+	logDetached         bool          `env:"LOG_DETACHED"`
+	maxConcurrent       int           `env:"MAX_CONCURRENT"`
+	deep                bool          `env:"DEEP"`
+	noProgress          bool          `env:"NO_PROGRESS"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -76,7 +82,6 @@ var runArgs = newRunFlags()
 func newRunFlags() runFlags {
 	return runFlags{
 		ociOptions: ocisetup.DefaultOptions(),
-		inputs:     make(map[string]string),
 	}
 }
 
@@ -93,13 +98,16 @@ func init() {
 	runCmd.Flags().BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
 	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], raw]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `none` dumps all tasks directly without any modification.")
 	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
+	runCmd.Flags().BoolVarP(&runArgs.deep, "deep", "", false, "Add steps from inherited pipelines to report")
+	runCmd.Flags().IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
+	runCmd.Flags().BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
 	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	runCmd.Flags().StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	runCmd.Flags().StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
-	runCmd.Flags().StringToStringVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
+	runCmd.Flags().StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
 	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	runCmd.Flags().StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
@@ -212,7 +220,7 @@ func isPossiblyInsideKube() bool {
 	return set
 }
 
-func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (runtime.Interface, error) {
+func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (cruntime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
 		c, err := runArgs.dockerOptions.Build()
@@ -222,13 +230,9 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 
 		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
 
-		runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
-
-		driver := runtime.NewDocker(c,
-			runtime.WithContext(ctx),
-			runtime.WithLogger(logger),
-			runtime.WithHidePullOutput(hideOutput),
-			runtime.WithVolumes(runArgs.volumes),
+		driver := cruntime.NewDocker(c,
+			cruntime.WithContext(ctx),
+			cruntime.WithHidePullOutput(hideOutput),
 		)
 
 		return driver, err
@@ -258,47 +262,53 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 	return logger, os.Stderr, nil
 }
 
-func stepBuilder(logger logr.Logger, envs map[string]string, celEnv *cel.Env, driver runtime.Interface, imagePullPolicy runtime.PullImagePolicy, tracer trace.Tracer, meter metric.Meter, outputFactory processor.OutputFactory, resultStore processor.ResultStore, teardown chan processor.Teardown, builder *processor.PipelineBuilder, store storage.Interface) pipeline.StepBuilder {
-	return func(spec v1beta1.Step, uniqueName string) []processor.Bootstraper {
-		/*if ui := uiOutput(); ui != nil && spec.Run != nil {
-			ui.AddTasks(tui.NewTask(uniqueName))
-		}*/
-
-		substitutableProcessors := processor.Builder(&spec,
-			processor.WithMatrix(),
-			processor.WithEnv(envs),
-			processor.WithStdioRedirect(),
-			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, os.Stdin, os.Stdout, os.Stderr, teardown),
-			processor.WithInherit(*builder, store),
-		)
-
+func stepBuilder(
+	logger logr.Logger,
+	osEnv,
+	envs map[string]string,
+	celEnv *cel.Env,
+	driver cruntime.Interface,
+	imagePullPolicy cruntime.PullImagePolicy,
+	tracer trace.Tracer, meter metric.Meter,
+	outputFactory processor.OutputFactory,
+	resultStore processor.ResultStore,
+	teardown chan processor.Teardown,
+	builder *processor.PipelineBuilder,
+	store storage.Interface,
+	pool pond.Pool,
+	template v1beta1.Template,
+) pipeline.StepBuilder {
+	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
-			processor.WithReport(resultStore, uniqueName),
+			processor.WithRecover(),
+			processor.WithReport(resultStore),
 			processor.WithRetry(),
-			processor.WithStdio(runArgs.tee, outputFactory, os.Stdin, os.Stdout, os.Stderr),
+			processor.WithProgress(!runArgs.noProgress),
+			processor.WithInput(celEnv),
+			processor.WithResult(),
+			processor.WithOutput(),
+			processor.WithMatrix(pool),
+			processor.WithStdio(outputFactory, os.Stdin, os.Stdout, os.Stderr),
 			processor.WithOtelTrace(logger, tracer),
-			processor.WithOtelLog(&zapConfig),
+			processor.WithLogger(logger, &zapConfig),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
 			processor.WithAllowFailure(),
-			processor.WithResult(),
 			processor.WithTimeout(),
 			processor.WithSkipDone(runArgs.skipDone),
 			processor.WithIf(celEnv),
+			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithTmpDir(),
-			processor.WithExpressionParser(celEnv, substitutableProcessors...),
-		)
-
-		processors = append(processors, substitutableProcessors...)
-
-		operators := processor.Builder(&spec,
+			processor.WithEnv(osEnv, envs),
+			processor.WithStdioRedirect(runArgs.tee),
+			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, teardown),
+			processor.WithInherit(*builder, store),
 			processor.WithAnd(),
-			processor.WithConcurrent(),
-			processor.WithPipe(),
+			processor.WithConcurrent(pool),
+			processor.WithPipe(runArgs.tee),
 		)
-		processors = append(processors, operators...)
 
 		logger.V(1).Info("register step", "spec", spec)
 		for _, processor := range processors {
@@ -318,6 +328,11 @@ func runRun(c *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if rootArgs.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, rootArgs.timeout)
+		defer cancel()
+	}
+
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
@@ -325,7 +340,6 @@ func runRun(c *cobra.Command, args []string) error {
 	v1beta1.AddToScheme(scheme)
 	factory := serializer.NewCodecFactory(scheme)
 	decoder := factory.UniversalDeserializer()
-	//wire := protobuf.NewSerializer(nil, kruntime.MultiObjectTyper{})
 
 	var ref string
 	if len(args) > 0 {
@@ -372,10 +386,17 @@ func runRun(c *cobra.Command, args []string) error {
 	celEnv, err := cel.NewEnv(
 		ext.Strings(),
 		ext.Math(),
+		ext.Lists(),
 		ext.Encoders(),
 		ext.Sets(),
-		cel.Types(&v1beta1.RuntimeVars{}),
-		cel.Variable("context", cel.ObjectType("rageta.core.v1beta1.RuntimeVars")),
+		ext.NativeTypes(ext.ParseStructTags(true),
+			reflect.TypeOf(&v1beta1.Context{}),
+			reflect.TypeOf(&v1beta1.StepResult{}),
+			reflect.TypeOf(&v1beta1.ParamValue{}),
+			reflect.TypeOf(&v1beta1.Output{}),
+			reflect.TypeOf(&v1beta1.ContainerStatus{}),
+		),
+		cel.Variable("context", cel.ObjectType("v1beta1.Context")),
 	)
 
 	if err != nil {
@@ -431,9 +452,15 @@ func runRun(c *cobra.Command, args []string) error {
 		}
 	}()
 
+	pool := pond.NewPool(runArgs.maxConcurrent)
+	template, err := buildTemplate(contextDir)
+	if err != nil {
+		return fmt.Errorf("failed to create template: %w", err)
+	}
+
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(stepBuilder(logger, envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store)),
+		pipeline.WithStepBuilder(stepBuilder(logger, osEnvMap(), envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool, template)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -444,20 +471,29 @@ func runRun(c *cobra.Command, args []string) error {
 		cancel()
 	}()
 
+	inputs, err := parseInputs(command.Inputs, runArgs.inputs)
+	if err != nil {
+		return err
+	}
+
 	var result error
 	command.PipelineSpec.Name = ""
-	cmd, err := builder.Build(command, runArgs.entrypoint, runArgs.inputs)
+	cmd, err := builder.Build(command, runArgs.entrypoint, inputs, processor.NewContext())
 	if err != nil {
 		result = err
 	} else {
-		_, result = cmd(ctx)
+		_, _, result = cmd(ctx)
 	}
 
 	if tuiDone != nil {
+		if errors.Is(result, pipeline.ErrInvalidInput) {
+			tuiApp.Quit()
+		}
+
 		if result != nil {
-			tuiInstance.SetStatus(tui.StepStatusFailed)
+			tuiModel.SetStatus(tui.StepStatusFailed)
 		} else {
-			tuiInstance.SetStatus(tui.StepStatusDone)
+			tuiModel.SetStatus(tui.StepStatusDone)
 		}
 
 		if resultStore, ok := resultStore.(*report.Store); ok {
@@ -467,10 +503,11 @@ func runRun(c *cobra.Command, args []string) error {
 				fmt.Fprintln(buf, err)
 			}
 
-			tuiInstance.Report(buf.Bytes())
+			tuiModel.Report(buf.Bytes())
 		}
 
 		<-tuiDone
+		tuiApp.ReleaseTerminal()
 	}
 
 	cancel()
@@ -499,7 +536,7 @@ func runRun(c *cobra.Command, args []string) error {
 
 	wg.Wait()
 
-	if resultStore, ok := resultStore.(*report.Store); ok {
+	if resultStore, ok := resultStore.(*report.Store); ok && len(resultStore.Ordered()) != 0 {
 		outputPath := runArgs.reportOutput
 		var output *os.File
 		if outputPath == "/dev/stdout" || outputPath == "" {
@@ -521,7 +558,7 @@ func runRun(c *cobra.Command, args []string) error {
 	if result != nil {
 		fmt.Fprintln(os.Stderr, result.Error())
 
-		if res, ok := result.(*runtime.Result); ok {
+		if res, ok := result.(*cruntime.Result); ok {
 			os.Exit(res.ExitCode)
 		}
 
@@ -531,17 +568,84 @@ func runRun(c *cobra.Command, args []string) error {
 	return nil
 }
 
-func imagePullPolicy() (runtime.PullImagePolicy, error) {
+func buildTemplate(contextDir string) (v1beta1.Template, error) {
+	tmpl := v1beta1.Template{}
+
+	runArgs.volumes = append(runArgs.volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
+
+	for i, volume := range runArgs.volumes {
+		v := strings.Split(volume, ":")
+		if len(v) != 2 {
+			return tmpl, errors.New("invalid volume mount provided")
+		}
+
+		tmpl.VolumeMounts = append(tmpl.VolumeMounts, v1beta1.VolumeMount{
+			Name:      fmt.Sprintf("volume-%d", i),
+			MountPath: v[1],
+			HostPath:  v[0],
+		})
+	}
+
+	return tmpl, nil
+}
+
+// parseInputs parses a list of input strings and maps them to their corresponding
+func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1beta1.ParamValue, error) {
+	result := make(map[string]v1beta1.ParamValue)
+	steps := make(map[string][]string)
+
+	for _, v := range inputs {
+		flag := strings.SplitN(v, "=", 2)
+		if len(flag) != 2 {
+			return result, errors.New("expected input key=value")
+		}
+
+		steps[flag[0]] = append(steps[flag[0]], flag[1])
+	}
+
+	for _, v := range params {
+		if input, ok := steps[v.Name]; ok {
+			x := result[v.Name]
+
+			if len(input) == 1 {
+				if err := x.UnmarshalJSON([]byte(input[0])); err != nil {
+					return result, fmt.Errorf("failed to decode input: %w", err)
+				}
+
+				result[v.Name] = x
+				continue
+			}
+
+			x.Type = v1beta1.ParamTypeArray
+			x.ArrayVal = input
+			result[v.Name] = x
+		}
+	}
+
+	return result, nil
+}
+
+func imagePullPolicy() (cruntime.PullImagePolicy, error) {
 	switch runArgs.pull {
 	case pullImageAlways.String():
-		return runtime.PullImagePolicyAlways, nil
+		return cruntime.PullImagePolicyAlways, nil
 	case pullImageMissing.String():
-		return runtime.PullImagePolicyMissing, nil
+		return cruntime.PullImagePolicyMissing, nil
 	case pullImageNever.String():
-		return runtime.PullImagePolicyNever, nil
+		return cruntime.PullImagePolicyNever, nil
 	default:
 		return "", fmt.Errorf("invalid pull policy given: %s", runArgs.pull)
 	}
+}
+
+func osEnvMap() map[string]string {
+	envs := make(map[string]string)
+	for _, v := range os.Environ() {
+		s := strings.SplitN(v, "=", 2)
+		envs[s[0]] = s[1]
+	}
+
+	return envs
 }
 
 func envMap() map[string]string {
@@ -560,34 +664,41 @@ func envMap() map[string]string {
 	return envs
 }
 
-var tuiInstance tui.UI
+var tuiModel tui.UI
 var tuiDone chan struct{}
+var tuiApp *tea.Program
 
 func uiOutput(cancel context.CancelFunc) tui.UI {
 	if runArgs.output != "ui" {
 		return nil
 	}
 
-	if tuiInstance != nil {
-		return tuiInstance
+	if tuiModel != nil {
+		return tuiModel
 	}
 
 	tuiDone = make(chan struct{})
-	tuiInstance = tui.NewModel()
+	tuiModel = tui.NewModel()
+	tuiApp = tui.Program(tuiModel)
 
 	/*if logger.GetV() > 0 {
 		loggerTask := tui.NewTask("main()")
-		tuiInstance.AddTasks(loggerTask)
+		tuiModel.AddTasks(loggerTask)
 	}*/
 
 	//logger.WithSink(logr.)
 	go func() {
-		tui.Run(tuiInstance)
+		_, err := tuiApp.Run()
+
+		if err == nil {
+			tuiApp.ReleaseTerminal()
+		}
+
 		cancel()
 		tuiDone <- struct{}{}
 	}()
 
-	return tuiInstance
+	return tuiModel
 }
 
 func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {

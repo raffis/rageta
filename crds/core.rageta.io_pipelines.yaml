@@ -27,30 +27,60 @@ spec:
             type: string
           entrypoint:
             type: string
-          inherits:
-            items:
-              type: string
-            type: array
           inputs:
+            description: InputParams is a list of InputParam
             items:
+              description: |-
+                InputParam defines arbitrary parameters needed beyond typed inputs (such as
+                resources). Parameter values are provided by users as inputs on a TaskRun
+                or PipelineRun.
               properties:
+                celExpression:
+                  type: string
                 default:
                   description: |-
-                    RawMessage is a raw encoded JSON value.
-                    It implements [Marshaler] and [Unmarshaler] and can
-                    be used to delay JSON decoding or precompute a JSON encoding.
-                  format: byte
-                  type: string
+                    Default is the value a parameter takes if no input value is supplied. If
+                    default is set, a Task may be executed without a supplied value for the
+                    parameter.
+                  x-kubernetes-preserve-unknown-fields: true
                 description:
+                  description: |-
+                    Description is a user-facing description of the parameter that may be
+                    used to populate a UI.
                   type: string
+                enum:
+                  description: |-
+                    Enum declares a set of allowed param input values for tasks/pipelines that can be validated.
+                    If Enum is not set, no input validation is performed for the param.
+                  items:
+                    type: string
+                  type: array
                 name:
+                  description: Name declares the name by which a parameter is referenced.
                   type: string
-                required:
-                  type: boolean
+                properties:
+                  additionalProperties:
+                    description: PropertySpec defines the struct for object keys
+                    properties:
+                      type:
+                        description: |-
+                          ParamType indicates the type of an input parameter;
+                          Used to distinguish between a single string and an array of strings.
+                        type: string
+                    type: object
+                  description: Properties is the JSON Schema properties to support
+                    key-value pairs parameter.
+                  type: object
                 type:
+                  description: |-
+                    Type is the user-specified type of the parameter. The possible types
+                    are currently "string", "array" and "object", and "string" is the default.
                   type: string
+              required:
+              - name
               type: object
             type: array
+            x-kubernetes-list-type: atomic
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
@@ -65,6 +95,25 @@ spec:
             type: object
           name:
             type: string
+          outputs:
+            items:
+              properties:
+                from:
+                  type: string
+                name:
+                  description: Name declares the name by which a parameter is referenced.
+                  type: string
+                step:
+                  properties:
+                    name:
+                      type: string
+                  type: object
+              required:
+              - name
+              - step
+              type: object
+            type: array
+            x-kubernetes-list-type: atomic
           shortDescription:
             type: string
           steps:
@@ -98,10 +147,13 @@ spec:
                   type: string
                 env:
                   items:
-                    type: string
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
                   type: array
-                finally:
-                  type: boolean
                 generates:
                   items:
                     properties:
@@ -110,27 +162,114 @@ spec:
                     type: object
                   type: array
                 if:
-                  type: string
+                  items:
+                    properties:
+                      celExpression:
+                        type: string
+                    type: object
+                  type: array
                 inherit:
                   properties:
                     entrypoint:
                       type: string
                     inputs:
                       items:
+                        description: Param declares an ParamValues to use for the
+                          parameter called name.
                         properties:
                           name:
                             type: string
                           value:
-                            type: string
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - name
+                        - value
                         type: object
                       type: array
                     pipeline:
                       type: string
+                    propagateTemplate:
+                      type: boolean
                   type: object
+                inputs:
+                  items:
+                    description: |-
+                      InputParam defines arbitrary parameters needed beyond typed inputs (such as
+                      resources). Parameter values are provided by users as inputs on a TaskRun
+                      or PipelineRun.
+                    properties:
+                      celExpression:
+                        type: string
+                      default:
+                        description: |-
+                          Default is the value a parameter takes if no input value is supplied. If
+                          default is set, a Task may be executed without a supplied value for the
+                          parameter.
+                        x-kubernetes-preserve-unknown-fields: true
+                      description:
+                        description: |-
+                          Description is a user-facing description of the parameter that may be
+                          used to populate a UI.
+                        type: string
+                      enum:
+                        description: |-
+                          Enum declares a set of allowed param input values for tasks/pipelines that can be validated.
+                          If Enum is not set, no input validation is performed for the param.
+                        items:
+                          type: string
+                        type: array
+                      name:
+                        description: Name declares the name by which a parameter is
+                          referenced.
+                        type: string
+                      properties:
+                        additionalProperties:
+                          description: PropertySpec defines the struct for object
+                            keys
+                          properties:
+                            type:
+                              description: |-
+                                ParamType indicates the type of an input parameter;
+                                Used to distinguish between a single string and an array of strings.
+                              type: string
+                          type: object
+                        description: Properties is the JSON Schema properties to support
+                          key-value pairs parameter.
+                        type: object
+                      type:
+                        description: |-
+                          Type is the user-specified type of the parameter. The possible types
+                          are currently "string", "array" and "object", and "string" is the default.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
                 matrix:
                   properties:
                     failFast:
                       type: boolean
+                    include:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          params:
+                            items:
+                              description: Param declares an ParamValues to use for
+                                the parameter called name.
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                        type: object
+                      type: array
                     params:
                       items:
                         description: Param declares an ParamValues to use for the
@@ -153,6 +292,23 @@ spec:
                     properties:
                       name:
                         type: string
+                    type: object
+                  type: array
+                outputs:
+                  items:
+                    properties:
+                      name:
+                        description: Name declares the name by which a parameter is
+                          referenced.
+                        type: string
+                      step:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                    required:
+                    - name
+                    - step
                     type: object
                   type: array
                 pipe:
@@ -188,14 +344,27 @@ spec:
                       type: array
                     image:
                       type: string
-                    pwd:
-                      type: string
                     restartPolicy:
+                      type: string
+                    script:
                       type: string
                     stdin:
                       type: boolean
                     tty:
                       type: boolean
+                    volumeMounts:
+                      items:
+                        properties:
+                          hostPath:
+                            type: string
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                    workingDir:
+                      type: string
                   type: object
                 sources:
                   items:
@@ -228,12 +397,43 @@ spec:
                           type: string
                       type: object
                   type: object
+                template:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    image:
+                      type: string
+                    restartPolicy:
+                      type: string
+                    script:
+                      type: string
+                    stdin:
+                      type: boolean
+                    tty:
+                      type: boolean
+                    volumeMounts:
+                      items:
+                        properties:
+                          hostPath:
+                            type: string
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                    workingDir:
+                      type: string
+                  type: object
                 timeout:
                   type: string
               type: object
-            type: array
-          subPipelines:
-            items: {}
             type: array
         type: object
     served: true

@@ -15,8 +15,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"encoding/json"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,49 +27,55 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Inherits         []string       `json:"inherits,omitempty"`
-	Name             string         `json:"name,omitempty"`
-	Entrypoint       string         `json:"entrypoint,omitempty"`
-	ShortDescription string         `json:"shortDescription,omitempty"`
-	LongDescription  string         `json:"longDescription,omitempty"`
-	Inputs           []Input        `json:"inputs,omitempty"`
-	Steps            []Step         `json:"steps,omitempty"`
-	SubPipelines     []PipelineSpec `json:"subPipelines,omitempty"`
+	Name             string       `json:"name,omitempty"`
+	Entrypoint       string       `json:"entrypoint,omitempty"`
+	ShortDescription string       `json:"shortDescription,omitempty"`
+	LongDescription  string       `json:"longDescription,omitempty"`
+	Inputs           InputParams  `json:"inputs,omitempty"`
+	Outputs          OutputParams `json:"outputs,omitempty"`
+	Steps            []Step       `json:"steps,omitempty"`
 }
 
-type Input struct {
-	Name        string          `json:"name,omitempty"`
-	Required    bool            `json:"required,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Default     json.RawMessage `json:"default,omitempty"`
-	Type        InputType       `json:"type,omitempty"`
+func (p Pipeline) SetDefaults() {
+	for k := range p.Inputs {
+		p.Inputs[k].SetDefaults()
+	}
 }
-
-type InputType string
-
-var (
-	InputTypeStringSlice InputType = "[]string"
-	InputTypeString      InputType = "string"
-	InputTypeBool        InputType = "bool"
-)
 
 type StepOptions struct {
-	If           string          `json:"if,omitempty"`
-	Timeout      metav1.Duration `json:"timeout,omitempty"`
-	Finally      bool            `json:"finally,omitempty"`
-	AllowFailure bool            `json:"allowFailure,omitempty"`
-	Matrix       *Matrix         `json:"matrix,omitempty"`
-	Generates    []Generate      `json:"generates,omitempty"`
-	Sources      []Source        `json:"sources,omitempty"`
-	Needs        []StepReference `json:"needs,omitempty"`
-	Streams      *Streams        `json:"streams,omitempty"`
-	Retry        *Retry          `json:"retry,omitempty"`
-	Env          []string        `json:"env,omitempty"`
+	If           []IfCondition     `json:"if,omitempty"`
+	Inputs       []InputParam      `json:"inputs,omitempty"`
+	Timeout      metav1.Duration   `json:"timeout,omitempty"`
+	AllowFailure bool              `json:"allowFailure,omitempty"`
+	Template     *Template         `json:"template,omitempty"`
+	Matrix       *Matrix           `json:"matrix,omitempty"`
+	Outputs      []StepOutputParam `json:"outputs,omitempty"`
+	Generates    []Generate        `json:"generates,omitempty"`
+	Sources      []Source          `json:"sources,omitempty"`
+	Needs        []StepReference   `json:"needs,omitempty"`
+	Streams      *Streams          `json:"streams,omitempty"`
+	Retry        *Retry            `json:"retry,omitempty"`
+	Env          []EnvVar          `json:"env,omitempty"`
+}
+
+type EnvVar struct {
+	Name  string  `json:"name,omitempty"`
+	Value *string `json:"value,omitempty"`
+}
+
+type IfCondition struct {
+	CelExpression *string `json:"celExpression,omitempty"`
 }
 
 type Matrix struct {
-	Params   []Param `json:"params,omitempty"`
-	FailFast bool    `json:"failFast,omitempty"`
+	Params   []Param        `json:"params,omitempty"`
+	Include  []IncludeParam `json:"include,omitempty"`
+	FailFast bool           `json:"failFast,omitempty"`
+}
+
+type IncludeParam struct {
+	Name   string  `json:"name,omitempty"`
+	Params []Param `json:"params,omitempty"`
 }
 
 type Retry struct {
@@ -97,11 +101,6 @@ type Step struct {
 	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
 	Run         *RunStep        `json:"run,omitempty"`
 	Inherit     *InheritStep    `json:"inherit,omitempty"`
-	Expression  *ExpressionStep `json:"expression,omitempty"`
-}
-
-type ExpressionStep struct {
-	Script string `json:"script,omitempty"`
 }
 
 type AndStep struct {
@@ -126,14 +125,24 @@ type RunStep struct {
 	Container `json:",inline"`
 }
 
+type Template Container
+
 type Container struct {
 	Stdin         bool          `json:"stdin,omitempty"`
 	TTY           bool          `json:"tty,omitempty"`
 	Image         string        `json:"image,omitempty"`
 	Command       []string      `json:"command,omitempty"`
 	Args          []string      `json:"args,omitempty"`
-	PWD           string        `json:"pwd,omitempty"`
+	Script        string        `json:"script,omitempty"`
+	WorkingDir    string        `json:"workingDir,omitempty"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
+	VolumeMounts  []VolumeMount `json:"volumeMounts,omitempty"`
+}
+
+type VolumeMount struct {
+	Name      string `json:"name,omitempty"`
+	MountPath string `json:"mountPath,omitempty"`
+	HostPath  string `json:"hostPath,omitempty"`
 }
 
 type AwaitStatus string
@@ -152,14 +161,10 @@ var (
 )
 
 type InheritStep struct {
-	Pipeline   string         `json:"pipeline,omitempty"`
-	Entrypoint string         `json:"entrypoint,omitempty"`
-	Inputs     []InheritInput `json:"inputs,omitempty"`
-}
-
-type InheritInput struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
+	Pipeline          string  `json:"pipeline,omitempty"`
+	Entrypoint        string  `json:"entrypoint,omitempty"`
+	PropagateTemplate bool    `json:"propagateTemplate,omitempty"`
+	Inputs            []Param `json:"inputs,omitempty"`
 }
 
 type Streams struct {

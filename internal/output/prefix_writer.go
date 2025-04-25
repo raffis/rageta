@@ -51,7 +51,7 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 		b:        bytes.Clone(p.buf.Bytes()),
 		producer: p.prefix,
 	}
-	return p.buf.Len(), nil
+	return len(payload), nil
 }
 
 func prefixWriter(prefix string, stdoutCh, stderrCh chan prefixMessage, randColor bool) (io.Writer, io.Writer) {

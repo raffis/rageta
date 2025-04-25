@@ -17,7 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -28,12 +27,15 @@ import (
 // ParamsPrefix is the prefix used in $(...) expressions referring to parameters
 const ParamsPrefix = "params"
 
-// ParamSpec defines arbitrary parameters needed beyond typed inputs (such as
+// InputParam defines arbitrary parameters needed beyond typed inputs (such as
 // resources). Parameter values are provided by users as inputs on a TaskRun
 // or PipelineRun.
-type ParamSpec struct {
+type InputParam struct {
 	// Name declares the name by which a parameter is referenced.
 	Name string `json:"name"`
+
+	CelExpression *string `json:"celExpression,omitempty"`
+
 	// Type is the user-specified type of the parameter. The possible types
 	// are currently "string", "array" and "object", and "string" is the default.
 	// +optional
@@ -58,9 +60,25 @@ type ParamSpec struct {
 	Enum []string `json:"enum,omitempty"`
 }
 
-// ParamSpecs is a list of ParamSpec
+// InputParams is a list of InputParam
 // +listType=atomic
-type ParamSpecs []ParamSpec
+type InputParams []InputParam
+
+// +listType=atomic
+type OutputParams []OutputParam
+
+type OutputParam struct {
+	// Name declares the name by which a parameter is referenced.
+	Name string        `json:"name"`
+	From string        `json:"from,omitempty"`
+	Step StepReference `json:"step"`
+}
+
+type StepOutputParam struct {
+	// Name declares the name by which a parameter is referenced.
+	Name string        `json:"name"`
+	Step StepReference `json:"step"`
+}
 
 // PropertySpec defines the struct for object keys
 type PropertySpec struct {
@@ -68,13 +86,13 @@ type PropertySpec struct {
 }
 
 // SetDefaults set the default type
-func (pp *ParamSpec) SetDefaults(context.Context) {
+func (pp *InputParam) SetDefaults() {
 	if pp == nil {
 		return
 	}
 
-	// Propagate inferred type to the parent ParamSpec's type, and default type to the PropertySpec's type
-	// The sequence to look at is type in ParamSpec -> properties -> type in default -> array/string/object value in default
+	// Propagate inferred type to the parent InputParam's type, and default type to the PropertySpec's type
+	// The sequence to look at is type in InputParam -> properties -> type in default -> array/string/object value in default
 	// If neither `properties` or `default` section is provided, ParamTypeString will be the default type.
 	switch {
 	case pp.Type != "":
@@ -99,7 +117,7 @@ func (pp *ParamSpec) SetDefaults(context.Context) {
 }
 
 // setDefaultsForProperties sets default type for PropertySpec (string) if it's not specified
-func (pp *ParamSpec) setDefaultsForProperties() {
+func (pp *InputParam) setDefaultsForProperties() {
 	for key, propertySpec := range pp.Properties {
 		if propertySpec.Type == "" {
 			pp.Properties[key] = PropertySpec{Type: ParamTypeString}
@@ -108,7 +126,7 @@ func (pp *ParamSpec) setDefaultsForProperties() {
 }
 
 // GetNames returns all the names of the declared parameters
-func (ps ParamSpecs) GetNames() []string {
+func (ps InputParams) GetNames() []string {
 	var names []string
 	for _, p := range ps {
 		names = append(names, p.Name)
@@ -117,8 +135,8 @@ func (ps ParamSpecs) GetNames() []string {
 }
 
 // SortByType splits the input params into string params, array params, and object params, in that order
-func (ps ParamSpecs) SortByType() (ParamSpecs, ParamSpecs, ParamSpecs) {
-	var stringParams, arrayParams, objectParams ParamSpecs
+func (ps InputParams) SortByType() (InputParams, InputParams, InputParams) {
+	var stringParams, arrayParams, objectParams InputParams
 	for _, p := range ps {
 		switch p.Type {
 		case ParamTypeArray:
@@ -135,7 +153,7 @@ func (ps ParamSpecs) SortByType() (ParamSpecs, ParamSpecs, ParamSpecs) {
 }
 
 // ValidateNoDuplicateNames returns an error if any of the params have the same name
-/*func (ps ParamSpecs) ValidateNoDuplicateNames() *apis.FieldError {
+/*func (ps InputParams) ValidateNoDuplicateNames() *apis.FieldError {
 	var errs *apis.FieldError
 	names := ps.GetNames()
 	for dup := range findDups(names) {
@@ -145,7 +163,7 @@ func (ps ParamSpecs) SortByType() (ParamSpecs, ParamSpecs, ParamSpecs) {
 }
 
 // validateParamEnums validates feature flag, duplication and allowed types for Param Enum
-func (ps ParamSpecs) validateParamEnums(ctx context.Context) *apis.FieldError {
+func (ps InputParams) validateParamEnums(ctx context.Context) *apis.FieldError {
 	var errs *apis.FieldError
 	for _, p := range ps {
 		if len(p.Enum) == 0 {
@@ -310,7 +328,7 @@ func (ps Params) ExtractParamArrayLengths() map[string]int {
 
 // ExtractDefaultParamArrayLengths extract and return the lengths of all array params
 // Example of returned value: {"a-array-params": 2,"b-array-params": 2 }
-func (ps ParamSpecs) ExtractDefaultParamArrayLengths() map[string]int {
+func (ps InputParams) ExtractDefaultParamArrayLengths() map[string]int {
 	// Collect all array params
 	arrayParamsLengths := make(map[string]int)
 
@@ -361,10 +379,10 @@ var AllParamTypes = []ParamType{ParamTypeString, ParamTypeArray, ParamTypeObject
 // either an individual string or an array of strings.
 type ParamValue struct {
 	Type      ParamType // Represents the stored type of ParamValues.
-	StringVal string
+	StringVal string    `cel:"string"`
 	// +listType=atomic
-	ArrayVal  []string
-	ObjectVal map[string]string
+	ArrayVal  []string          `cel:"array"`
+	ObjectVal map[string]string `cel:"object"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaller interface.
@@ -373,6 +391,7 @@ func (paramValues *ParamValue) UnmarshalJSON(value []byte) error {
 	// data so we need to check if it is empty.
 	if len(value) == 0 {
 		paramValues.Type = ParamTypeString
+		paramValues.StringVal = ""
 		return nil
 	}
 	if value[0] == '[' {
@@ -396,6 +415,12 @@ func (paramValues *ParamValue) UnmarshalJSON(value []byte) error {
 			paramValues.ObjectVal = m
 			return nil
 		}
+	}
+
+	if value[0] != '"' {
+		paramValues.Type = ParamTypeString
+		paramValues.StringVal = string(value)
+		return nil
 	}
 
 	// By default we unmarshal to string

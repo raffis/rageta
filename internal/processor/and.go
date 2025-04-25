@@ -8,7 +8,7 @@ import (
 
 func WithAnd() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.And == nil {
+		if spec.And == nil || len(spec.And.Refs) == 0 {
 			return nil
 		}
 

@@ -6,56 +6,69 @@ import (
 	"fmt"
 
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types/ref"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 func WithIf(celEnv *cel.Env) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.If == "" {
+		if len(spec.If) == 0 {
 			return nil
 		}
 
 		return &If{
-			condition: spec.If,
-			celEnv:    celEnv,
+			celEnv:     celEnv,
+			conditions: spec.If,
 		}
 	}
-}
-
-type If struct {
-	condition string
-	celEnv    *cel.Env
 }
 
 var ErrConditionFalse = errors.New("conditional step skipped")
 
+type If struct {
+	celEnv     *cel.Env
+	conditions []v1beta1.IfCondition
+}
+
 func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	var ifCondition cel.Program
-	ast, issues := s.celEnv.Compile(s.condition)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("expression compilation `%s` failed: %w", s.condition, issues.Err())
-	}
+	expr := make([]cel.Program, len(s.conditions))
 
-	prg, err := s.celEnv.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("expression ast `%s` failed: %w", s.condition, err)
-	}
+	for i, condition := range s.conditions {
+		if condition.CelExpression != nil {
+			ast, issues := s.celEnv.Compile(*condition.CelExpression)
+			if issues != nil && issues.Err() != nil {
+				return nil, fmt.Errorf("if expression compilation `%s` failed: %w", *condition.CelExpression, issues.Err())
+			}
 
-	ifCondition = prg
+			prg, err := s.celEnv.Program(ast)
+			if err != nil {
+				return nil, fmt.Errorf("if expression ast `%s` failed: %w", *condition.CelExpression, err)
+			}
+
+			expr[i] = prg
+		}
+	}
 
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		var out ref.Val
+		vars := stepContext.ToV1Beta1()
+		for i, condition := range s.conditions {
+			switch {
+			case condition.CelExpression != nil:
+				value, _, err := expr[i].ContextEval(ctx, map[string]any{
+					"context": vars,
+				})
 
-		out, _, err = ifCondition.Eval(stepContext.RuntimeVars())
-		if err != nil {
-			return stepContext, fmt.Errorf("condition expression evaluation `%s` failed: %w", s.condition, err)
-		}
+				if err != nil {
+					return stepContext, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CelExpression, err)
+				}
 
-		// if expression evaluates to false the next step is called in the pipeline without calling the
-		// step handled by this wrapper first
-		if !out.Value().(bool) {
-			return stepContext, ErrConditionFalse
+				// if expression evaluates to false the next step is called in the pipeline without calling the
+				// step handled by this wrapper first
+				if !value.Value().(bool) {
+					return stepContext, ErrConditionFalse
+				}
+			default:
+				return stepContext, fmt.Errorf("invalid if condition given")
+			}
 		}
 
 		return next(ctx, stepContext)
