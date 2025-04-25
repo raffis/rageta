@@ -31,7 +31,7 @@ func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if s.stepTemplate != nil {
-			if err := s.merge(stepContext.Template, s.stepTemplate); err != nil {
+			if err := mergeTemplate(stepContext.Template, s.stepTemplate); err != nil {
 				return stepContext, err
 			}
 		}
@@ -40,7 +40,7 @@ func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Template) merge(to *v1beta1.Template, from *v1beta1.Template) error {
+func mergeTemplate(to *v1beta1.Template, from *v1beta1.Template) error {
 	if len(to.Args) == 0 {
 		to.Args = from.Args
 	}

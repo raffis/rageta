@@ -43,17 +43,6 @@ type Run struct {
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
-
-		if err := Subst(stepContext.ToV1Beta1(),
-			&run.Image,
-			run.Args,
-			run.Command,
-			&run.Script,
-			&run.WorkingDir,
-		); err != nil {
-			return stepContext, err
-		}
-
 		pod := &runtime.Pod{
 			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
@@ -74,19 +63,38 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		for _, vol := range run.VolumeMounts {
-			srcPath, err := filepath.Abs(vol.SourcePath)
-			if err != nil {
-				return stepContext, fmt.Errorf("failed to get absolute path: %w", err)
-			}
-
 			container.Volumes = append(container.Volumes, runtime.Volume{
 				Name:     vol.Name,
-				HostPath: srcPath,
+				HostPath: vol.SourcePath,
 				Path:     vol.MountPath,
 			})
 		}
 
 		s.containerSpec(&container, stepContext.Template)
+
+		subst := []any{
+			&container.Image,
+			container.Args,
+			container.Command,
+			&container.PWD,
+		}
+
+		for _, vol := range container.Volumes {
+			subst = append(subst, &vol.HostPath, &vol.Path)
+		}
+
+		if err := Subst(stepContext.ToV1Beta1(), subst...); err != nil {
+			return stepContext, err
+		}
+
+		for _, vol := range container.Volumes {
+			srcPath, err := filepath.Abs(vol.HostPath)
+			if err != nil {
+				return stepContext, fmt.Errorf("failed to get absolute path: %w", err)
+			}
+
+			vol.HostPath = srcPath
+		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
 		stepContext, err := s.exec(ctx, stepContext, pod)

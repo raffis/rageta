@@ -92,21 +92,12 @@ func (c StepContext) DeepCopy() StepContext {
 }
 
 func (t StepContext) Merge(c StepContext) StepContext {
-	for k, v := range c.Envs {
-		t.Envs[k] = v
-	}
+	maps.Copy(t.Envs, c.Envs)
+	maps.Copy(t.Inputs, c.Inputs)
+	maps.Copy(t.Steps, c.Steps)
+	maps.Copy(t.Containers, c.Containers)
 
-	for k, v := range c.Inputs {
-		t.Inputs[k] = v
-	}
-
-	for k, v := range c.Steps {
-		t.Steps[k] = v
-	}
-
-	for k, v := range c.Containers {
-		t.Containers[k] = v
-	}
+	_ = mergeTemplate(t.Template, c.Template)
 
 	return t
 }
