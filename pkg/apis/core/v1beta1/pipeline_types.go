@@ -140,9 +140,9 @@ type Container struct {
 }
 
 type VolumeMount struct {
-	Name       string `json:"name,omitempty"`
-	MountPath  string `json:"mountPath,omitempty"`
-	SourcePath string `json:"sourcePath,omitempty"`
+	Name      string `json:"name,omitempty"`
+	MountPath string `json:"mountPath,omitempty"`
+	HostPath  string `json:"hostPath,omitempty"`
 }
 
 type AwaitStatus string

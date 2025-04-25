@@ -355,15 +355,15 @@ spec:
                     volumeMounts:
                       items:
                         properties:
+                          hostPath:
+                            type: string
                           mountPath:
                             type: string
                           name:
                             type: string
-                          sourcePath:
-                            type: string
                         type: object
                       type: array
-                    workDir:
+                    workingDir:
                       type: string
                   type: object
                 sources:
@@ -420,15 +420,15 @@ spec:
                     volumeMounts:
                       items:
                         properties:
+                          hostPath:
+                            type: string
                           mountPath:
                             type: string
                           name:
                             type: string
-                          sourcePath:
-                            type: string
                         type: object
                       type: array
-                    workDir:
+                    workingDir:
                       type: string
                   type: object
                 timeout:

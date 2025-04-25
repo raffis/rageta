@@ -65,7 +65,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for _, vol := range run.VolumeMounts {
 			container.Volumes = append(container.Volumes, runtime.Volume{
 				Name:     vol.Name,
-				HostPath: vol.SourcePath,
+				HostPath: vol.HostPath,
 				Path:     vol.MountPath,
 			})
 		}
@@ -79,8 +79,8 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			&container.PWD,
 		}
 
-		for _, vol := range container.Volumes {
-			subst = append(subst, &vol.HostPath, &vol.Path)
+		for i := range container.Volumes {
+			subst = append(subst, &container.Volumes[i].HostPath, &container.Volumes[i].Path)
 		}
 
 		if err := Subst(stepContext.ToV1Beta1(), subst...); err != nil {
@@ -115,6 +115,7 @@ func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.
 	if len(container.Args) == 0 {
 		container.Args = template.Args
 	}
+
 	if len(container.Command) == 0 {
 		container.Command = template.Command
 	}
@@ -139,7 +140,7 @@ func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.
 		if !hasVolume {
 			container.Volumes = append(container.Volumes, runtime.Volume{
 				Name:     templateVol.Name,
-				HostPath: templateVol.SourcePath,
+				HostPath: templateVol.HostPath,
 				Path:     templateVol.MountPath,
 			})
 		}
@@ -203,7 +204,6 @@ func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Po
 		s.teardown <- func(ctx context.Context) error {
 			return <-done
 		}
-
 	} else {
 		if err := await.Wait(); err != nil {
 			return stepContext, err

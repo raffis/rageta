@@ -580,15 +580,16 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 		}
 
 		tmpl.VolumeMounts = append(tmpl.VolumeMounts, v1beta1.VolumeMount{
-			Name:       fmt.Sprintf("volume-%d", i),
-			MountPath:  v[1],
-			SourcePath: v[0],
+			Name:      fmt.Sprintf("volume-%d", i),
+			MountPath: v[1],
+			HostPath:  v[0],
 		})
 	}
 
 	return tmpl, nil
 }
 
+// parseInputs parses a list of input strings and maps them to their corresponding
 func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1beta1.ParamValue, error) {
 	result := make(map[string]v1beta1.ParamValue)
 	steps := make(map[string][]string)

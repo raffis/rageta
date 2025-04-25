@@ -66,15 +66,15 @@ func mergeTemplate(to *v1beta1.Template, from *v1beta1.Template) error {
 		}
 
 		if !hasVolume {
-			srcPath, err := filepath.Abs(templateVol.SourcePath)
+			hostPath, err := filepath.Abs(templateVol.HostPath)
 			if err != nil {
 				return fmt.Errorf("failed to get absolute path: %w", err)
 			}
 
 			to.VolumeMounts = append(to.VolumeMounts, v1beta1.VolumeMount{
-				Name:       templateVol.Name,
-				SourcePath: srcPath,
-				MountPath:  templateVol.MountPath,
+				Name:      templateVol.Name,
+				HostPath:  hostPath,
+				MountPath: templateVol.MountPath,
 			})
 		}
 	}
