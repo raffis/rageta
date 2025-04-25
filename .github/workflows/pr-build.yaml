@@ -20,7 +20,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: fmt
         run: make fmt
       - name: vet
@@ -45,7 +45,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
       - name: test
         run: make test
       - name: Send go coverage report
