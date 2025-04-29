@@ -9,12 +9,12 @@ import (
 
 var ErrInvalidInput = errors.New("invalid input")
 
-func NewErrMissingInput(param v1beta1.InputParam) error {
-	return fmt.Errorf("missing `%s (%s)`: %w", param.Name, param.Type, ErrInvalidInput)
+func NewErrMissingInput(expectedInput v1beta1.InputParam) error {
+	return fmt.Errorf("missing input `%s (%s)`: %w", expectedInput.Name, expectedInput.Type, ErrInvalidInput)
 }
 
-func NewErrWrongInputType(param v1beta1.InputParam) error {
-	return fmt.Errorf("wrong type `%s (%s)`: %w", param.Name, param.Type, ErrInvalidInput)
+func NewErrWrongInputType(expectedInput v1beta1.InputParam, userInput v1beta1.ParamValue) error {
+	return fmt.Errorf("wrong input type `%s` for `%s` given, expected `%s`: %w", userInput.Type, expectedInput.Name, expectedInput.Type, ErrInvalidInput)
 }
 
 func NewErrUnknownInput(name string) error {

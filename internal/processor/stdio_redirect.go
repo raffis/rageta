@@ -34,7 +34,7 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		var stdoutRedirect, stderrRedirect io.Writer
 
-		vars := []interface{}{}
+		vars := []any{}
 		if s.streams.Stdout != nil {
 			vars = append(vars, &s.streams.Stdout.Path)
 		}

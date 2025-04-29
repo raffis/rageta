@@ -47,12 +47,12 @@ func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 	return s[0].Bootstrap(pipeline, next)
 }
 
-func PrefixName(name, prefix string) string {
-	if name == "" {
-		return prefix
+func suffixName(name, suffix string) string {
+	if suffix == "" {
+		return name
 	}
 
-	return fmt.Sprintf("%s-%s", prefix, name)
+	return fmt.Sprintf("%s-%s", name, suffix)
 }
 
 func parseVars(f io.Reader) (map[string]string, error) {

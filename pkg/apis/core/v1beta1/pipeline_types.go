@@ -68,9 +68,10 @@ type IfCondition struct {
 }
 
 type Matrix struct {
-	Params   []Param        `json:"params,omitempty"`
-	Include  []IncludeParam `json:"include,omitempty"`
-	FailFast bool           `json:"failFast,omitempty"`
+	Params     []Param        `json:"params,omitempty"`
+	Include    []IncludeParam `json:"include,omitempty"`
+	FailFast   bool           `json:"failFast,omitempty"`
+	Sequential bool           `json:"sequential,omitempty"`
 }
 
 type IncludeParam struct {

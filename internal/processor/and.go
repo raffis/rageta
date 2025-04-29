@@ -28,20 +28,14 @@ func (s *And) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	var stepEntrypoints []Next
-	for _, step := range steps {
-		next, err := step.Entrypoint()
-
-		if err != nil {
-			return next, err
-		}
-
-		stepEntrypoints = append(stepEntrypoints, next)
-	}
-
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		for _, next := range stepEntrypoints {
-			var err error
+		for _, step := range steps {
+			next, err := step.Entrypoint()
+
+			if err != nil {
+				return stepContext, err
+			}
+
 			stepContext, err = next(ctx, stepContext)
 			if AbortOnError(err) {
 				return stepContext, err

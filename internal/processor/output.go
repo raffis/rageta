@@ -54,7 +54,7 @@ func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		for name, output := range outputs {
-			output.Sync()
+			_ = output.Sync()
 			b, err := io.ReadAll(output)
 			if err != nil {
 				return stepContext, err

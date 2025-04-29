@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 
+	"maps"
+
 	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -20,21 +22,23 @@ func WithMatrix(pool pond.Pool) ProcessorBuilder {
 		}
 
 		return &Matrix{
-			matrix:   spec.Matrix.Params,
-			include:  spec.Matrix.Include,
-			failFast: spec.Matrix.FailFast,
-			stepName: spec.Name,
-			pool:     pool,
+			matrix:     spec.Matrix.Params,
+			include:    spec.Matrix.Include,
+			failFast:   spec.Matrix.FailFast,
+			stepName:   spec.Name,
+			pool:       pool,
+			sequential: spec.Matrix.Sequential,
 		}
 	}
 }
 
 type Matrix struct {
-	matrix   []v1beta1.Param
-	include  []v1beta1.IncludeParam
-	failFast bool
-	stepName string
-	pool     pond.Pool
+	matrix     []v1beta1.Param
+	include    []v1beta1.IncludeParam
+	failFast   bool
+	stepName   string
+	pool       pond.Pool
+	sequential bool
 }
 
 var ErrEmptyMatrix = errors.New("empty matrix")
@@ -67,6 +71,11 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		pool := s.pool
+		if s.sequential {
+			pool = s.pool.NewSubpool(1)
+		}
+
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
 			for paramKey, paramValue := range matrix {
@@ -80,9 +89,13 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			hasher.Write([]byte(matrixKey))
 			b := hasher.Sum(nil)
 
-			copyContext.NamePrefix = PrefixName(copyContext.NamePrefix, hex.EncodeToString(b)[:6])
+			if copyContext.NamePrefix == "" {
+				copyContext.NamePrefix = hex.EncodeToString(b)[:6]
+			} else {
+				copyContext.NamePrefix = suffixName(copyContext.NamePrefix, hex.EncodeToString(b)[:6])
+			}
 
-			s.pool.Go(func() {
+			pool.Go(func() {
 				t, err := next(ctx, copyContext)
 				results <- concurrentResult{t, err}
 			})
@@ -99,7 +112,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					continue
 				}
 
-				stepContext.Steps[PrefixName(stepName, res.stepContext.NamePrefix)] = step
+				stepContext.Steps[suffixName(stepName, res.stepContext.NamePrefix)] = step
 
 				//Unify matrix outputs into an array output for the current step
 				for paramKey, paramValue := range step.Outputs {
@@ -159,6 +172,8 @@ func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, er
 }
 
 func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1beta1.IncludeParam) {
+	includeParams := make(map[string]string)
+
 	for currentMatrixKey, currentMatrixValue := range matrixParams {
 		for _, includeGroup := range include {
 			combine := false
@@ -170,11 +185,13 @@ func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1bet
 
 			if combine {
 				for _, includeParam := range includeGroup.Params {
-					matrixParams[includeParam.Name] = includeParam.Value.StringVal
+					includeParams[includeParam.Name] = includeParam.Value.StringVal
 				}
 			}
 		}
 	}
+
+	maps.Copy(matrixParams, includeParams)
 }
 
 func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, keys []string, index int, currentCombination map[string]string, result *map[string]map[string]string) {

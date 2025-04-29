@@ -59,28 +59,28 @@ func NewBuilder(opts ...builderOption) *builder {
 
 func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1beta1.ParamValue) (map[string]v1beta1.ParamValue, error) {
 	result := make(map[string]v1beta1.ParamValue)
-	for _, v := range params {
-		v.SetDefaults()
-		input, hasInput := inputs[v.Name]
+	for _, expectedInput := range params {
+		expectedInput.SetDefaults()
+		userInput, hasInput := inputs[expectedInput.Name]
 
-		if v.Default == nil {
-			result[v.Name] = v1beta1.ParamValue{
-				Type: v.Type,
+		if expectedInput.Default == nil {
+			result[expectedInput.Name] = v1beta1.ParamValue{
+				Type: expectedInput.Type,
 			}
 		} else {
-			result[v.Name] = *v.Default
+			result[expectedInput.Name] = *expectedInput.Default
 		}
 
-		if v.Default == nil && !hasInput {
-			return result, NewErrMissingInput(v)
+		if expectedInput.Default == nil && !hasInput {
+			return result, NewErrMissingInput(expectedInput)
 		}
 
 		if hasInput {
-			if input.Type != v.Type {
-				return result, NewErrWrongInputType(v)
+			if userInput.Type != expectedInput.Type {
+				return result, NewErrWrongInputType(expectedInput, userInput)
 			}
 
-			result[v.Name] = input
+			result[expectedInput.Name] = userInput
 		}
 	}
 

@@ -188,7 +188,8 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
-		_, err = stdcopy.StdCopy(stdout, stderr, streams.Reader)
+		_, err := stdcopy.StdCopy(stdout, stderr, streams.Reader)
+
 		if err != nil {
 			return fmt.Errorf("demux container streams failed: %w", err)
 		}
@@ -224,6 +225,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 			streams.Close()
 			return ctx.Err()
 		case await := <-waitC:
+			time.Sleep(time.Second)
 			if await.StatusCode > 0 {
 				return &Result{
 					ExitCode: int(await.StatusCode),
@@ -352,8 +354,8 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	hostConfig := dockercontainer.HostConfig{
 		RestartPolicy: d.getRestartPolicy(container.RestartPolicy),
 		GroupAdd:      groups,
-		LogConfig:     dockercontainer.LogConfig{
-			//	Type: "none",
+		LogConfig: dockercontainer.LogConfig{
+			Type: "none",
 		},
 	}
 

@@ -39,17 +39,6 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	var stepEntrypoints []Next
-	for _, step := range steps {
-		next, err := step.Entrypoint()
-
-		if err != nil {
-			return next, err
-		}
-
-		stepEntrypoints = append(stepEntrypoints, next)
-	}
-
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		results := make(chan concurrentResult)
 		var errs []error
@@ -57,8 +46,13 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		for _, next := range stepEntrypoints {
-			next := next
+		for _, step := range steps {
+			next, err := step.Entrypoint()
+
+			if err != nil {
+				return stepContext, err
+			}
+
 			stepContext := stepContext.DeepCopy()
 			s.pool.Go(func() {
 				t, err := next(ctx, stepContext)

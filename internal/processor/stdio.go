@@ -36,7 +36,7 @@ type Stdio struct {
 
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		_, stdout, stderr, close := s.outputFactory(ctx, stepContext, PrefixName(stepContext.NamePrefix, s.stepName), s.stdin, s.stdout, s.stderr)
+		_, stdout, stderr, close := s.outputFactory(ctx, stepContext, suffixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
 
 		if stepContext.Stdout != io.Discard {
 			stepContext.Stdout = stdout

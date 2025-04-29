@@ -39,20 +39,20 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	var stepEntrypoints []stepWrapper
-	for _, step := range steps {
-		entrypoint, err := step.Entrypoint()
+	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+		var stepEntrypoints []stepWrapper
+		for _, step := range steps {
+			entrypoint, err := step.Entrypoint()
 
-		if err != nil {
-			return nil, err
+			if err != nil {
+				return stepContext, err
+			}
+
+			stepEntrypoints = append(stepEntrypoints, stepWrapper{
+				next: entrypoint,
+			})
 		}
 
-		stepEntrypoints = append(stepEntrypoints, stepWrapper{
-			next: entrypoint,
-		})
-	}
-
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		results := make(chan concurrentResult)
 		var stdout *io.PipeReader
 		var errs []error

@@ -50,7 +50,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		inheritCtx := stepContext.DeepCopy()
-		inheritCtx.NamePrefix = PrefixName(s.stepName, stepContext.NamePrefix)
+		inheritCtx.NamePrefix = suffixName(s.stepName, stepContext.NamePrefix)
 
 		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
@@ -79,16 +79,18 @@ func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValu
 	return m
 }
 
+/*************  ✨ Windsurf Command ⭐  *************/
+/*******  7d182fe0-625f-41d6-92f2-caa242f8bac9  *******/
 func (s *Inherit) mergeContext(from, to StepContext) {
 	for k, v := range from.Envs {
 		to.Envs[k] = v
 	}
 
 	for k, v := range from.Steps {
-		to.Steps[PrefixName(k, s.stepName)] = v
+		to.Steps[suffixName(k, s.stepName)] = v
 	}
 
 	for k, v := range from.Containers {
-		to.Containers[PrefixName(k, s.stepName)] = v
+		to.Containers[suffixName(k, s.stepName)] = v
 	}
 }

@@ -31,7 +31,7 @@ type Report struct {
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		stepContext, err := next(ctx, stepContext)
-		s.store.Add(PrefixName(s.stepName, stepContext.NamePrefix), stepContext.Steps[s.stepName])
+		s.store.Add(suffixName(s.stepName, stepContext.NamePrefix), stepContext.Steps[s.stepName])
 		return stepContext, err
 	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithRun(tee bool, defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
 			return nil
@@ -44,14 +45,14 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
 		pod := &runtime.Pod{
-			Name: fmt.Sprintf("%s-%s-%s", PrefixName(stepContext.NamePrefix, s.stepName), pipeline.ID(), utils.RandString(5)),
+			Name: fmt.Sprintf("%s-%s-%s", suffixName(s.stepName, stepContext.NamePrefix), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 
 		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
-			Stdin:           stepContext.Stdin != nil,
+			Stdin:           stepContext.Stdin != nil || run.Stdin,
 			TTY:             run.TTY,
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
@@ -94,6 +95,10 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			vol.HostPath = srcPath
+		}
+
+		if run.Stdin && stepContext.Stdin == nil {
+			stepContext.Stdin = os.Stdin
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}

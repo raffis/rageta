@@ -303,7 +303,7 @@ func stepBuilder(
 			processor.WithTmpDir(),
 			processor.WithEnv(osEnv, envs),
 			processor.WithStdioRedirect(runArgs.tee),
-			processor.WithRun(runArgs.tee, imagePullPolicy, driver, outputFactory, teardown),
+			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
 			processor.WithInherit(*builder, store),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),

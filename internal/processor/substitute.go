@@ -92,29 +92,40 @@ func substParam(param *v1beta1.Param, vars map[string]string) (*v1beta1.ParamVal
 	return nil, fmt.Errorf("unsupported param type `%s`", param.Value.Type)
 }
 
-func parseExpression(str string, vars map[string]string) (string, error) {
-	var parseError error
+func parseExpression(previous string, vars map[string]string) (string, error) {
+	var (
+		parseError  error
+		substituted string
+	)
 
-	newStr := substituteExpression.ReplaceAllStringFunc(str, func(m string) string {
-		parts := substituteExpression.FindStringSubmatch(m)
-		if len(parts) != 3 {
-			err := fmt.Errorf("invalid expression wrapper `%s` -- %#v", m, parts)
-			if parseError == nil {
-				parseError = err
+	for {
+		substituted = substituteExpression.ReplaceAllStringFunc(previous, func(m string) string {
+			parts := substituteExpression.FindStringSubmatch(m)
+			if len(parts) != 3 {
+				err := fmt.Errorf("invalid expression wrapper `%s` -- %#v", m, parts)
+				if parseError == nil {
+					parseError = err
+				}
+				return m
 			}
-			return m
+
+			if parts[1] == `$$` {
+				return fmt.Sprintf("$(%s)", parts[2])
+			}
+
+			if v, ok := vars[parts[2]]; ok {
+				return v
+			} else {
+				return parts[0]
+			}
+		})
+
+		if previous == substituted {
+			break
 		}
 
-		if parts[1] == `$$` {
-			return fmt.Sprintf("$(%s)", parts[2])
-		}
+		previous = substituted
+	}
 
-		if v, ok := vars[parts[2]]; ok {
-			return v
-		} else {
-			return parts[0]
-		}
-	})
-
-	return newStr, parseError
+	return substituted, parseError
 }

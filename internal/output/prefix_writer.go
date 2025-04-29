@@ -2,10 +2,9 @@ package output
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -58,8 +57,10 @@ func prefixWriter(prefix string, stdoutCh, stderrCh chan prefixMessage, randColo
 	style := lipgloss.NewStyle()
 
 	if randColor {
-		color, _ := randomHex(6)
-		style = style.Foreground(lipgloss.Color(fmt.Sprintf("#%s", color)))
+		style = style.Foreground(lipgloss.AdaptiveColor{
+			Dark:  randHEXColor(127, 255),
+			Light: randHEXColor(0, 127),
+		})
 	}
 
 	var stdout, stderr io.Writer
@@ -81,10 +82,9 @@ func prefixWriter(prefix string, stdoutCh, stderrCh chan prefixMessage, randColo
 	return stdout, stderr
 }
 
-func randomHex(n int) (string, error) {
-	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+func randHEXColor(min, max int) string {
+	R := rand.Intn(max-min+1) + min
+	G := rand.Intn(max-min+1) + min
+	B := rand.Intn(max-min+1) + min
+	return fmt.Sprintf("#%02x%02x%02x", R, G, B)
 }

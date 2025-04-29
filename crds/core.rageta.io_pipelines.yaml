@@ -284,6 +284,8 @@ spec:
                         - value
                         type: object
                       type: array
+                    sequential:
+                      type: boolean
                   type: object
                 name:
                   type: string
