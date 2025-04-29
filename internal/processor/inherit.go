@@ -79,8 +79,6 @@ func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValu
 	return m
 }
 
-/*************  ✨ Windsurf Command ⭐  *************/
-/*******  7d182fe0-625f-41d6-92f2-caa242f8bac9  *******/
 func (s *Inherit) mergeContext(from, to StepContext) {
 	for k, v := range from.Envs {
 		to.Envs[k] = v
