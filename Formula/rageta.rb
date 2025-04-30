@@ -5,20 +5,20 @@
 class Rageta < Formula
   desc "Cloud native pipelines"
   homepage "https://github.com/raffis/rageta"
-  version "0.0.21"
+  version "0.0.22"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.21/rageta_0.0.21_darwin_amd64.tar.gz"
-      sha256 "586808cac7f1f8a2c3a3da2740e57b6e69f27352b784d25b4a31019c0ac96dbb"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.22/rageta_0.0.22_darwin_amd64.tar.gz"
+      sha256 "e6bb1d4e170eff7ec1d02e0e53ecb59f741263f78b71b16c5882bb4809927f09"
 
       def install
         bin.install "rageta"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.21/rageta_0.0.21_darwin_arm64.tar.gz"
-      sha256 "9fd399ea5b8f7b47239d98c7a84e2d0ed2afba22d2faf69c260cc5c589cdb192"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.22/rageta_0.0.22_darwin_arm64.tar.gz"
+      sha256 "c37235b8bf563dcef51b0c548efece9d0870e2628d6bd6b3a74c856c0a9e96fc"
 
       def install
         bin.install "rageta"
@@ -28,15 +28,15 @@ class Rageta < Formula
 
   on_linux do
     if Hardware::CPU.intel? and Hardware::CPU.is_64_bit?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.21/rageta_0.0.21_linux_amd64.tar.gz"
-      sha256 "fcb4a4c56a58fb17f2f26224d248bb816a157e818afef6f7273bdb4ad8548306"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.22/rageta_0.0.22_linux_amd64.tar.gz"
+      sha256 "72efc0b1ed47bb4aa4a8ce4fb78fb183b37f5c0d5481e7b14ba6f4a42d85c32b"
       def install
         bin.install "rageta"
       end
     end
     if Hardware::CPU.arm? and Hardware::CPU.is_64_bit?
-      url "https://github.com/raffis/rageta/releases/download/v0.0.21/rageta_0.0.21_linux_arm64.tar.gz"
-      sha256 "17ebf22c5d8277190c93d1609d2bacf944eb02313943ad74af482d7d304ff4e6"
+      url "https://github.com/raffis/rageta/releases/download/v0.0.22/rageta_0.0.22_linux_arm64.tar.gz"
+      sha256 "769f621bef7e949769d8b3a33990d1395c9be5774928e273da7961359b74023f"
       def install
         bin.install "rageta"
       end
