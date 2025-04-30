@@ -58,15 +58,19 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, fmt.Errorf("failed setup step logger: no such log encoder `%s`", s.zapConfig.Encoding)
 		}
 
-		core := zapcore.NewCore(
-			encoder,
-			zapcore.AddSync(stepContext.Stderr),
-			s.zapConfig.Level,
-		)
+		logger := s.logger
 
-		zapLogger := zap.New(core)
-		logger := zapr.NewLogger(zapLogger)
-		ctx = logr.NewContext(ctx, logger)
+		if stepContext.Stderr != nil {
+			core := zapcore.NewCore(
+				encoder,
+				zapcore.AddSync(stepContext.Stderr),
+				s.zapConfig.Level,
+			)
+
+			zapLogger := zap.New(core)
+			logger = zapr.NewLogger(zapLogger)
+			ctx = logr.NewContext(ctx, logger)
+		}
 
 		logger.Info("process step")
 		logger.V(1).Info("step context input", "context", stepContext)

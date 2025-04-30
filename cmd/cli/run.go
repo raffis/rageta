@@ -487,6 +487,8 @@ func runRun(c *cobra.Command, args []string) error {
 		_, _, result = cmd(ctx)
 	}
 
+	logger.Info("pipeline completed", "result", result)
+
 	if tuiDone != nil {
 		if errors.Is(result, pipeline.ErrInvalidInput) {
 			tuiApp.Quit()
