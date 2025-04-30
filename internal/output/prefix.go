@@ -1,29 +1,51 @@
 package output
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"runtime/debug"
+	"strings"
 	"sync"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/raffis/rageta/internal/processor"
 )
 
 func writeBytes(w io.Writer, r chan prefixMessage) {
-	var lastChar byte
+	/*var lastChar byte
 	var lastProducer string
-
+	*/
+	id := bytes.Fields(debug.Stack())[1]
 	for msg := range r {
-		if lastProducer != "" && lastProducer != msg.producer && lastChar != byte('\n') {
+		/*if lastProducer != "" && lastProducer != msg.producer && lastChar != byte('\n') {
 			w.Write([]byte{'\n'})
+		}*
+
+		//lastChar = msg.b[len(msg.b)-1]
+		//lastProducer = msg.producer
+
+
+
+		//fmt.Printf("LINE: %#v -- %#v\n\n", string(msg.b), lines)
+		*/
+		lines := strings.Split(strings.ReplaceAll(strings.TrimSuffix(string(msg.b), "\n"), "\r", ""), "\n")
+		for _, line := range lines {
+
+			w.Write([]byte(msg.style.Render(msg.producer)))
+			w.Write(id)
+			w.Write([]byte(line))
+
+			w.Write([]byte{'\n'})
+
 		}
 
-		lastChar = msg.b[len(msg.b)-1]
-		lastProducer = msg.producer
-		w.Write(msg.b)
+		//w.Write(msg.b)
 	}
 }
 
 type prefixMessage struct {
+	style    lipgloss.Style
 	producer string
 	b        []byte
 }

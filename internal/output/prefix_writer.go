@@ -34,7 +34,7 @@ func NewPrefixWriter(writer chan prefixMessage, opts PrefixOptions) *Prefixer {
 func (p *Prefixer) Write(payload []byte) (int, error) {
 	p.buf.Reset()
 
-	for _, b := range payload {
+	/*for _, b := range payload {
 		if p.trailingNewline {
 			p.buf.WriteString(p.style.Render(p.prefix))
 			p.trailingNewline = false
@@ -44,10 +44,11 @@ func (p *Prefixer) Write(payload []byte) (int, error) {
 		if b == '\n' {
 			p.trailingNewline = true
 		}
-	}
+	}*/
 
 	p.writer <- prefixMessage{
-		b:        bytes.Clone(p.buf.Bytes()),
+		style:    p.style,
+		b:        bytes.Clone(payload),
 		producer: p.prefix,
 	}
 	return len(payload), nil
