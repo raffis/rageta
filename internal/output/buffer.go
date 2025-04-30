@@ -15,13 +15,13 @@ type bufferVars struct {
 	Buffer   *bytes.Buffer
 }
 
-func Buffer(tmpl *template.Template) processor.OutputFactory {
+func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 	mu := sync.RWMutex{}
 
-	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, _ io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
+	return func(_ context.Context, stepContext processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
 		buffer := &bytes.Buffer{}
 
-		return stdin, buffer, buffer, func(err error) error {
+		return buffer, buffer, func(err error) error {
 			mu.Lock()
 			defer mu.Unlock()
 

@@ -10,7 +10,7 @@ import (
 )
 
 func UI(ui tui.UI) processor.OutputFactory {
-	return func(_ context.Context, stepContext processor.StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, processor.OutputCloser) {
+	return func(_ context.Context, stepContext processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
 		task, err := ui.GetTask(stepName)
 		if err != nil {
 			task = tui.NewTask(stepName, stepContext.Tags)
@@ -20,7 +20,7 @@ func UI(ui tui.UI) processor.OutputFactory {
 		ui.SetStatus(tui.StepStatusRunning)
 		task.SetStatus(tui.StepStatusRunning)
 
-		return stdin, task, task, func(err error) error {
+		return task, task, func(err error) error {
 			switch {
 			case err == nil:
 				task.SetStatus(tui.StepStatusDone)

@@ -8,17 +8,20 @@ import (
 )
 
 type OutputCloser func(err error) error
-type OutputFactory func(ctx context.Context, stepContext StepContext, stepName string, stdin io.Reader, stdout, stderr io.Writer) (io.Reader, io.Writer, io.Writer, OutputCloser)
+type OutputFactory func(ctx context.Context, stepContext StepContext, stepName string) (io.Writer, io.Writer, OutputCloser)
 
-func WithStdio(outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.Writer) ProcessorBuilder {
+func WithStdio(outputFactory OutputFactory, withInternals bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
+		internalStep := spec.Run == nil
+
+		if !withInternals && internalStep {
+			return nil
+		}
+
 		stdio := &Stdio{
 			stepName:      spec.Name,
 			spec:          spec,
 			outputFactory: outputFactory,
-			stdin:         stdin,
-			stdout:        stdout,
-			stderr:        stderr,
 		}
 
 		return stdio
@@ -28,15 +31,12 @@ func WithStdio(outputFactory OutputFactory, stdin io.Reader, stdout, stderr io.W
 type Stdio struct {
 	stepName      string
 	spec          *v1beta1.Step
-	stdin         io.Reader
-	stdout        io.Writer
-	stderr        io.Writer
 	outputFactory OutputFactory
 }
 
 func (s *Stdio) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		_, stdout, stderr, close := s.outputFactory(ctx, stepContext, suffixName(s.stepName, stepContext.NamePrefix), s.stdin, s.stdout, s.stderr)
+		stdout, stderr, close := s.outputFactory(ctx, stepContext, suffixName(s.stepName, stepContext.NamePrefix))
 
 		if stepContext.Stdout != io.Discard {
 			stepContext.Stdout = stdout

@@ -72,6 +72,7 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	deep                bool          `env:"DEEP"`
 	noProgress          bool          `env:"NO_PROGRESS"`
+	withInternals       bool          `env:"WITH_INTERNALS"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -96,11 +97,12 @@ func init() {
 
 	runCmd.Flags().StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	runCmd.Flags().BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], raw]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `none` dumps all tasks directly without any modification.")
+	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
 	runCmd.Flags().BoolVarP(&runArgs.deep, "deep", "", false, "Add steps from inherited pipelines to report")
 	runCmd.Flags().IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
 	runCmd.Flags().BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
+	runCmd.Flags().BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
 	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
@@ -153,7 +155,7 @@ var (
 	renderOutputPrefix                renderOutput = "prefix"
 	renderOutputPrefixNoColor         renderOutput = "prefix-nocolor"
 	renderOutputUI                    renderOutput = "ui"
-	renderOutputRaw                   renderOutput = "raw"
+	renderOutputPassthrough           renderOutput = "passthrough"
 	renderOutputJSON                  renderOutput = "json"
 	renderOutputBuffer                renderOutput = "buffer"
 	renderOutputBufferDefaultTemplate string       = "{{ .Buffer }}"
@@ -288,7 +290,7 @@ func stepBuilder(
 			processor.WithResult(),
 			processor.WithOutput(),
 			processor.WithMatrix(pool),
-			processor.WithStdio(outputFactory, os.Stdin, os.Stdout, os.Stderr),
+			processor.WithStdio(outputFactory, runArgs.withInternals),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig),
 			processor.WithOtelMetrics(meter),
@@ -510,6 +512,11 @@ func runRun(c *cobra.Command, args []string) error {
 		tuiApp.ReleaseTerminal()
 	}
 
+	if prefixOutputDone != nil {
+		close(prefixOutputCH)
+		<-prefixOutputDone
+	}
+
 	cancel()
 	close(teardown)
 
@@ -664,9 +671,13 @@ func envMap() map[string]string {
 	return envs
 }
 
-var tuiModel tui.UI
-var tuiDone chan struct{}
-var tuiApp *tea.Program
+var (
+	tuiModel         tui.UI
+	tuiDone          chan struct{}
+	tuiApp           *tea.Program
+	prefixOutputDone chan struct{}
+	prefixOutputCH   chan output.PrefixMessage
+)
 
 func uiOutput(cancel context.CancelFunc) tui.UI {
 	if runArgs.output != "ui" {
@@ -701,6 +712,22 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 	return tuiModel
 }
 
+func prefixOutput() chan output.PrefixMessage {
+	if runArgs.output != "prefix" && runArgs.output != "prefix-nocolor" {
+		return nil
+	}
+
+	prefixOutputDone = make(chan struct{})
+	prefixOutputCH = make(chan output.PrefixMessage)
+
+	go func() {
+		output.TerminalWriter(prefixOutputCH)
+		prefixOutputDone <- struct{}{}
+	}()
+
+	return prefixOutputCH
+}
+
 func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 	var outputHandler processor.OutputFactory
 
@@ -717,13 +744,13 @@ func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 	case renderOutputUI.String():
 		outputHandler = output.UI(uiOutput(cancel))
 	case renderOutputPrefix.String():
-		outputHandler = output.Prefix(true)
+		outputHandler = output.Prefix(true, os.Stdout, os.Stderr, prefixOutput())
 	case renderOutputPrefixNoColor.String():
-		outputHandler = output.Prefix(false)
-	case renderOutputRaw.String():
-		outputHandler = output.Raw()
+		outputHandler = output.Prefix(false, os.Stdout, os.Stderr, prefixOutput())
+	case renderOutputPassthrough.String():
+		outputHandler = output.Passthrough(os.Stdout, os.Stderr)
 	case renderOutputJSON.String():
-		outputHandler = output.JSON()
+		outputHandler = output.JSON(os.Stdout, os.Stderr)
 	case renderOutputBuffer.String():
 		if opts == "" {
 			opts = renderOutputBufferDefaultTemplate
@@ -734,7 +761,7 @@ func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 			return nil, fmt.Errorf("failed to parse report buffer template: %w", err)
 		}
 
-		outputHandler = output.Buffer(tmpl)
+		outputHandler = output.Buffer(tmpl, os.Stdout)
 	default:
 		return nil, fmt.Errorf("invalid output format given: %s", runArgs.output)
 	}
