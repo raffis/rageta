@@ -8,11 +8,14 @@ import (
 	"text/template"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/tui"
 )
 
 type bufferVars struct {
 	StepName string
 	Buffer   *bytes.Buffer
+	Error    error
+	Symbol   string
 }
 
 func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
@@ -25,9 +28,23 @@ func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 			mu.Lock()
 			defer mu.Unlock()
 
+			var status tui.StepStatus
+			switch {
+			case err == nil:
+				status = tui.StepStatusWaiting
+			case err != nil && !processor.AbortOnError(err):
+				status = tui.StepStatusSkipped
+			case err != nil:
+				status = tui.StepStatusFailed
+			case err == nil:
+				status = tui.StepStatusDone
+			}
+
 			err = tmpl.Execute(stdout, bufferVars{
-				StepName: stepContext.NamePrefix,
+				StepName: stepName,
 				Buffer:   buffer,
+				Error:    err,
+				Symbol:   status.Render(),
 			})
 
 			if err != nil {

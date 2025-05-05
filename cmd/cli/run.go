@@ -179,7 +179,7 @@ func (d containerRuntime) String() string {
 func electDefaultOutput() string {
 	switch {
 	case os.Getenv("GITHUB_ACTIONS") == "true":
-		renderOutputBufferDefaultTemplate = `{{ printf "::group::%s\n%s\n::endgroup::\n" .StepName .Buffer }}`
+		renderOutputBufferDefaultTemplate = `{{ printf "::group::%s %s\n%s\n::endgroup::\n" .StepName .Symbol .Buffer }}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
 		return renderOutputPrefix.String()
