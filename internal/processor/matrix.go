@@ -22,23 +22,23 @@ func WithMatrix(pool pond.Pool) ProcessorBuilder {
 		}
 
 		return &Matrix{
-			matrix:     spec.Matrix.Params,
-			include:    spec.Matrix.Include,
-			failFast:   spec.Matrix.FailFast,
-			stepName:   spec.Name,
-			pool:       pool,
-			sequential: spec.Matrix.Sequential,
+			matrix:        spec.Matrix.Params,
+			include:       spec.Matrix.Include,
+			failFast:      spec.Matrix.FailFast,
+			stepName:      spec.Name,
+			pool:          pool,
+			maxConcurrent: spec.Matrix.MaxConcurrent,
 		}
 	}
 }
 
 type Matrix struct {
-	matrix     []v1beta1.Param
-	include    []v1beta1.IncludeParam
-	failFast   bool
-	stepName   string
-	pool       pond.Pool
-	sequential bool
+	matrix        []v1beta1.Param
+	include       []v1beta1.IncludeParam
+	failFast      bool
+	stepName      string
+	pool          pond.Pool
+	maxConcurrent int
 }
 
 var ErrEmptyMatrix = errors.New("empty matrix")
@@ -72,8 +72,8 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		defer cancel()
 
 		pool := s.pool
-		if s.sequential {
-			pool = s.pool.NewSubpool(1)
+		if s.maxConcurrent > 0 {
+			pool = s.pool.NewSubpool(s.maxConcurrent)
 		}
 
 		for matrixKey, matrix := range matrixes {
