@@ -179,7 +179,7 @@ func (d containerRuntime) String() string {
 func electDefaultOutput() string {
 	switch {
 	case os.Getenv("GITHUB_ACTIONS") == "true":
-		renderOutputBufferDefaultTemplate = `{{ printf "::group::%s %s\n%s\n::endgroup::\n" .StepName .Symbol .Buffer }}`
+		renderOutputBufferDefaultTemplate = `{{ if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}  {{else}}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{end}}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
 		return renderOutputPrefix.String()
@@ -271,7 +271,8 @@ func stepBuilder(
 	celEnv *cel.Env,
 	driver cruntime.Interface,
 	imagePullPolicy cruntime.PullImagePolicy,
-	tracer trace.Tracer, meter metric.Meter,
+	tracer trace.Tracer,
+	meter metric.Meter,
 	outputFactory processor.OutputFactory,
 	resultStore processor.ResultStore,
 	teardown chan processor.Teardown,
@@ -410,7 +411,6 @@ func runRun(c *cobra.Command, args []string) error {
 		return err
 	}
 
-	//logger := zap.New(zapbridge.NewOtelZapCore(otelName))
 	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
 	if err != nil {
 		return err
@@ -418,21 +418,6 @@ func runRun(c *cobra.Command, args []string) error {
 
 	defer tp.Shutdown(context.Background())
 	meter := otel.Meter(otelName)
-	//logger2 := otelslog.NewLogger(name)
-	//rollCnt metric.Int64Counter
-
-	/*if runArgs.otelOptions.Endpoint != "" {
-		tp, err := otelsetup.Tracing(context.Background(), runArgs.otelOptions)
-		defer func() {
-			if err := tp.Shutdown(context.Background()); err != nil {
-				panic(err)
-			}
-		}()
-
-		if err != nil {
-			panic(err)
-		}
-	}*/
 
 	outputFactory, err := outputFactory(cancel)
 	if err != nil {
@@ -694,12 +679,6 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 	tuiModel = tui.NewModel()
 	tuiApp = tui.Program(tuiModel)
 
-	/*if logger.GetV() > 0 {
-		loggerTask := tui.NewTask("main()")
-		tuiModel.AddTasks(loggerTask)
-	}*/
-
-	//logger.WithSink(logr.)
 	go func() {
 		_, err := tuiApp.Run()
 

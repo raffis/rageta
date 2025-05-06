@@ -15,17 +15,19 @@ func WithConcurrent(pool pond.Pool) ProcessorBuilder {
 		}
 
 		return &Concurrent{
-			refs:     refSlice(spec.Concurrent.Refs),
-			failFast: spec.Concurrent.FailFast,
-			pool:     pool,
+			refs:          refSlice(spec.Concurrent.Refs),
+			failFast:      spec.Concurrent.FailFast,
+			pool:          pool,
+			maxConcurrent: spec.Concurrent.MaxConcurrent,
 		}
 	}
 }
 
 type Concurrent struct {
-	failFast bool
-	refs     []string
-	pool     pond.Pool
+	failFast      bool
+	refs          []string
+	pool          pond.Pool
+	maxConcurrent int
 }
 
 type concurrentResult struct {
@@ -46,6 +48,11 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		pool := s.pool
+		if s.maxConcurrent > 0 {
+			pool = s.pool.NewSubpool(s.maxConcurrent)
+		}
+
 		for _, step := range steps {
 			next, err := step.Entrypoint()
 
@@ -54,7 +61,7 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			stepContext := stepContext.DeepCopy()
-			s.pool.Go(func() {
+			pool.Go(func() {
 				t, err := next(ctx, stepContext)
 				results <- concurrentResult{t, err}
 			})
