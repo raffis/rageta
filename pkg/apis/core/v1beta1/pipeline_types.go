@@ -68,10 +68,10 @@ type IfCondition struct {
 }
 
 type Matrix struct {
-	Params     []Param        `json:"params,omitempty"`
-	Include    []IncludeParam `json:"include,omitempty"`
-	FailFast   bool           `json:"failFast,omitempty"`
-	Sequential bool           `json:"sequential,omitempty"`
+	Params        []Param        `json:"params,omitempty"`
+	Include       []IncludeParam `json:"include,omitempty"`
+	FailFast      bool           `json:"failFast,omitempty"`
+	MaxConcurrent int            `json:"maxConcurrent,omitempty"`
 }
 
 type IncludeParam struct {
@@ -113,8 +113,9 @@ type StepReference struct {
 }
 
 type ConcurrentStep struct {
-	FailFast bool            `json:"failFast,omitempty"`
-	Refs     []StepReference `json:"refs,omitempty"`
+	FailFast      bool            `json:"failFast,omitempty"`
+	MaxConcurrent int             `json:"maxConcurrent,omitempty"`
+	Refs          []StepReference `json:"refs,omitempty"`
 }
 
 type PipeStep struct {

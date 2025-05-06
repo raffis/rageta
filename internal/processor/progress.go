@@ -35,7 +35,7 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		progress := func() {
 			if stepContext.Stderr != nil {
-				stepContext.Stderr.Write([]byte(fmt.Sprintf("Waiting for %s to finish\n", s.stepName)))
+				stepContext.Stderr.Write(fmt.Appendf(nil, "Waiting for %s to finish\n", s.stepName))
 			}
 		}
 

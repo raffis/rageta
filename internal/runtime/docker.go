@@ -145,7 +145,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	if pullImage {
 		if err := d.pullImage(ctx, container.Image, stderr); err != nil {
-			return nil, fmt.Errorf("failed to pull image: %w", err)
+			return nil, fmt.Errorf("failed to pull image `%s`: %w", container.Image, err)
 		}
 	}
 
