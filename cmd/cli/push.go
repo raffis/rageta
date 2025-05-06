@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -138,8 +137,12 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid path %q", pushArgs.path)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	ctx := cmd.Context()
+	if rootArgs.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, rootArgs.timeout)
+		defer cancel()
+	}
 
 	pushArgs.ociOptions.URL = ociURL
 	ociClient, err := pushArgs.ociOptions.Build(ctx)

@@ -179,7 +179,7 @@ func (d containerRuntime) String() string {
 func electDefaultOutput() string {
 	switch {
 	case os.Getenv("GITHUB_ACTIONS") == "true":
-		renderOutputBufferDefaultTemplate = `{{ if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}  {{else}}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{end}}`
+		renderOutputBufferDefaultTemplate = `{{- if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}{{- else }}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{- end }}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
 		return renderOutputPrefix.String()
@@ -322,13 +322,13 @@ func stepBuilder(
 	}
 }
 
-func runRun(c *cobra.Command, args []string) error {
+func runRun(cmd *cobra.Command, args []string) error {
 	logger, _, err := getRunLogger()
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
 	if rootArgs.timeout > 0 {
@@ -465,11 +465,11 @@ func runRun(c *cobra.Command, args []string) error {
 
 	var result error
 	command.PipelineSpec.Name = ""
-	cmd, err := builder.Build(command, runArgs.entrypoint, inputs, processor.NewContext())
+	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, processor.NewContext())
 	if err != nil {
 		result = err
 	} else {
-		_, _, result = cmd(ctx)
+		_, _, result = pipelineCmd(ctx)
 	}
 
 	logger.Info("pipeline completed", "result", result)
