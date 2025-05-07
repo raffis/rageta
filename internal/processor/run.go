@@ -133,6 +133,14 @@ func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.
 		container.Image = template.Image
 	}
 
+	if container.Uid == nil && template.Uid != nil {
+		container.Uid = template.Uid
+	}
+
+	if container.Guid == nil && template.Guid != nil {
+		container.Guid = template.Guid
+	}
+
 	for _, templateVol := range template.VolumeMounts {
 		hasVolume := false
 		for _, containerVol := range container.Volumes {

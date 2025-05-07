@@ -56,6 +56,14 @@ func mergeTemplate(to *v1beta1.Template, from *v1beta1.Template) error {
 		to.Image = from.Image
 	}
 
+	if to.Uid == nil {
+		to.Uid = from.Uid
+	}
+
+	if to.Guid == nil {
+		to.Guid = from.Guid
+	}
+
 	for _, templateVol := range from.VolumeMounts {
 		hasVolume := false
 		for _, containerVol := range to.VolumeMounts {

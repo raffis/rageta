@@ -45,7 +45,7 @@ func Timeline(w io.Writer, steps []stepResult) error {
 		return nil
 	}
 
-	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Background(lipgloss.Color("2"))
+	barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	// Render each step
 	var result string
@@ -63,7 +63,7 @@ func Timeline(w io.Writer, steps []stepResult) error {
 			barLength = 1
 		}
 
-		bar := barStyle.Render(strings.Repeat("█", barLength))
+		bar := barStyle.Render(strings.Repeat("▭", barLength))
 		line := fmt.Sprintf("%-*s | %*s%s\n", maxNameLen, step.stepName, startOffset, "", bar)
 		result += line
 	}

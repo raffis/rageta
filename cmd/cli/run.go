@@ -8,9 +8,12 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,6 +22,7 @@ import (
 
 	"github.com/alitto/pond/v2"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
@@ -41,6 +45,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	transport "github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"golang.org/x/term"
 )
@@ -73,6 +78,7 @@ type runFlags struct {
 	deep                bool          `env:"DEEP"`
 	noProgress          bool          `env:"NO_PROGRESS"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
+	user                string        `env:"USER"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -116,6 +122,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 	runCmd.Flags().StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
 	runCmd.Flags().BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
+	runCmd.Flags().StringVarP(&runArgs.user, "user", "", fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid()), "Username or UID (format: <name|uid>[:<group|gid>])")
 	runArgs.otelOptions.BindFlags(runCmd.Flags())
 	runArgs.dockerOptions.BindFlags(runCmd.Flags())
 	runArgs.ociOptions.BindFlags(runCmd.Flags())
@@ -458,7 +465,17 @@ func runRun(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	inputs, err := parseInputs(command.Inputs, runArgs.inputs)
+	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
+	pipeline.Flags(flagSet, command.Inputs)
+
+	if flagStart := slices.Index(os.Args, "--"); flagStart != -1 {
+		err = flagSet.Parse(os.Args[flagStart+1:])
+		if err != nil {
+			return err
+		}
+	}
+
+	inputs, err := parseInputs(command.Inputs, runArgs.inputs, flagSet)
 	if err != nil {
 		return err
 	}
@@ -550,7 +567,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if result != nil {
+		style := lipgloss.NewStyle().Bold(true)
+		fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Error:"))
 		fmt.Fprintln(os.Stderr, result.Error())
+
+		fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Inputs:"))
+		flagSet.PrintDefaults()
 
 		if res, ok := result.(*cruntime.Result); ok {
 			os.Exit(res.ExitCode)
@@ -580,11 +602,64 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 		})
 	}
 
+	if runArgs.user != "" {
+		user := strings.SplitN(runArgs.user, ":", 2)
+		uid, err := getUid(user[0])
+		if err != nil {
+			return tmpl, err
+		}
+		tmpl.Uid = &uid
+
+		if len(user) == 2 {
+			guid, err := getGuid(user[1])
+			if err != nil {
+				return tmpl, err
+			}
+
+			tmpl.Guid = &guid
+		}
+
+	}
+
 	return tmpl, nil
 }
 
-// parseInputs parses a list of input strings and maps them to their corresponding
-func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1beta1.ParamValue, error) {
+func getUid(name string) (int, error) {
+	if uid, err := strconv.Atoi(name); err == nil {
+		return uid, nil
+	}
+
+	u, err := user.Lookup(name)
+	if err != nil {
+		return 0, err
+	}
+
+	if uid, err := strconv.Atoi(u.Uid); err == nil {
+		return uid, nil
+	}
+
+	return 0, nil
+}
+
+func getGuid(name string) (int, error) {
+	if uid, err := strconv.Atoi(name); err == nil {
+		return uid, nil
+	}
+
+	g, err := user.LookupGroup(name)
+	if err != nil {
+		return 0, err
+	}
+
+	if guid, err := strconv.Atoi(g.Gid); err == nil {
+		return guid, nil
+	}
+
+	return 0, nil
+}
+
+// parseInputs parses a list of input strings and maps them to their corresponding pipeline input
+func parseInputs(params []v1beta1.InputParam, inputs []string, flagSet *pflag.FlagSet) (map[string]v1beta1.ParamValue, error) {
 	result := make(map[string]v1beta1.ParamValue)
 	steps := make(map[string][]string)
 
@@ -615,6 +690,29 @@ func parseInputs(params []v1beta1.InputParam, inputs []string) (map[string]v1bet
 			result[v.Name] = x
 		}
 	}
+
+	flagSet.Visit(func(f *pflag.Flag) {
+		switch f.Value.Type() {
+		case "string":
+			val, _ := flagSet.GetString(f.Name)
+			result[f.Name] = v1beta1.ParamValue{
+				Type:      v1beta1.ParamTypeString,
+				StringVal: val,
+			}
+		case "stringSlice":
+			val, _ := flagSet.GetStringSlice(f.Name)
+			result[f.Name] = v1beta1.ParamValue{
+				Type:     v1beta1.ParamTypeArray,
+				ArrayVal: val,
+			}
+		case "stringToString":
+			val, _ := flagSet.GetStringToString(f.Name)
+			result[f.Name] = v1beta1.ParamValue{
+				Type:      v1beta1.ParamTypeObject,
+				ObjectVal: val,
+			}
+		}
+	})
 
 	return result, nil
 }

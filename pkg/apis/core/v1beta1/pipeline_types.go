@@ -139,6 +139,8 @@ type Container struct {
 	WorkingDir    string        `json:"workingDir,omitempty"`
 	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
 	VolumeMounts  []VolumeMount `json:"volumeMounts,omitempty"`
+	Uid           *int          `json:"uid,omitempty"`
+	Guid          *int          `json:"guid,omitempty"`
 }
 
 type VolumeMount struct {

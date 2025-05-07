@@ -47,7 +47,8 @@ type ContainerSpec struct {
 	Stdin           bool
 	TTY             bool
 	Env             []string
-	User            string
+	Uid             *int
+	Guid            *int
 	PWD             string
 	RestartPolicy   RestartPolicy
 	Volumes         []Volume

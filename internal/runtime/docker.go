@@ -329,16 +329,6 @@ func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error
 }
 
 func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
-	g, err := os.Getgroups()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user groups: %w", err)
-	}
-
-	var groups []string
-	for _, group := range g {
-		groups = append(groups, fmt.Sprintf("%d", group))
-	}
-
 	containerConfig := dockercontainer.Config{
 		Image:      container.Image,
 		StdinOnce:  container.Stdin,
@@ -347,12 +337,18 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 		Cmd:        strslice.StrSlice(container.Args),
 		Env:        container.Env,
 		WorkingDir: container.PWD,
-		User:       fmt.Sprintf("%d:%d", os.Geteuid(), os.Getgid()),
+	}
+
+	if container.Uid != nil && container.Guid != nil {
+		containerConfig.User = fmt.Sprintf("%d:%d", *container.Uid, *container.Guid)
+	}
+
+	if container.Uid != nil {
+		containerConfig.User = fmt.Sprintf("%d", *container.Uid)
 	}
 
 	hostConfig := dockercontainer.HostConfig{
 		RestartPolicy: d.getRestartPolicy(container.RestartPolicy),
-		GroupAdd:      groups,
 		LogConfig: dockercontainer.LogConfig{
 			Type: "none",
 		},
