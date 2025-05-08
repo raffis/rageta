@@ -2,74 +2,65 @@ package processor
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithOutput() ProcessorBuilder {
+type OutputCloser func(err error) error
+type OutputFactory func(ctx context.Context, stepContext StepContext, stepName string) (io.Writer, io.Writer, OutputCloser)
+
+func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if len(spec.Outputs) == 0 {
+		internalStep := spec.Run == nil && spec.Inherit == nil
+
+		if !withInternals && internalStep {
 			return nil
 		}
 
-		return &Output{
-			stepName: spec.Name,
-			outputs:  spec.Outputs,
+		stdio := &Output{
+			stepName:      spec.Name,
+			spec:          spec,
+			outputFactory: outputFactory,
+			decouple:      decouple,
 		}
+
+		return stdio
 	}
 }
 
 type Output struct {
-	stepName string
-	outputs  []v1beta1.StepOutputParam
+	stepName      string
+	spec          *v1beta1.Step
+	outputFactory OutputFactory
+	decouple      bool
 }
 
-func (s *Output) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		outputs := make(map[string]*os.File, len(s.outputs))
+		if _, ok := stepContext.Tags["inherit"]; ok && !s.decouple {
+			return next(ctx, stepContext)
+		}
 
-		for _, output := range s.outputs {
-			outputTmp, err := os.CreateTemp(stepContext.Dir, "output")
-			if err != nil {
-				return stepContext, err
-			}
+		stdout, stderr, close := s.outputFactory(ctx, stepContext, suffixName(s.stepName, stepContext.NamePrefix))
 
-			defer outputTmp.Close()
-			defer os.Remove(outputTmp.Name())
+		if stepContext.Stdout != io.Discard {
+			stepContext.Stdout = stdout
+		}
 
-			stepContext.Outputs = append(stepContext.Outputs, OutputParam{
-				Name: output.Name,
-				Path: outputTmp.Name(),
-			})
-
-			outputs[output.Name] = outputTmp
+		if stepContext.Stderr != io.Discard {
+			stepContext.Stderr = stderr
 		}
 
 		stepContext, err := next(ctx, stepContext)
-		if err != nil {
+
+		if err := close(err); err != nil {
 			return stepContext, err
 		}
 
-		for name, output := range outputs {
-			_ = output.Sync()
-			b, err := io.ReadAll(output)
-			if err != nil {
-				return stepContext, err
-			}
-
-			value := v1beta1.ParamValue{}
-
-			if err := value.UnmarshalJSON(b); err != nil {
-				return stepContext, fmt.Errorf("param output failed: %w", err)
-			}
-
-			stepContext.Steps[s.stepName].Outputs[name] = value
-		}
+		stepContext.Stderr = nil
+		stepContext.Stdout = nil
 
 		return stepContext, err
-
 	}, nil
 }

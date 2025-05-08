@@ -60,13 +60,13 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for i := range stepEntrypoints {
 			copy := stepContext.DeepCopy()
 
-			if !s.tee {
-				copy.Stdout = io.Discard
-			}
-
 			if len(steps) == i+1 {
 				copy.Stdin = stdout
 			} else {
+				if !s.tee {
+					copy.Stdout = io.Discard
+				}
+
 				r, w := io.Pipe()
 				stepEntrypoints[i].r = r
 				stepEntrypoints[i].w = w

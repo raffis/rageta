@@ -16,6 +16,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // +kubebuilder:object:root=true
@@ -130,17 +131,17 @@ type RunStep struct {
 type Template Container
 
 type Container struct {
-	Stdin         bool          `json:"stdin,omitempty"`
-	TTY           bool          `json:"tty,omitempty"`
-	Image         string        `json:"image,omitempty"`
-	Command       []string      `json:"command,omitempty"`
-	Args          []string      `json:"args,omitempty"`
-	Script        string        `json:"script,omitempty"`
-	WorkingDir    string        `json:"workingDir,omitempty"`
-	RestartPolicy RestartPolicy `json:"restartPolicy,omitempty"`
-	VolumeMounts  []VolumeMount `json:"volumeMounts,omitempty"`
-	Uid           *int          `json:"uid,omitempty"`
-	Guid          *int          `json:"guid,omitempty"`
+	Stdin         bool                `json:"stdin,omitempty"`
+	TTY           bool                `json:"tty,omitempty"`
+	Image         string              `json:"image,omitempty"`
+	Command       []string            `json:"command,omitempty"`
+	Args          []string            `json:"args,omitempty"`
+	Script        string              `json:"script,omitempty"`
+	WorkingDir    string              `json:"workingDir,omitempty"`
+	RestartPolicy RestartPolicy       `json:"restartPolicy,omitempty"`
+	VolumeMounts  []VolumeMount       `json:"volumeMounts,omitempty"`
+	Uid           *intstr.IntOrString `json:"uid,omitempty"`
+	Guid          *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type VolumeMount struct {

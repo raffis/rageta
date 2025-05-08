@@ -1,8 +1,10 @@
 package processor
 
 import (
+	"fmt"
 	"io"
 	"maps"
+	"os"
 	"runtime"
 	"time"
 
@@ -116,7 +118,6 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
 
 	for k, v := range vars.Steps {
 		t.Steps[k] = &StepResult{
-			//Outputs: v.Outputs,
 			DataDir: v.TmpDir,
 		}
 	}
@@ -134,6 +135,8 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
+		Uid:        fmt.Sprintf("%d", os.Getuid()),
+		Guid:       fmt.Sprintf("%d", os.Getgid()),
 	}
 
 	for k, v := range t.Containers {

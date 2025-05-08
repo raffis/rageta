@@ -50,6 +50,9 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			return stepContext, err
 		}
 
+		stdout := stepContext.Stdout
+		stderr := stepContext.Stderr
+
 		if s.streams.Stdout != nil {
 			if !s.tee {
 				stepContext.Stdout = io.Discard
@@ -87,6 +90,9 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 		stepContext.AdditionalStderr = slices.DeleteFunc(stepContext.AdditionalStderr, func(w io.Writer) bool {
 			return w == stderrRedirect
 		})
+
+		stepContext.Stdout = stdout
+		stepContext.Stderr = stderr
 
 		return stepContext, err
 	}, nil

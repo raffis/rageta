@@ -8,25 +8,25 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithInput(celEnv *cel.Env) ProcessorBuilder {
+func WithInputVars(celEnv *cel.Env) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if len(spec.Inputs) == 0 {
 			return nil
 		}
 
-		return &Input{
+		return &InputVars{
 			celEnv: celEnv,
 			inputs: spec.Inputs,
 		}
 	}
 }
 
-type Input struct {
+type InputVars struct {
 	celEnv *cel.Env
 	inputs []v1beta1.InputParam
 }
 
-func (s *Input) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	expr := make(map[string]cel.Program)
 
 	for _, input := range s.inputs {

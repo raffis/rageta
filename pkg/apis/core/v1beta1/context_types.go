@@ -34,12 +34,16 @@ type Context struct {
 	Outputs    map[string]*Output          `cel:"outputs"`
 	Os         string                      `cel:"os"`
 	Arch       string                      `cel:"arch"`
+	Uid        string                      `cel:"uid"`
+	Guid       string                      `cel:"guid"`
 }
 
 func (v *Context) Index() map[string]string {
 	vars := map[string]string{
 		"context.os":     v.Os,
 		"context.arch":   v.Arch,
+		"context.uid":    v.Uid,
+		"context.guid":   v.Guid,
 		"context.env":    v.Env,
 		"context.tmpDir": v.TmpDir,
 	}

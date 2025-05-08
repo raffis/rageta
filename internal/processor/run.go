@@ -49,6 +49,10 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Spec: runtime.PodSpec{},
 		}
 
+		if err := Subst(stepContext.ToV1Beta1(), run.Guid, run.Uid); err != nil {
+			return stepContext, err
+		}
+
 		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
@@ -63,6 +67,16 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
 
+		if run.Guid != nil {
+			guid := run.Guid.IntValue()
+			container.Guid = &guid
+		}
+
+		if run.Uid != nil {
+			uid := run.Uid.IntValue()
+			container.Uid = &uid
+		}
+
 		for _, vol := range run.VolumeMounts {
 			container.Volumes = append(container.Volumes, runtime.Volume{
 				Name:     vol.Name,
@@ -71,7 +85,13 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			})
 		}
 
-		s.containerSpec(&container, stepContext.Template)
+		if stepContext.Template != nil {
+			if err := Subst(stepContext.ToV1Beta1(), stepContext.Template.Guid, stepContext.Template.Uid); err != nil {
+				return stepContext, err
+			}
+
+			s.containerSpec(&container, stepContext.Template)
+		}
 
 		subst := []any{
 			&container.Image,
@@ -113,10 +133,6 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 }
 
 func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
-	if template == nil {
-		return
-	}
-
 	if len(container.Args) == 0 {
 		container.Args = template.Args
 	}
@@ -134,11 +150,13 @@ func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.
 	}
 
 	if container.Uid == nil && template.Uid != nil {
-		container.Uid = template.Uid
+		uid := template.Uid.IntValue()
+		container.Uid = &uid
 	}
 
 	if container.Guid == nil && template.Guid != nil {
-		container.Guid = template.Guid
+		guid := template.Guid.IntValue()
+		container.Uid = &guid
 	}
 
 	for _, templateVol := range template.VolumeMounts {

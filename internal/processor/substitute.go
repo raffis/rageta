@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 var substituteExpression = regexp.MustCompile(`(\$?\$)\(([^)($]+)\)`)
@@ -18,6 +19,15 @@ func Subst(index Indexable, substitute ...any) error {
 
 	for _, subst := range substitute {
 		switch v := subst.(type) {
+		case *intstr.IntOrString:
+			if v != nil && v.Type == intstr.String {
+				result, err := parseExpression(v.String(), vars)
+				if err != nil {
+					return err
+				}
+
+				v.StrVal = result
+			}
 		case *string:
 			result, err := parseExpression(*v, vars)
 			if err != nil {

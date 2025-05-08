@@ -4,12 +4,14 @@ import (
 	"context"
 	"os"
 
+	"maps"
+
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithEnv(osEnv, defaultEnv map[string]string) ProcessorBuilder {
+func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		return &Env{
+		return &EnvVars{
 			stepName:   spec.Name,
 			defaultEnv: defaultEnv,
 			stepEnv:    envMap(spec.Env, osEnv),
@@ -17,13 +19,13 @@ func WithEnv(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	}
 }
 
-type Env struct {
+type EnvVars struct {
 	stepName   string
 	stepEnv    map[string]string
 	defaultEnv map[string]string
 }
 
-func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		if len(stepContext.Envs) == 0 && s.defaultEnv != nil {
 			stepContext.Envs = s.defaultEnv
@@ -35,10 +37,7 @@ func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, err
 		}
 
-		for k, v := range s.stepEnv {
-			stepContext.Envs[k] = v
-		}
-
+		maps.Copy(stepContext.Envs, s.stepEnv)
 		envTmp, err := os.CreateTemp(stepContext.Dir, "env")
 		if err != nil {
 			return stepContext, err
@@ -56,10 +55,7 @@ func (s *Env) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, err
 		}
 
-		for k, v := range envs {
-			stepContext.Envs[k] = v
-		}
-
+		maps.Copy(stepContext.Envs, envs)
 		return stepContext, nextErr
 
 	}, nil

@@ -51,6 +51,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		inheritCtx := stepContext.DeepCopy()
 		inheritCtx.NamePrefix = suffixName(s.stepName, stepContext.NamePrefix)
+		inheritCtx.Tags["inherit"] = inherit.Pipeline
 
 		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {

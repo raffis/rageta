@@ -6,9 +6,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/pipeline"
+	"github.com/raffis/rageta/internal/styles"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
@@ -79,7 +79,6 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	style := lipgloss.NewStyle().Bold(true)
 	shortDescription := command.ShortDescription
 	if shortDescription != "" {
 		shortDescription += "\n"
@@ -92,17 +91,20 @@ func runHelp(cmd *cobra.Command, args []string) error {
 	longDescription += "\n"
 
 	fmt.Fprintf(os.Stderr, "%s\n%s\n%s\n%s",
-		style.Render(command.ObjectMeta.Name),
+		styles.Bold.Render(command.ObjectMeta.Name),
 		shortDescription,
-		style.Render("Description:"),
+		styles.Bold.Render("Description:"),
 		longDescription,
 	)
 
 	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
 	pipeline.Flags(flagSet, command.Inputs)
 
-	fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Inputs:"))
+	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Inputs:"))
 	flagSet.PrintDefaults()
+
+	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Rageta flags:"))
+	runCmd.Usage()
 
 	return nil
 }

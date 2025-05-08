@@ -34,11 +34,13 @@ import (
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/report"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/styles"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/raffis/rageta/internal/storage"
 	"github.com/raffis/rageta/internal/tui"
@@ -75,7 +77,7 @@ type runFlags struct {
 	skipSteps           []string      `env:"SKIP_STEPS"`
 	logDetached         bool          `env:"LOG_DETACHED"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
-	deep                bool          `env:"DEEP"`
+	decouple            bool          `env:"DECOUPLE"`
 	noProgress          bool          `env:"NO_PROGRESS"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
@@ -101,31 +103,82 @@ func init() {
 		dbPath = filepath.Join(home, "rageta.db")
 	}
 
-	runCmd.Flags().StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
-	runCmd.Flags().BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	runCmd.Flags().StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
-	runCmd.Flags().BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
-	runCmd.Flags().BoolVarP(&runArgs.deep, "deep", "", false, "Add steps from inherited pipelines to report")
-	runCmd.Flags().IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
-	runCmd.Flags().BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
-	runCmd.Flags().BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
-	runCmd.Flags().BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
-	runCmd.Flags().StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
-	runCmd.Flags().DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
-	runCmd.Flags().StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
-	runCmd.Flags().StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
-	runCmd.Flags().StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
-	runCmd.Flags().StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
-	runCmd.Flags().StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
-	runCmd.Flags().StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
-	runCmd.Flags().StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
-	runCmd.Flags().StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
-	runCmd.Flags().StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
-	runCmd.Flags().BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
-	runCmd.Flags().StringVarP(&runArgs.user, "user", "", fmt.Sprintf("%d:%d", os.Geteuid(), os.Getegid()), "Username or UID (format: <name|uid>[:<group|gid>])")
-	runArgs.otelOptions.BindFlags(runCmd.Flags())
-	runArgs.dockerOptions.BindFlags(runCmd.Flags())
-	runArgs.ociOptions.BindFlags(runCmd.Flags())
+	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
+	executionFlags.StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
+	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
+	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
+	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
+	executionFlags.BoolVarP(&runArgs.decouple, "decouple", "", false, "Decouple steps from inherited pipelines and display them as separate entities.")
+	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
+	executionFlags.BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
+	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
+	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
+	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
+	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
+	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
+	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
+	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
+	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
+	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
+	runCmd.Flags().AddFlagSet(executionFlags)
+
+	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
+	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
+	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
+	pipelineFlags.StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
+	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
+	pipelineFlags.StringVarP(&runArgs.user, "user", "", "", "Username or UID (format: <name|uid>[:<group|gid>])")
+	runCmd.Flags().AddFlagSet(pipelineFlags)
+
+	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
+	dockerFlags.BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
+	runArgs.dockerOptions.BindFlags(dockerFlags)
+	runCmd.Flags().AddFlagSet(dockerFlags)
+
+	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
+	runArgs.otelOptions.BindFlags(otelFlags)
+	runCmd.Flags().AddFlagSet(otelFlags)
+
+	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
+	runArgs.ociOptions.BindFlags(ociFlags)
+	runCmd.Flags().AddFlagSet(ociFlags)
+
+	sets := []struct {
+		set         *pflag.FlagSet
+		displayName string
+	}{
+		{
+			set:         executionFlags,
+			displayName: "Execution",
+		},
+		{
+			set:         pipelineFlags,
+			displayName: "Pipeline",
+		},
+		{
+			set:         dockerFlags,
+			displayName: "Docker runtime",
+		},
+		{
+			set:         otelFlags,
+			displayName: "Open Telemetry",
+		},
+		{
+			set:         ociFlags,
+			displayName: "OCI Registry",
+		},
+		{
+			set:         rootCmd.Flags(),
+			displayName: "Global",
+		},
+	}
+
+	runCmd.SetUsageFunc(func(c *cobra.Command) error {
+		for _, group := range sets {
+			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.displayName), group.set.FlagUsages())
+		}
+		return nil
+	})
 
 	rootCmd.AddCommand(runCmd)
 }
@@ -294,11 +347,11 @@ func stepBuilder(
 			processor.WithReport(resultStore),
 			processor.WithRetry(),
 			processor.WithProgress(!runArgs.noProgress),
-			processor.WithInput(celEnv),
+			processor.WithInputVars(celEnv),
 			processor.WithResult(),
-			processor.WithOutput(),
+			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
-			processor.WithStdio(outputFactory, runArgs.withInternals),
+			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.decouple),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig),
 			processor.WithOtelMetrics(meter),
@@ -311,7 +364,7 @@ func stepBuilder(
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithTmpDir(),
-			processor.WithEnv(osEnv, envs),
+			processor.WithEnvVars(osEnv, envs),
 			processor.WithStdioRedirect(runArgs.tee),
 			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
 			processor.WithInherit(*builder, store),
@@ -352,7 +405,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	decoder := factory.UniversalDeserializer()
 
 	var ref string
-	if len(args) > 0 {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
 		ref = args[0]
 	}
 
@@ -608,7 +661,9 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 		if err != nil {
 			return tmpl, err
 		}
-		tmpl.Uid = &uid
+
+		intOrStr := intstr.FromInt(uid)
+		tmpl.Uid = &intOrStr
 
 		if len(user) == 2 {
 			guid, err := getGuid(user[1])
@@ -616,7 +671,8 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 				return tmpl, err
 			}
 
-			tmpl.Guid = &guid
+			intOrStr := intstr.FromInt(guid)
+			tmpl.Guid = &intOrStr
 		}
 
 	}
