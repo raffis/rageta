@@ -12,32 +12,26 @@ import (
 func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		return &EnvVars{
-			stepName:   spec.Name,
-			defaultEnv: defaultEnv,
-			stepEnv:    envMap(spec.Env, osEnv),
+			stepName: spec.Name,
+			env:      envMap(spec.Env, osEnv, defaultEnv),
 		}
 	}
 }
 
 type EnvVars struct {
-	stepName   string
-	stepEnv    map[string]string
-	defaultEnv map[string]string
+	stepName string
+	env      map[string]string
 }
 
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		if len(stepContext.Envs) == 0 && s.defaultEnv != nil {
-			stepContext.Envs = s.defaultEnv
-		}
-
 		if err := Subst(stepContext.ToV1Beta1(),
-			s.stepEnv,
+			s.env,
 		); err != nil {
 			return stepContext, err
 		}
 
-		maps.Copy(stepContext.Envs, s.stepEnv)
+		maps.Copy(stepContext.Envs, s.env)
 		envTmp, err := os.CreateTemp(stepContext.Dir, "env")
 		if err != nil {
 			return stepContext, err
@@ -61,7 +55,7 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func envMap(envs []v1beta1.EnvVar, osEnv map[string]string) map[string]string {
+func envMap(envs []v1beta1.EnvVar, osEnv, defaultEnv map[string]string) map[string]string {
 	env := make(map[string]string)
 	for _, e := range envs {
 		if e.Value == nil {
@@ -75,5 +69,6 @@ func envMap(envs []v1beta1.EnvVar, osEnv map[string]string) map[string]string {
 		env[e.Name] = *e.Value
 	}
 
+	maps.Copy(env, defaultEnv)
 	return env
 }
