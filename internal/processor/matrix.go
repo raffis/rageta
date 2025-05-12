@@ -12,6 +12,7 @@ import (
 	"maps"
 
 	"github.com/alitto/pond/v2"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -79,7 +80,11 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for matrixKey, matrix := range matrixes {
 			copyContext := stepContext.DeepCopy()
 			for paramKey, paramValue := range matrix {
-				copyContext.Tags[fmt.Sprintf("matrix/%s", paramKey)] = paramValue
+				copyContext.Tags[fmt.Sprintf("matrix/%s", paramKey)] = Tag{
+					Key:   fmt.Sprintf("matrix/%s", paramKey),
+					Value: paramValue,
+					Color: styles.RandHEXColor(0, 255),
+				}
 			}
 
 			s.combineIncludes(matrix, s.include)

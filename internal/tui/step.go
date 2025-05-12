@@ -8,23 +8,28 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string, tags map[string]string) *Task {
+func NewTask(name string, tags map[string]processor.Tag) *Task {
 	viewport := pager.New(0, 0)
 	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
 	viewport.Styles.LineNumber = lineNumberPrefixStyle
-	//viewport.SetContent("Loading...")
 
 	task := &Task{
 		viewport: &viewport,
 		name:     name,
 		status:   StepStatusWaiting,
-		tags:     tags,
+	}
+
+	for _, key := range slices.Sorted(maps.Keys(tags)) {
+		task.tags = append(task.tags, tags[key])
 	}
 
 	return task
@@ -37,7 +42,7 @@ type Task struct {
 	ready    bool
 	started  time.Time
 	finished time.Time
-	tags     map[string]string
+	tags     []processor.Tag
 }
 
 func (t *Task) getViewport() *pager.Model {
@@ -75,11 +80,11 @@ func (t *Task) SetStatus(status StepStatus) {
 
 func (t *Task) TagsAsString() string {
 	var params []string
-	for _, tagName := range slices.Sorted(maps.Keys(t.tags)) {
-		params = append(params, fmt.Sprintf("%s: %s", tagName, t.tags[tagName]))
+	for _, tag := range t.tags {
+		params = append(params, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
 	}
 
-	return strings.Join(params, " · ")
+	return strings.Join(params, "")
 }
 
 func (t *Task) Title() string {

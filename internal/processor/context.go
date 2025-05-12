@@ -20,7 +20,7 @@ type StepContext struct {
 	Steps            map[string]*StepResult
 	Envs             map[string]string
 	Containers       map[string]cruntime.ContainerStatus
-	Tags             map[string]string
+	Tags             map[string]Tag
 	NamePrefix       string
 	Env              string
 	Outputs          []OutputParam
@@ -30,6 +30,12 @@ type StepContext struct {
 	AdditionalStdout []io.Writer
 	AdditionalStderr []io.Writer
 	Template         *v1beta1.Template
+}
+
+type Tag struct {
+	Key   string
+	Value string
+	Color string
 }
 
 type OutputParam struct {
@@ -56,7 +62,7 @@ func NewContext() StepContext {
 		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
-		Tags:       make(map[string]string),
+		Tags:       make(map[string]Tag),
 	}
 }
 

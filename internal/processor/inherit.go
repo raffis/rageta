@@ -6,6 +6,7 @@ import (
 	"maps"
 
 	"github.com/raffis/rageta/internal/storage"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -16,21 +17,19 @@ func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuil
 		}
 
 		return &Inherit{
-			stepName:          spec.Name,
-			step:              *spec.Inherit,
-			store:             store,
-			builder:           builder,
-			propagateTemplate: spec.Inherit.PropagateTemplate,
+			stepName: spec.Name,
+			step:     *spec.Inherit,
+			store:    store,
+			builder:  builder,
 		}
 	}
 }
 
 type Inherit struct {
-	builder           PipelineBuilder
-	store             storage.Interface
-	stepName          string
-	step              v1beta1.InheritStep
-	propagateTemplate bool
+	builder  PipelineBuilder
+	store    storage.Interface
+	stepName string
+	step     v1beta1.InheritStep
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -38,7 +37,6 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		inherit := s.step.DeepCopy()
 
 		if err := Subst(stepContext.ToV1Beta1(),
-			&inherit.Pipeline,
 			inherit.Inputs,
 		); err != nil {
 			return stepContext, err
@@ -51,7 +49,11 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		inheritCtx := stepContext.DeepCopy()
 		inheritCtx.NamePrefix = suffixName(s.stepName, stepContext.NamePrefix)
-		inheritCtx.Tags["inherit"] = inherit.Pipeline
+		inheritCtx.Tags["inherit"] = Tag{
+			Key:   "inherit",
+			Value: inherit.Pipeline,
+			Color: styles.RandHEXColor(0, 255),
+		}
 
 		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {

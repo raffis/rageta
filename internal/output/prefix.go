@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/styles"
 )
 
 // TerminalWriter writes messages from multiple producers properly prefixed by the message prefix
@@ -19,7 +19,7 @@ func TerminalWriter(ch chan PrefixMessage) {
 	for msg := range ch {
 		lines := strings.Split(strings.ReplaceAll(strings.TrimSuffix(string(msg.b), "\n"), "\r", ""), "\n")
 
-		if msg.producer != lastProducer && !newLine {
+		if lastProducer != "" && msg.producer != lastProducer && !newLine {
 			msg.w.Write([]byte{'\n'})
 		}
 
@@ -53,10 +53,7 @@ func Prefix(color bool, stdout, stderr io.Writer, ch chan PrefixMessage) process
 		style := lipgloss.NewStyle()
 
 		if color {
-			style = style.Foreground(lipgloss.AdaptiveColor{
-				Dark:  randHEXColor(127, 255),
-				Light: randHEXColor(0, 127),
-			})
+			style = style.Foreground(styles.RandAdaptiveColor())
 		}
 
 		stdoutWrapper := &prefixWrapper{
@@ -101,11 +98,4 @@ func (p *prefixWrapper) Write(payload []byte) (int, error) {
 		producer: p.prefix,
 	}
 	return len(payload), nil
-}
-
-func randHEXColor(min, max int) string {
-	R := rand.Intn(max-min+1) + min
-	G := rand.Intn(max-min+1) + min
-	B := rand.Intn(max-min+1) + min
-	return fmt.Sprintf("#%02x%02x%02x", R, G, B)
 }

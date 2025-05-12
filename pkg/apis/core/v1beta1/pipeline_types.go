@@ -166,10 +166,9 @@ var (
 )
 
 type InheritStep struct {
-	Pipeline          string  `json:"pipeline,omitempty"`
-	Entrypoint        string  `json:"entrypoint,omitempty"`
-	PropagateTemplate bool    `json:"propagateTemplate,omitempty"`
-	Inputs            []Param `json:"inputs,omitempty"`
+	Pipeline   string  `json:"pipeline,omitempty"`
+	Entrypoint string  `json:"entrypoint,omitempty"`
+	Inputs     []Param `json:"inputs,omitempty"`
 }
 
 type Streams struct {

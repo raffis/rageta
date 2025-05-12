@@ -1,0 +1,84 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: pipelineruns.core.rageta.io
+spec:
+  group: core.rageta.io
+  names:
+    kind: PipelineRun
+    listKind: PipelineRunList
+    plural: pipelineruns
+    singular: pipelinerun
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          decouple:
+            type: boolean
+          entrypoint:
+            type: string
+          gracefulTermination:
+            type: string
+          inputs:
+            items:
+              description: Param declares an ParamValues to use for the parameter
+                called name.
+              properties:
+                name:
+                  type: string
+                value:
+                  x-kubernetes-preserve-unknown-fields: true
+              required:
+              - name
+              - value
+              type: object
+            type: array
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          logsDetached:
+            type: boolean
+          maxConcurrent:
+            type: integer
+          metadata:
+            type: object
+          noProgress:
+            type: boolean
+          pipeline:
+            type: string
+          podTemplate:
+            type: object
+          skipDone:
+            type: boolean
+          skipSteps:
+            items:
+              type: string
+            type: array
+          timeout:
+            type: string
+          ttl:
+            type: string
+          user:
+            type: string
+          withInternals:
+            type: boolean
+        type: object
+    served: true
+    storage: true

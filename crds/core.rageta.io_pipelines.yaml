@@ -135,6 +135,8 @@ spec:
                   properties:
                     failFast:
                       type: boolean
+                    maxConcurrent:
+                      type: integer
                     refs:
                       items:
                         properties:
@@ -188,8 +190,6 @@ spec:
                       type: array
                     pipeline:
                       type: string
-                    propagateTemplate:
-                      type: boolean
                   type: object
                 inputs:
                   items:
@@ -270,6 +270,8 @@ spec:
                             type: array
                         type: object
                       type: array
+                    maxConcurrent:
+                      type: integer
                     params:
                       items:
                         description: Param declares an ParamValues to use for the
@@ -284,8 +286,6 @@ spec:
                         - value
                         type: object
                       type: array
-                    sequential:
-                      type: boolean
                   type: object
                 name:
                   type: string
@@ -344,6 +344,11 @@ spec:
                       items:
                         type: string
                       type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
                     image:
                       type: string
                     restartPolicy:
@@ -354,6 +359,11 @@ spec:
                       type: boolean
                     tty:
                       type: boolean
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
                     volumeMounts:
                       items:
                         properties:
@@ -409,6 +419,11 @@ spec:
                       items:
                         type: string
                       type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
                     image:
                       type: string
                     restartPolicy:
@@ -419,6 +434,11 @@ spec:
                       type: boolean
                     tty:
                       type: boolean
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
                     volumeMounts:
                       items:
                         properties:
