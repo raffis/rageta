@@ -34,7 +34,6 @@ func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		stepContext.DataDir = dataDir
 		stepContext, err := next(ctx, stepContext)
-		stepContext.Steps[s.stepName].DataDir = dataDir
 		return stepContext, err
 	}, nil
 }

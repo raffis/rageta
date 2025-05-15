@@ -6,32 +6,32 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type ResultStore interface {
-	Add(stepName string, result *StepResult)
+type Reporter interface {
+	Report(ctx context.Context, name string, stepContext StepContext) error
 }
 
-func WithReport(store ResultStore) ProcessorBuilder {
+func WithReport(report Reporter) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if store == nil {
+		if report == nil {
 			return nil
 		}
 
 		return &Report{
 			stepName: spec.Name,
-			store:    store,
+			report:   report,
 		}
 	}
 }
 
 type Report struct {
 	stepName string
-	store    ResultStore
+	report   Reporter
 }
 
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		stepContext, err := next(ctx, stepContext)
-		s.store.Add(suffixName(s.stepName, stepContext.NamePrefix), stepContext.Steps[s.stepName])
+		s.report.Report(ctx, suffixName(s.stepName, stepContext.NamePrefix), stepContext)
 		return stepContext, err
 	}, nil
 }

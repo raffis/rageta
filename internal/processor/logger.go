@@ -72,11 +72,9 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ctx = logr.NewContext(ctx, logger)
 		}
 
-		logger.Info("process step")
-		logger.V(1).Info("step context input", "context", stepContext)
+		logger.Info("step context input", "context", stepContext)
 		stepContext, err := next(ctx, stepContext)
-		logger.Info("process step done", "err", err)
-		logger.V(1).Info("step done", "err", err, "context", stepContext)
+		logger.Info("step done", "err", err, "context", stepContext)
 
 		return stepContext, err
 	}, nil

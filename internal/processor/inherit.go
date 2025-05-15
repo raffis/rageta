@@ -7,6 +7,7 @@ import (
 
 	"github.com/raffis/rageta/internal/storage"
 	"github.com/raffis/rageta/internal/styles"
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -36,7 +37,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
 		inherit := s.step.DeepCopy()
 
-		if err := Subst(stepContext.ToV1Beta1(),
+		if err := substitute.Substitute(stepContext.ToV1Beta1(),
 			inherit.Inputs,
 		); err != nil {
 			return stepContext, err
@@ -67,7 +68,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		s.mergeContext(outputContext, stepContext)
-		maps.Copy(stepContext.Steps[s.stepName].Outputs, outputs)
+		maps.Copy(stepContext.OutputVars, outputs)
 
 		return next(ctx, stepContext)
 	}, nil

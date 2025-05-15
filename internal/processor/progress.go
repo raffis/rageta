@@ -26,7 +26,6 @@ type Progress struct {
 
 func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-
 		ticker := time.NewTicker(5 * time.Second)
 		quit := make(chan struct{})
 		defer func() {

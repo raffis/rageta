@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -45,7 +46,7 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			vars = append(vars, &s.streams.Stdin.Path)
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(), vars...,
+		if err := substitute.Substitute(stepContext.ToV1Beta1(), vars...,
 		); err != nil {
 			return stepContext, err
 		}

@@ -22,22 +22,18 @@ type Result struct {
 
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		start := time.Now()
-		stepContext.Steps[s.stepName] = &StepResult{
-			StartedAt: start,
-			Outputs:   make(map[string]v1beta1.ParamValue),
-		}
-
+		stepContext.StartedAt = time.Now()
 		stepContext, nextErr := next(ctx, stepContext)
-		endedAt := time.Now()
-		stepContext.Steps[s.stepName].EndedAt = endedAt
-		stepContext.Steps[s.stepName].Error = nextErr
+		stepContext.EndedAt = time.Now()
 
 		if nextErr != nil {
 			nextErr = fmt.Errorf("step %s failed: %w", s.stepName, nextErr)
+			stepContext.Error = nextErr
+		} else {
+			stepContext.Error = nil
 		}
 
+		stepContext.Steps[s.stepName] = &stepContext
 		return stepContext, nextErr
-
 	}, nil
 }

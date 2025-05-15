@@ -130,7 +130,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		stepCtx.Dir = contextDir
 		stepCtx.DataDir = filepath.Join(contextDir, "_data")
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
-		stepCtx.Steps = make(map[string]*processor.StepResult)
+		stepCtx.Steps = make(map[string]*processor.StepContext)
 		stepCtx.Inputs = mappedInputs
 
 		outputs := make(map[string]v1beta1.ParamValue)
@@ -151,7 +151,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 				from = pipelineOutput.From
 			}
 
-			if output, ok := stepCtx.Steps[pipelineOutput.Step.Name].Outputs[from]; ok {
+			if output, ok := stepCtx.OutputVars[from]; ok {
 				outputs[pipelineOutput.Name] = output
 			}
 		}

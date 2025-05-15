@@ -328,6 +328,15 @@ func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error
 	return err
 }
 
+func envSlice(env map[string]string) []string {
+	var envs []string
+	for k, v := range env {
+		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	return envs
+}
+
 func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
 	containerConfig := dockercontainer.Config{
 		Image:      container.Image,
@@ -335,7 +344,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 		OpenStdin:  container.Stdin,
 		Entrypoint: strslice.StrSlice(container.Command),
 		Cmd:        strslice.StrSlice(container.Args),
-		Env:        container.Env,
+		Env:        envSlice(container.Env),
 		WorkingDir: container.PWD,
 	}
 

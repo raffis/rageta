@@ -13,6 +13,7 @@ import (
 
 	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/internal/styles"
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -46,13 +47,13 @@ var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		substitute := []any{s.matrix}
+		subst := []any{s.matrix}
 		for _, group := range s.include {
-			substitute = append(substitute, group.Params)
+			subst = append(subst, group.Params)
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(),
-			substitute...,
+		if err := substitute.Substitute(stepContext.ToV1Beta1(),
+			subst...,
 		); err != nil {
 			return stepContext, fmt.Errorf("substitution failed: %w", err)
 		}
@@ -120,10 +121,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				stepContext.Steps[suffixName(stepName, res.stepContext.NamePrefix)] = step
 
 				//Unify matrix outputs into an array output for the current step
-				for paramKey, paramValue := range step.Outputs {
+				for paramKey, paramValue := range step.OutputVars {
 					var param v1beta1.ParamValue
 
-					if val, ok := stepContext.Steps[s.stepName].Outputs[paramKey]; !ok {
+					if val, ok := stepContext.OutputVars[paramKey]; !ok {
 						param = v1beta1.ParamValue{
 							Type: v1beta1.ParamTypeArray,
 						}
@@ -135,7 +136,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 						param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 					}
 
-					stepContext.Steps[s.stepName].Outputs[paramKey] = param
+					stepContext.OutputVars[paramKey] = param
 				}
 			}
 

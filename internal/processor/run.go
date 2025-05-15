@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -49,7 +50,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Spec: runtime.PodSpec{},
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(), run.Guid, run.Uid); err != nil {
+		if err := substitute.Substitute(stepContext.ToV1Beta1(), run.Guid, run.Uid); err != nil {
 			return stepContext, err
 		}
 
@@ -62,7 +63,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
 			Args:            args,
-			Env:             envSlice(stepContext.Envs),
+			Env:             stepContext.Envs,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
@@ -86,7 +87,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if stepContext.Template != nil {
-			if err := Subst(stepContext.ToV1Beta1(), stepContext.Template.Guid, stepContext.Template.Uid); err != nil {
+			if err := substitute.Substitute(stepContext.ToV1Beta1(), stepContext.Template.Guid, stepContext.Template.Uid); err != nil {
 				return stepContext, err
 			}
 
@@ -104,7 +105,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			subst = append(subst, &container.Volumes[i].HostPath, &container.Volumes[i].Path)
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(), subst...); err != nil {
+		if err := substitute.Substitute(stepContext.ToV1Beta1(), subst...); err != nil {
 			return stepContext, err
 		}
 
@@ -197,15 +198,6 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
 	command := []string{shebang[1]}
 
 	return command, append(args, "-c", script)
-}
-
-func envSlice(env map[string]string) []string {
-	var envs []string
-	for k, v := range env {
-		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	return envs
 }
 
 func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod) (StepContext, error) {

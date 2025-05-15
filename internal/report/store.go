@@ -9,43 +9,39 @@ import (
 
 type stepResult struct {
 	stepName string
-	result   *processor.StepResult
+	result   processor.StepContext
 }
 
-type Store struct {
+type store struct {
 	steps []stepResult
 	mu    sync.Mutex
 }
 
-func (s *Store) Add(stepName string, result *processor.StepResult) {
+func (s *store) Add(stepName string, stepContext processor.StepContext) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for k, v := range s.steps {
 		if v.stepName == stepName {
-			s.steps[k] = stepResult{
-				stepName: stepName,
-				result:   result,
-			}
+			s.steps[k].result = stepContext
 
 			return
 		}
-
 	}
 
 	s.steps = append(s.steps, stepResult{
 		stepName: stepName,
-		result:   result,
+		result:   stepContext,
 	})
 }
 
-func (s *Store) Ordered() []stepResult {
+func (s *store) Ordered() []stepResult {
 	sort.Slice(s.steps, func(i, j int) bool {
-		if s.steps[i].result == nil {
+		if s.steps[i].result.Error == nil {
 			return false
 		}
 
-		if s.steps[j].result == nil {
+		if s.steps[j].result.Error == nil {
 			return false
 		}
 

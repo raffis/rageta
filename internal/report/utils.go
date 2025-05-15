@@ -8,7 +8,7 @@ import (
 	"github.com/raffis/rageta/internal/tui"
 )
 
-func stringify(step stepResult) (string, string, string) {
+func stringify(step processor.StepContext) (string, string, string) {
 	var (
 		duration time.Duration
 		status   tui.StepStatus
@@ -16,20 +16,20 @@ func stringify(step stepResult) (string, string, string) {
 	)
 
 	switch {
-	case step.result == nil:
+	case step.StartedAt.IsZero():
 		status = tui.StepStatusWaiting
-	case step.result.Error != nil && !processor.AbortOnError(step.result.Error):
+	case step.Error != nil && !processor.AbortOnError(step.Error):
 		status = tui.StepStatusSkipped
-		errMsg = strings.ReplaceAll(step.result.Error.Error(), "\n", "")
-	case step.result.Error != nil:
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error != nil:
 		status = tui.StepStatusFailed
-		errMsg = strings.ReplaceAll(step.result.Error.Error(), "\n", "")
-	case step.result.Error == nil:
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error == nil:
 		status = tui.StepStatusDone
 	}
 
-	if step.result != nil {
-		duration = step.result.Duration().Round(time.Millisecond * 10)
+	if !step.EndedAt.IsZero() {
+		duration = step.EndedAt.Sub(step.StartedAt).Round(time.Millisecond * 10)
 	}
 
 	return errMsg, status.Render(), duration.String()

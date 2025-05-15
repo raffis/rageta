@@ -66,7 +66,7 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return stepContext, fmt.Errorf("param output failed: %w", err)
 			}
 
-			stepContext.Steps[s.stepName].Outputs[name] = value
+			stepContext.OutputVars[name] = value
 		}
 
 		return stepContext, err

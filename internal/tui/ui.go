@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -106,24 +105,6 @@ func NewModel() *model {
 	return m
 }
 
-func Program(model tea.Model) *tea.Program {
-	zone.NewGlobal()
-
-	p := tea.NewProgram(
-		model,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
-
-	go func() {
-		for c := range time.Tick(300 * time.Millisecond) {
-			p.Send(tickMsg(c))
-		}
-	}()
-
-	return p
-}
-
 type navItem interface {
 	getViewport() *pager.Model
 	GetName() string
@@ -174,8 +155,6 @@ func (m *model) renderStatus() string {
 
 	return ""
 }
-
-type tickMsg time.Time
 
 func (m *model) Init() tea.Cmd {
 	return nil

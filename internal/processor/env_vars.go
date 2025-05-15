@@ -6,26 +6,30 @@ import (
 
 	"maps"
 
+	"github.com/raffis/rageta/internal/mask"
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
+func WithEnvVars(osEnv, defaultEnv map[string]string, secretWriter mask.SecretStore) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		return &EnvVars{
-			stepName: spec.Name,
-			env:      envMap(spec.Env, osEnv, defaultEnv),
+			stepName:     spec.Name,
+			env:          envMap(spec.Env, osEnv, defaultEnv),
+			secretWriter: secretWriter,
 		}
 	}
 }
 
 type EnvVars struct {
-	stepName string
-	env      map[string]string
+	stepName     string
+	env          map[string]string
+	secretWriter mask.SecretStore
 }
 
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		if err := Subst(stepContext.ToV1Beta1(),
+		if err := substitute.Substitute(stepContext.ToV1Beta1(),
 			s.env,
 		); err != nil {
 			return stepContext, err
