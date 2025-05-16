@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/olekukonko/tablewriter"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 )
@@ -30,32 +31,52 @@ func (r *table) Report(ctx context.Context, name string, stepContext processor.S
 }
 
 func (r *table) Finalize() error {
-	table := tablewriter.NewWriter(r.w)
-	table.SetHeader([]string{"#", "Step", "Status", "Duration", "Tags", "Error"})
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetBorder(false)
-	table.SetAutoWrapText(false)
-	table.SetCenterSeparator("")
-	table.SetHeaderLine(false)
-	table.SetReflowDuringAutoWrap(false)
-
+	var rows [][]string
+	rows = append(rows, []string{"#", "STEP", "STATUS", "DURATION", "TAGS", "ERROR"})
 	for i, step := range r.store.Ordered() {
 		errMsg, status, duration := stringify(step.result)
 
 		var tags []string
-		for _, tag := range step.result.Tags {
-			tags = append(tags, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
+		for _, key := range slices.Sorted(maps.Keys(step.result.Tags)) {
+			tags = append(tags, styles.TagLabel.Background(lipgloss.Color(step.result.Tags[key].Color)).Render(fmt.Sprintf("%s: %s", step.result.Tags[key].Key, step.result.Tags[key].Value)))
 		}
 
-		table.Append([]string{
+		rows = append(rows, []string{
 			fmt.Sprintf("%d", i),
 			step.stepName,
 			status,
 			duration,
 			strings.Join(tags, ""),
-			errMsg})
+			errMsg,
+		})
 	}
 
-	table.Render()
+	var columnWidth []int
+	for _, row := range rows {
+		for key, cell := range row {
+			if len(columnWidth) <= key {
+				columnWidth = append(columnWidth, 0)
+			}
+
+			width := lipgloss.Width(cell)
+			if width > columnWidth[key] {
+				columnWidth[key] = width
+			}
+		}
+	}
+
+	for _, row := range rows {
+		for key, cell := range row {
+			width := lipgloss.Width(cell)
+			if key < len(row)-1 && width < columnWidth[key] {
+				row[key] = cell + strings.Repeat(" ", columnWidth[key]-width)
+			}
+		}
+	}
+
+	for _, row := range rows {
+		fmt.Fprintf(r.w, "%s\n", strings.Join(row, " | "))
+	}
+
 	return nil
 }

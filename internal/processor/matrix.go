@@ -171,7 +171,6 @@ func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, er
 	}
 
 	result := make(map[string]map[string]string)
-
 	s.generateCombinations(mapData, keys, 0, make(map[string]string), &result)
 
 	return result, nil
@@ -205,9 +204,7 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 	if index == len(keys) {
 		// Create a copy of the current combination
 		combinationCopy := make(map[string]string)
-		for k, v := range currentCombination {
-			combinationCopy[k] = v
-		}
+		maps.Copy(combinationCopy, currentCombination)
 
 		// Create a unique key by concatenating values in currentCombination
 		var combinationValues []string

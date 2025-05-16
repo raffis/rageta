@@ -20,7 +20,6 @@ require (
 	github.com/lrstanley/bubblezone v0.0.0-20240125042004-b7bafc493195
 	github.com/moby/moby v27.4.1+incompatible
 	github.com/moby/term v0.5.0
-	github.com/olekukonko/tablewriter v0.0.5
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5

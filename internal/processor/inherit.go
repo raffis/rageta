@@ -84,9 +84,7 @@ func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValu
 }
 
 func (s *Inherit) mergeContext(from, to StepContext) {
-	for k, v := range from.Envs {
-		to.Envs[k] = v
-	}
+	maps.Copy(to.Envs, from.Envs)
 
 	for k, v := range from.Steps {
 		to.Steps[suffixName(k, s.stepName)] = v
