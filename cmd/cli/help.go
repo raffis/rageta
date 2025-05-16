@@ -12,7 +12,7 @@ import (
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	"github.com/raffis/rageta/internal/storage"
+	"github.com/raffis/rageta/internal/provider"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -59,10 +59,10 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		ref = args[0]
 	}
 
-	store := storage.New(
+	store := provider.New(
 		decoder,
-		storage.WithFile(),
-		storage.WithRagetafile(),
+		provider.WithFile(),
+		provider.WithRagetafile(),
 		func(ctx context.Context, ref string) (io.Reader, error) {
 			runArgs.ociOptions.URL = ref
 			ociClient, err := runArgs.ociOptions.Build(ctx)
@@ -70,7 +70,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 				return nil, err
 			}
 
-			return storage.WithOCI(ociClient)(ctx, ref)
+			return provider.WithOCI(ociClient)(ctx, ref)
 		},
 	)
 

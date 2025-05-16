@@ -28,11 +28,12 @@ import (
 	"github.com/raffis/rageta/internal/output"
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/provider"
 	"github.com/raffis/rageta/internal/report"
 	cruntime "github.com/raffis/rageta/internal/runtime"
-	"github.com/raffis/rageta/internal/storage"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui"
+	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	transport "github.com/raffis/rageta/pkg/http/middleware"
 
@@ -306,7 +307,7 @@ func isPossiblyInsideKube() bool {
 	return set
 }
 
-func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (cruntime.Interface, error) {
+func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
 		c, err := runArgs.dockerOptions.Build()
@@ -319,6 +320,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		driver := cruntime.NewDocker(c,
 			cruntime.WithContext(ctx),
 			cruntime.WithHidePullOutput(hideOutput),
+			cruntime.WithLogger(logger),
 		)
 
 		return driver, err
@@ -384,7 +386,7 @@ func stepBuilder(
 	reporter processor.Reporter,
 	teardown chan processor.Teardown,
 	builder *processor.PipelineBuilder,
-	store storage.Interface,
+	provider provider.Interface,
 	pool pond.Pool,
 	template v1beta1.Template,
 ) pipeline.StepBuilder {
@@ -414,7 +416,7 @@ func stepBuilder(
 			processor.WithTmpDir(),
 			processor.WithStdioRedirect(runArgs.tee),
 			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
-			processor.WithInherit(*builder, store),
+			processor.WithInherit(*builder, provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
 			processor.WithPipe(runArgs.tee),
@@ -454,32 +456,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-
-	var ref string
-	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		ref = args[0]
-	}
-
-	store := storage.New(
-		decoder,
-		storage.WithFile(),
-		storage.WithRagetafile(),
-		func(ctx context.Context, ref string) (io.Reader, error) {
-			runArgs.ociOptions.URL = ref
-			ociClient, err := runArgs.ociOptions.Build(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return storage.WithOCI(ociClient)(ctx, ref)
-		},
-	)
-
-	command, err := store.Lookup(ctx, ref)
+	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.dockerQuiet)
 	if err != nil {
 		return err
 	}
@@ -496,7 +473,46 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	logger.Info("use context directory", "path", contextDir)
 
-	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.dockerQuiet, contextDir)
+	template, err := buildTemplate(contextDir)
+	if err != nil {
+		return fmt.Errorf("failed to create template: %w", err)
+	}
+
+	imagePullPolicy, err := imagePullPolicy()
+	if err != nil {
+		return err
+	}
+
+	if runArgs.fork {
+		return fork(ctx, driver, template, envs, imagePullPolicy)
+	}
+
+	scheme := kruntime.NewScheme()
+	v1beta1.AddToScheme(scheme)
+	factory := serializer.NewCodecFactory(scheme)
+	decoder := factory.UniversalDeserializer()
+
+	var ref string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		ref = args[0]
+	}
+
+	store := provider.New(
+		decoder,
+		provider.WithFile(),
+		provider.WithRagetafile(),
+		func(ctx context.Context, ref string) (io.Reader, error) {
+			runArgs.ociOptions.URL = ref
+			ociClient, err := runArgs.ociOptions.Build(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return provider.WithOCI(ociClient)(ctx, ref)
+		},
+	)
+
+	command, err := store.Lookup(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -519,11 +535,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("setup cel env failed: %w", err)
-	}
-
-	imagePullPolicy, err := imagePullPolicy()
-	if err != nil {
-		return err
 	}
 
 	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
@@ -554,17 +565,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}()
 
 	pool := pond.NewPool(runArgs.maxConcurrent)
-	template, err := buildTemplate(contextDir)
-	if err != nil {
-		return fmt.Errorf("failed to create template: %w", err)
-	}
 
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
 		pipeline.WithStepBuilder(stepBuilder(
 			logger,
 			osEnvMap(),
-			envMap(runArgs.envs),
+			envs,
 			mask.SecretWriter(maskedStdout, maskedStderr),
 			celEnv,
 			driver,
@@ -704,6 +711,47 @@ func helpAndExit(flagSet *pflag.FlagSet, err error) {
 	os.Exit(1)
 }
 
+func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Template, env map[string]string, imagePullPolicy cruntime.PullImagePolicy) error {
+	forkFlags := os.Args[1:]
+	forkFlags = slices.DeleteFunc(forkFlags, func(s string) bool {
+		return s == "--fork"
+	})
+
+	container := cruntime.ContainerSpec{
+		Name:            "rageta",
+		Image:           "ghcr.io/rageta/rageta:latest",
+		Args:            forkFlags,
+		Stdin:           true,
+		TTY:             term.IsTerminal(int(os.Stdout.Fd())),
+		Env:             env,
+		ImagePullPolicy: imagePullPolicy,
+	}
+
+	processor.ContainerSpec(&container, &template)
+
+	pod := cruntime.Pod{
+		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
+		Spec: cruntime.PodSpec{
+			Containers: []cruntime.ContainerSpec{
+				container,
+			},
+		},
+	}
+
+	status, err := driver.CreatePod(ctx, &pod, os.Stdin, stdout, stderr)
+	if err != nil {
+		return err
+	}
+
+	if !runArgs.noGC {
+		defer func() {
+			_ = driver.DeletePod(ctx, &pod)
+		}()
+	}
+
+	return status.Wait()
+}
+
 func buildTemplate(contextDir string) (v1beta1.Template, error) {
 	tmpl := v1beta1.Template{}
 
@@ -741,7 +789,6 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 			intOrStr := intstr.FromInt(guid)
 			tmpl.Guid = &intOrStr
 		}
-
 	}
 
 	return tmpl, nil

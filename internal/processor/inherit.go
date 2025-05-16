@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/raffis/rageta/internal/storage"
+	"github.com/raffis/rageta/internal/provider"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuilder {
+func WithInherit(builder PipelineBuilder, provider provider.Interface) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Inherit == nil {
 			return nil
@@ -20,7 +20,7 @@ func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuil
 		return &Inherit{
 			stepName: spec.Name,
 			step:     *spec.Inherit,
-			store:    store,
+			provider: provider,
 			builder:  builder,
 		}
 	}
@@ -28,7 +28,7 @@ func WithInherit(builder PipelineBuilder, store storage.Interface) ProcessorBuil
 
 type Inherit struct {
 	builder  PipelineBuilder
-	store    storage.Interface
+	provider provider.Interface
 	stepName string
 	step     v1beta1.InheritStep
 }
@@ -43,7 +43,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return stepContext, err
 		}
 
-		command, err := s.store.Lookup(ctx, inherit.Pipeline)
+		command, err := s.provider.Lookup(ctx, inherit.Pipeline)
 		if err != nil {
 			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
 		}

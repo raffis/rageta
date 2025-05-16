@@ -37,6 +37,12 @@ func WithContext(ctx context.Context) func(*docker) {
 	}
 }
 
+func WithLogger(logger logr.Logger) func(*docker) {
+	return func(d *docker) {
+		d.logger = logger
+	}
+}
+
 func WithHidePullOutput(hide bool) func(*docker) {
 	return func(d *docker) {
 		d.hidePullOutput = hide
@@ -47,6 +53,7 @@ type docker struct {
 	client         *dockerclient.Client
 	self           *types.ContainerJSON
 	ctx            context.Context
+	logger         logr.Logger
 	hidePullOutput bool
 }
 
@@ -54,6 +61,7 @@ func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
 	d := &docker{
 		client: client,
 		ctx:    context.Background(),
+		logger: logr.Discard(),
 	}
 
 	for _, o := range opts {
@@ -93,7 +101,7 @@ func (d *docker) resetContainer(ctx context.Context, containerID string) error {
 func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
 	logger, err := logr.FromContext(ctx)
 	if err != nil {
-		return nil, err
+		logger = d.logger
 	}
 
 	for _, container := range pod.Spec.InitContainers {

@@ -91,7 +91,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return stepContext, err
 			}
 
-			s.containerSpec(&container, stepContext.Template)
+			ContainerSpec(&container, stepContext.Template)
 		}
 
 		subst := []any{
@@ -133,7 +133,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
+func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
 	if len(container.Args) == 0 {
 		container.Args = template.Args
 	}
