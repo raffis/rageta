@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -32,11 +31,11 @@ type Logger struct {
 }
 
 func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		/*s.zapConfig.
 			logger, err := s.zapConfig.Build()
 		if err != nil {
-			return stepContext, fmt.Errorf("failed setup step logger %w", err)
+			return ctx, fmt.Errorf("failed setup step logger %w", err)
 		}*/
 
 		encoderConfig := zapcore.EncoderConfig{
@@ -55,27 +54,27 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		case "console":
 			encoder = zapcore.NewConsoleEncoder(encoderConfig)
 		default:
-			return stepContext, fmt.Errorf("failed setup step logger: no such log encoder `%s`", s.zapConfig.Encoding)
+			return ctx, fmt.Errorf("failed setup step logger: no such log encoder `%s`", s.zapConfig.Encoding)
 		}
 
 		logger := s.logger
 
-		if stepContext.Stderr != nil {
+		if ctx.Stderr != nil {
 			core := zapcore.NewCore(
 				encoder,
-				zapcore.AddSync(stepContext.Stderr),
+				zapcore.AddSync(ctx.Stderr),
 				s.zapConfig.Level,
 			)
 
 			zapLogger := zap.New(core)
 			logger = zapr.NewLogger(zapLogger)
-			ctx = logr.NewContext(ctx, logger)
+			ctx.Context = logr.NewContext(ctx, logger)
 		}
 
-		logger.Info("step context input", "context", stepContext)
-		stepContext, err := next(ctx, stepContext)
-		logger.Info("step done", "err", err, "context", stepContext)
+		logger.Info("step context input", "context", ctx)
+		ctx, err := next(ctx)
+		logger.Info("step done", "err", err, "context", ctx)
 
-		return stepContext, err
+		return ctx, err
 	}, nil
 }

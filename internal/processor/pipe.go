@@ -27,10 +27,10 @@ type Pipe struct {
 }
 
 type stepWrapper struct {
-	next        Next
-	r           io.ReadCloser
-	w           io.WriteCloser
-	stepContext StepContext
+	next Next
+	r    io.ReadCloser
+	w    io.WriteCloser
+	ctx  StepContext
 }
 
 func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -39,13 +39,13 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		var stepEntrypoints []stepWrapper
 		for _, step := range steps {
 			entrypoint, err := step.Entrypoint()
 
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
 			stepEntrypoints = append(stepEntrypoints, stepWrapper{
@@ -58,13 +58,13 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		var errs []error
 
 		for i := range stepEntrypoints {
-			copy := stepContext.DeepCopy()
+			copyCtx := ctx.DeepCopy()
 
 			if len(steps) == i+1 {
-				copy.Stdin = stdout
+				copyCtx.Stdin = stdout
 			} else {
 				if !s.tee {
-					copy.Stdout = io.Discard
+					copyCtx.Stdout = io.Discard
 				}
 
 				r, w := io.Pipe()
@@ -72,28 +72,28 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				stepEntrypoints[i].w = w
 
 				if stdout != nil {
-					copy.Stdin = stdout
+					copyCtx.Stdin = stdout
 				}
 
-				copy.AdditionalStdout = append(copy.AdditionalStdout, w)
+				copyCtx.AdditionalStdout = append(copyCtx.AdditionalStdout, w)
 				stdout = r
 			}
 
-			stepEntrypoints[i].stepContext = copy
+			stepEntrypoints[i].ctx = copyCtx
 		}
 
-		ctx, cancel := context.WithCancel(ctx)
+		cancelCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		for _, step := range stepEntrypoints {
 			step := step
+			step.ctx.Context = cancelCtx
 
 			go func() {
-				resultCtx, err := step.next(ctx, step.stepContext)
+				resultCtx, err := step.next(step.ctx)
 				if step.r != nil {
 					step.r.Close()
 				}
-
 				results <- concurrentResult{resultCtx, err}
 			}()
 		}
@@ -102,10 +102,16 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	WAIT:
 		for res := range results {
 			done++
-			stepContext = stepContext.Merge(res.stepContext)
+			ctx = ctx.Merge(res.ctx)
 			if res.err != nil && AbortOnError(res.err) {
 				errs = append(errs, res.err)
 				cancel()
+
+				//close any open io pipe to make any std stream copy routines stop
+				for _, step := range stepEntrypoints[0 : len(steps)-1] {
+					step.r.Close()
+					step.w.Close()
+				}
 			}
 
 			if done == len(steps) {
@@ -114,9 +120,9 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if len(errs) > 0 {
-			return stepContext, errors.Join(errs...)
+			return ctx, errors.Join(errs...)
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

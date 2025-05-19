@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -126,7 +125,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		}
 	}
 
-	return func(ctx context.Context) (processor.StepContext, map[string]v1beta1.ParamValue, error) {
+	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.Dir = contextDir
 		stepCtx.DataDir = filepath.Join(contextDir, "_data")
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
@@ -139,7 +138,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
 		}
 
-		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
+		stepCtx, pipelineErr := entrypoint(stepCtx)
 
 		for _, pipelineOutput := range pipeline.Outputs {
 			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {

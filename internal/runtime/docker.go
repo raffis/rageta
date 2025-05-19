@@ -234,6 +234,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 			return ctx.Err()
 		case await := <-waitC:
 			if await.StatusCode > 0 {
+				streams.Close()
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}

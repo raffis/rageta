@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"maps"
 
@@ -34,43 +33,43 @@ type Inherit struct {
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		inherit := s.step.DeepCopy()
 
-		if err := substitute.Substitute(stepContext.ToV1Beta1(),
+		if err := substitute.Substitute(ctx.ToV1Beta1(),
 			inherit.Inputs,
 		); err != nil {
-			return stepContext, err
+			return ctx, err
 		}
 
 		command, err := s.provider.Lookup(ctx, inherit.Pipeline)
 		if err != nil {
-			return stepContext, fmt.Errorf("failed to open pipeline: %w", err)
+			return ctx, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
-		inheritCtx := stepContext.DeepCopy()
-		inheritCtx.NamePrefix = suffixName(s.stepName, stepContext.NamePrefix)
-		inheritCtx.Tags["inherit"] = Tag{
+		inheritCtx := ctx.DeepCopy()
+		inheritCtx.NamePrefix = suffixName(s.stepName, ctx.NamePrefix)
+		inheritCtx.Tags = append(inheritCtx.Tags, Tag{
 			Key:   "inherit",
 			Value: inherit.Pipeline,
 			Color: styles.RandHEXColor(0, 255),
-		}
+		})
 
 		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
-			return stepContext, fmt.Errorf("failed to build pipeline: %w", err)
+			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		outputContext, outputs, err := cmd(ctx)
+		outputContext, outputs, err := cmd()
 
 		if err != nil {
-			return stepContext, fmt.Errorf("failed to execute pipeline: %w", err)
+			return ctx, fmt.Errorf("failed to execute pipeline: %w", err)
 		}
 
-		s.mergeContext(outputContext, stepContext)
-		maps.Copy(stepContext.OutputVars, outputs)
+		s.mergeContext(outputContext, ctx)
+		maps.Copy(ctx.OutputVars, outputs)
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }
 

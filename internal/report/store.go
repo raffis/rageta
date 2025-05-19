@@ -17,13 +17,13 @@ type store struct {
 	mu    sync.Mutex
 }
 
-func (s *store) Add(stepName string, stepContext processor.StepContext) {
+func (s *store) Add(stepName string, ctx processor.StepContext) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for k, v := range s.steps {
 		if v.stepName == stepName {
-			s.steps[k].result = stepContext
+			s.steps[k].result = ctx
 
 			return
 		}
@@ -31,20 +31,12 @@ func (s *store) Add(stepName string, stepContext processor.StepContext) {
 
 	s.steps = append(s.steps, stepResult{
 		stepName: stepName,
-		result:   stepContext,
+		result:   ctx,
 	})
 }
 
 func (s *store) Ordered() []stepResult {
 	sort.Slice(s.steps, func(i, j int) bool {
-		if s.steps[i].result.Error == nil {
-			return false
-		}
-
-		if s.steps[j].result.Error == nil {
-			return false
-		}
-
 		return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
 	})
 

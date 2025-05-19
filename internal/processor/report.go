@@ -1,13 +1,11 @@
 package processor
 
 import (
-	"context"
-
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 type Reporter interface {
-	Report(ctx context.Context, name string, stepContext StepContext) error
+	Report(ctx StepContext, name string) error
 }
 
 func WithReport(report Reporter) ProcessorBuilder {
@@ -29,9 +27,9 @@ type Report struct {
 }
 
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		stepContext, err := next(ctx, stepContext)
-		s.report.Report(ctx, suffixName(s.stepName, stepContext.NamePrefix), stepContext)
-		return stepContext, err
+	return func(ctx StepContext) (StepContext, error) {
+		ctx, err := next(ctx)
+		s.report.Report(ctx, suffixName(s.stepName, ctx.NamePrefix))
+		return ctx, err
 	}, nil
 }

@@ -140,7 +140,7 @@ func init() {
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
 	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 	pipelineFlags.BoolVarP(&runArgs.fork, "fork", "", runArgs.fork, "Creates a controller container which handles this pipeline and exit.")
-	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secrets", "", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
+	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
 	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	pipelineFlags.StringSliceVarP(&runArgs.volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
 	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
@@ -614,15 +614,16 @@ func runRun(cmd *cobra.Command, args []string) error {
 	var result error
 	command.PipelineSpec.Name = ""
 
-	stepContext := processor.NewContext()
-	stepContext.Stdout = os.Stdout
-	stepContext.Stderr = os.Stderr
+	stepCtx := processor.NewContext()
+	stepCtx.Context = ctx
+	stepCtx.Stdout = os.Stdout
+	stepCtx.Stderr = os.Stderr
 
-	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, stepContext)
+	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, stepCtx)
 	if err != nil {
 		result = err
 	} else {
-		_, _, result = pipelineCmd(ctx)
+		_, _, result = pipelineCmd()
 	}
 
 	logger.Info("pipeline completed", "result", result)

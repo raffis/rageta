@@ -1,8 +1,6 @@
 package processor
 
 import (
-	"context"
-
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -23,10 +21,10 @@ type Needs struct {
 }
 
 func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		for _, needsStepName := range s.refs {
 			stepExecuted := false
-			for stepName := range stepContext.Steps {
+			for stepName := range ctx.Steps {
 				if stepName == needsStepName {
 					stepExecuted = true
 					break
@@ -39,27 +37,27 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			step, err := pipeline.Step(needsStepName)
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
 			next, err := step.Entrypoint()
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
 			parentCtx := NewContext()
-			parentCtx.Dir = stepContext.Dir
-			parentCtx.Template = stepContext.Template.DeepCopy()
+			parentCtx.Dir = ctx.Dir
+			parentCtx.Template = ctx.Template.DeepCopy()
 
-			outCtx, err := next(ctx, parentCtx)
-			outCtx.Inputs = stepContext.Inputs
-			stepContext.Merge(outCtx)
+			outCtx, err := next(parentCtx)
+			outCtx.Inputs = ctx.Inputs
+			ctx.Merge(outCtx)
 
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

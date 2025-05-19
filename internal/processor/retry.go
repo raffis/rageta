@@ -41,19 +41,20 @@ func (s *Retry) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		backoff = retry.WithMaxRetries(s.max, backoff)
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(stepCtx StepContext) (StepContext, error) {
 		var err error
-		if err := retry.Do(ctx, backoff, func(ctx context.Context) error {
-			stepContext, err = next(ctx, stepContext)
+		if err := retry.Do(stepCtx, backoff, func(ctx context.Context) error {
+			stepCtx.Context = ctx
+			stepCtx, err = next(stepCtx)
 			if err != nil {
 				return retry.RetryableError(err)
 			}
 
 			return nil
 		}); err != nil {
-			return stepContext, err
+			return stepCtx, err
 		}
 
-		return stepContext, err
+		return stepCtx, err
 	}, nil
 }

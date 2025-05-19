@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"maps"
@@ -13,6 +14,7 @@ import (
 )
 
 type StepContext struct {
+	context.Context
 	Dir              string
 	DataDir          string
 	Matrix           map[string]string
@@ -20,7 +22,7 @@ type StepContext struct {
 	Steps            map[string]*StepContext
 	Envs             map[string]string
 	Containers       map[string]cruntime.ContainerStatus
-	Tags             map[string]Tag
+	Tags             []Tag
 	NamePrefix       string
 	Env              string
 	Outputs          []OutputParam
@@ -54,13 +56,13 @@ func NewContext() StepContext {
 		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
-		Tags:       make(map[string]Tag),
 		OutputVars: make(map[string]v1beta1.ParamValue),
 	}
 }
 
 func (c StepContext) DeepCopy() StepContext {
 	copy := NewContext()
+	copy.Context = c.Context
 	copy.NamePrefix = c.NamePrefix
 	copy.Dir = c.Dir
 	copy.DataDir = c.DataDir
@@ -82,7 +84,7 @@ func (c StepContext) DeepCopy() StepContext {
 
 	copy.OutputVars = maps.Clone(c.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
-	copy.Tags = maps.Clone(c.Tags)
+	copy.Tags = append(copy.Tags, c.Tags...)
 	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
 	copy.Containers = maps.Clone(c.Containers)

@@ -1,11 +1,8 @@
 package report
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -25,8 +22,8 @@ func Table(w io.Writer) *table {
 	}
 }
 
-func (r *table) Report(ctx context.Context, name string, stepContext processor.StepContext) error {
-	r.store.Add(name, stepContext)
+func (r *table) Report(ctx processor.StepContext, name string) error {
+	r.store.Add(name, ctx)
 	return nil
 }
 
@@ -37,8 +34,8 @@ func (r *table) Finalize() error {
 		errMsg, status, duration := stringify(step.result)
 
 		var tags []string
-		for _, key := range slices.Sorted(maps.Keys(step.result.Tags)) {
-			tags = append(tags, styles.TagLabel.Background(lipgloss.Color(step.result.Tags[key].Color)).Render(fmt.Sprintf("%s: %s", step.result.Tags[key].Key, step.result.Tags[key].Value)))
+		for _, tag := range step.result.Tags {
+			tags = append(tags, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
 		}
 
 		rows = append(rows, []string{

@@ -46,31 +46,31 @@ type Matrix struct {
 var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		subst := []any{s.matrix}
 		for _, group := range s.include {
 			subst = append(subst, group.Params)
 		}
 
-		if err := substitute.Substitute(stepContext.ToV1Beta1(),
+		if err := substitute.Substitute(ctx.ToV1Beta1(),
 			subst...,
 		); err != nil {
-			return stepContext, fmt.Errorf("substitution failed: %w", err)
+			return ctx, fmt.Errorf("substitution failed: %w", err)
 		}
 
 		matrixes, err := s.build(s.matrix)
 		if err != nil {
-			return stepContext, err
+			return ctx, err
 		}
 
 		if len(matrixes) == 0 {
-			return stepContext, ErrEmptyMatrix
+			return ctx, ErrEmptyMatrix
 		}
 
 		results := make(chan concurrentResult)
 		var errs []error
 
-		ctx, cancel := context.WithCancel(ctx)
+		cancelCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		pool := s.pool
@@ -79,30 +79,32 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		for matrixKey, matrix := range matrixes {
-			copyContext := stepContext.DeepCopy()
+			copyCtx := ctx.DeepCopy()
+			copyCtx.Context = cancelCtx
+
 			for paramKey, paramValue := range matrix {
-				copyContext.Tags[fmt.Sprintf("matrix/%s", paramKey)] = Tag{
+				copyCtx.Tags = append(copyCtx.Tags, Tag{
 					Key:   fmt.Sprintf("matrix/%s", paramKey),
 					Value: paramValue,
 					Color: styles.RandHEXColor(0, 255),
-				}
+				})
 			}
 
 			s.combineIncludes(matrix, s.include)
-			copyContext.Matrix = matrix
+			copyCtx.Matrix = matrix
 
 			hasher := sha1.New()
 			hasher.Write([]byte(matrixKey))
 			b := hasher.Sum(nil)
 
-			if copyContext.NamePrefix == "" {
-				copyContext.NamePrefix = hex.EncodeToString(b)[:6]
+			if copyCtx.NamePrefix == "" {
+				copyCtx.NamePrefix = hex.EncodeToString(b)[:6]
 			} else {
-				copyContext.NamePrefix = suffixName(copyContext.NamePrefix, hex.EncodeToString(b)[:6])
+				copyCtx.NamePrefix = suffixName(copyCtx.NamePrefix, hex.EncodeToString(b)[:6])
 			}
 
 			pool.Go(func() {
-				t, err := next(ctx, copyContext)
+				t, err := next(copyCtx)
 				results <- concurrentResult{t, err}
 			})
 		}
@@ -112,19 +114,19 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for res := range results {
 			done++
 
-			for stepName, step := range res.stepContext.Steps {
+			for stepName, step := range res.ctx.Steps {
 				//Copy matrix step result to current context
-				if _, ok := stepContext.Steps[stepName]; ok {
+				if _, ok := ctx.Steps[stepName]; ok {
 					continue
 				}
 
-				stepContext.Steps[suffixName(stepName, res.stepContext.NamePrefix)] = step
+				ctx.Steps[suffixName(stepName, res.ctx.NamePrefix)] = step
 
 				//Unify matrix outputs into an array output for the current step
 				for paramKey, paramValue := range step.OutputVars {
 					var param v1beta1.ParamValue
 
-					if val, ok := stepContext.OutputVars[paramKey]; !ok {
+					if val, ok := ctx.OutputVars[paramKey]; !ok {
 						param = v1beta1.ParamValue{
 							Type: v1beta1.ParamTypeArray,
 						}
@@ -136,7 +138,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 						param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 					}
 
-					stepContext.OutputVars[paramKey] = param
+					ctx.OutputVars[paramKey] = param
 				}
 			}
 
@@ -154,10 +156,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if len(errs) > 0 {
-			return stepContext, errors.Join(errs...)
+			return ctx, errors.Join(errs...)
 		}
 
-		return stepContext, nil
+		return ctx, nil
 	}, nil
 }
 

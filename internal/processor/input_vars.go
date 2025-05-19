@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/google/cel-go/cel"
@@ -45,8 +44,8 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		vars := stepContext.ToV1Beta1()
+	return func(ctx StepContext) (StepContext, error) {
+		vars := ctx.ToV1Beta1()
 		for _, input := range s.inputs {
 			switch {
 			case input.CelExpression != nil:
@@ -54,26 +53,26 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					"context": vars,
 				})
 				if err != nil {
-					return stepContext, fmt.Errorf("input expression evaluation `%s` failed: %w", *input.CelExpression, err)
+					return ctx, fmt.Errorf("input expression evaluation `%s` failed: %w", *input.CelExpression, err)
 				}
 
 				switch v := value.Value().(type) {
 				case string:
-					stepContext.Inputs[input.Name] = v1beta1.ParamValue{
+					ctx.Inputs[input.Name] = v1beta1.ParamValue{
 						StringVal: v,
 						Type:      v1beta1.ParamTypeString,
 					}
 				}
 
 			case input.Default != nil:
-				if _, ok := stepContext.Inputs[input.Name]; !ok {
-					stepContext.Inputs[input.Name] = *input.Default
+				if _, ok := ctx.Inputs[input.Name]; !ok {
+					ctx.Inputs[input.Name] = *input.Default
 				}
 			default:
-				return stepContext, fmt.Errorf("invalid input param given `%s`", input.Name)
+				return ctx, fmt.Errorf("invalid input param given `%s`", input.Name)
 			}
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

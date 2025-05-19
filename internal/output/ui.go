@@ -1,7 +1,6 @@
 package output
 
 import (
-	"context"
 	"errors"
 	"io"
 
@@ -10,10 +9,10 @@ import (
 )
 
 func UI(ui tui.UI) processor.OutputFactory {
-	return func(_ context.Context, stepContext processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
+	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
 		task, err := ui.GetTask(stepName)
 		if err != nil {
-			task = tui.NewTask(stepName, stepContext.Tags)
+			task = tui.NewTask(stepName, ctx.Tags)
 			ui.AddTasks(task)
 		}
 

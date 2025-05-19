@@ -1,8 +1,6 @@
 package processor
 
 import (
-	"context"
-
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -45,7 +43,7 @@ type OtelMetrics struct {
 }
 
 func (s *OtelMetrics) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		//roll := 1 + rand.Intn(6)
 
 		/*var msg string
@@ -59,7 +57,7 @@ func (s *OtelMetrics) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		//rollCnt.Add(ctx, 1, metric.WithAttributes(rollValueAttr))
 
-		stepContext, err := next(ctx, stepContext)
-		return stepContext, err
+		ctx, err := next(ctx)
+		return ctx, err
 	}, nil
 }

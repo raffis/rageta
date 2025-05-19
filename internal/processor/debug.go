@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -40,11 +39,11 @@ func (s *Debug) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return next, err
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		logger.V(1).Info("pre processor", "context", stepContext)
-		stepContext, err := wrappedNext(ctx, stepContext)
-		logger.V(1).Info("post processor", "context", stepContext, "err", err)
+	return func(ctx StepContext) (StepContext, error) {
+		logger.V(1).Info("pre processor", "context", ctx)
+		ctx, err := wrappedNext(ctx)
+		logger.V(1).Info("post processor", "context", ctx, "err", err)
 
-		return stepContext, err
+		return ctx, err
 	}, nil
 }

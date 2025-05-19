@@ -2,7 +2,6 @@ package output
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -49,7 +48,7 @@ func TerminalWriter(ch chan PrefixMessage) {
 }
 
 func Prefix(color bool, stdout, stderr io.Writer, ch chan PrefixMessage) processor.OutputFactory {
-	return func(_ context.Context, stepContext processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
+	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
 		style := lipgloss.NewStyle()
 
 		if color {

@@ -24,11 +24,12 @@ type Timeout struct {
 }
 
 func (s *Timeout) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		cancelCtx, cancel := context.WithTimeout(ctx, s.timeout)
 		defer cancel()
+		ctx.Context = cancelCtx
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

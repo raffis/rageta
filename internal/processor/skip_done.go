@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"errors"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -26,9 +25,9 @@ type SkipDone struct {
 var ErrSkipDone = errors.New("skip step marked as successful")
 
 func (s *SkipDone) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		skipExecution := false
-		for stepName, result := range stepContext.Steps {
+		for stepName, result := range ctx.Steps {
 			if stepName == s.stepName && result.EndedAt.IsZero() && result.Error != nil {
 				skipExecution = true
 				break
@@ -36,9 +35,9 @@ func (s *SkipDone) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if !skipExecution {
-			return next(ctx, stepContext)
+			return next(ctx)
 		}
 
-		return stepContext, ErrSkipDone
+		return ctx, ErrSkipDone
 	}, nil
 }

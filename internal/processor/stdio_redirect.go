@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -32,7 +31,7 @@ type StdioRedirect struct {
 }
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		var stdoutRedirect, stderrRedirect io.Writer
 
 		vars := []any{}
@@ -46,55 +45,55 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			vars = append(vars, &s.streams.Stdin.Path)
 		}
 
-		if err := substitute.Substitute(stepContext.ToV1Beta1(), vars...,
+		if err := substitute.Substitute(ctx.ToV1Beta1(), vars...,
 		); err != nil {
-			return stepContext, err
+			return ctx, err
 		}
 
-		stdout := stepContext.Stdout
-		stderr := stepContext.Stderr
+		stdout := ctx.Stdout
+		stderr := ctx.Stderr
 
 		if s.streams.Stdout != nil {
 			if !s.tee {
-				stepContext.Stdout = io.Discard
+				ctx.Stdout = io.Discard
 			}
 
 			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
-				return stepContext, fmt.Errorf("failed to redirect stdout: %w", err)
+				return ctx, fmt.Errorf("failed to redirect stdout: %w", err)
 			}
 
 			defer outFile.Close()
-			stepContext.AdditionalStdout = append(stepContext.AdditionalStdout, outFile)
+			ctx.AdditionalStdout = append(ctx.AdditionalStdout, outFile)
 			stdoutRedirect = outFile
 		}
 
 		if s.streams.Stderr != nil {
 			if !s.tee {
-				stepContext.Stdout = io.Discard
+				ctx.Stdout = io.Discard
 			}
 
 			outFile, err := os.OpenFile(s.streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
-				return stepContext, fmt.Errorf("failed to redirect stderr: %w", err)
+				return ctx, fmt.Errorf("failed to redirect stderr: %w", err)
 			}
 
 			defer outFile.Close()
-			stepContext.AdditionalStderr = append(stepContext.AdditionalStderr, outFile)
+			ctx.AdditionalStderr = append(ctx.AdditionalStderr, outFile)
 			stderrRedirect = outFile
 		}
 
-		stepContext, err := next(ctx, stepContext)
-		stepContext.AdditionalStdout = slices.DeleteFunc(stepContext.AdditionalStdout, func(w io.Writer) bool {
+		ctx, err := next(ctx)
+		ctx.AdditionalStdout = slices.DeleteFunc(ctx.AdditionalStdout, func(w io.Writer) bool {
 			return w == stdoutRedirect
 		})
-		stepContext.AdditionalStderr = slices.DeleteFunc(stepContext.AdditionalStderr, func(w io.Writer) bool {
+		ctx.AdditionalStderr = slices.DeleteFunc(ctx.AdditionalStderr, func(w io.Writer) bool {
 			return w == stderrRedirect
 		})
 
-		stepContext.Stdout = stdout
-		stepContext.Stderr = stderr
+		ctx.Stdout = stdout
+		ctx.Stderr = stderr
 
-		return stepContext, err
+		return ctx, err
 	}, nil
 }

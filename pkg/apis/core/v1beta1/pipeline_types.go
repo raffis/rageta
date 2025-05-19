@@ -60,8 +60,9 @@ type StepOptions struct {
 }
 
 type EnvVar struct {
-	Name  string  `json:"name,omitempty"`
-	Value *string `json:"value,omitempty"`
+	Name   string  `json:"name,omitempty"`
+	Value  *string `json:"value,omitempty"`
+	Secret bool    `json:"secret,omitempty"`
 }
 
 type IfCondition struct {

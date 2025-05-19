@@ -1,14 +1,11 @@
 package report
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/styles"
 )
 
 type markdown struct {
@@ -23,8 +20,8 @@ func Markdown(w io.Writer) *markdown {
 	}
 }
 
-func (r *markdown) Report(ctx context.Context, name string, stepContext processor.StepContext) error {
-	r.store.Add(name, stepContext)
+func (r *markdown) Report(ctx processor.StepContext, name string) error {
+	r.store.Add(name, ctx)
 	return nil
 }
 
@@ -35,7 +32,7 @@ func (r *markdown) Finalize() error {
 	for i, step := range r.store.Ordered() {
 		var tags []string
 		for _, tag := range step.result.Tags {
-			tags = append(tags, styles.TagLabel.Foreground(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
+			tags = append(tags, fmt.Sprintf("<span style=\"color:%s\">%s: %s</span>", tag.Color, tag.Key, tag.Value))
 		}
 
 		errMsg, status, duration := stringify(step.result)
@@ -44,7 +41,7 @@ func (r *markdown) Finalize() error {
 			step.stepName,
 			status,
 			duration,
-			strings.Join(tags, ""),
+			strings.Join(tags, " "),
 			errMsg,
 		)
 	}

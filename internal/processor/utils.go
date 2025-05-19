@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -34,8 +33,8 @@ func refSlice(steps []v1beta1.StepReference) []string {
 
 func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 	if len(s) == 0 {
-		return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-			return stepContext, nil
+		return func(ctx StepContext) (StepContext, error) {
+			return ctx, nil
 		}, nil
 	}
 
