@@ -37,7 +37,7 @@ type Output struct {
 
 func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		if _, ok := ctx.Tags["inherit"]; ok && !s.decouple {
+		if ctx.HasTag("inherit") && !s.decouple {
 			return next(ctx)
 		}
 

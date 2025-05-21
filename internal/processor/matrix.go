@@ -83,7 +83,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			copyCtx.Context = cancelCtx
 
 			for paramKey, paramValue := range matrix {
-				copyCtx.Tags = append(copyCtx.Tags, Tag{
+				copyCtx = copyCtx.WithTag(Tag{
 					Key:   fmt.Sprintf("matrix/%s", paramKey),
 					Value: paramValue,
 					Color: styles.RandHEXColor(0, 255),
@@ -115,31 +115,26 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			done++
 
 			for stepName, step := range res.ctx.Steps {
-				//Copy matrix step result to current context
-				if _, ok := ctx.Steps[stepName]; ok {
-					continue
-				}
-
 				ctx.Steps[suffixName(stepName, res.ctx.NamePrefix)] = step
+			}
 
-				//Unify matrix outputs into an array output for the current step
-				for paramKey, paramValue := range step.OutputVars {
-					var param v1beta1.ParamValue
+			//Unify matrix outputs into an array output for the current step
+			for paramKey, paramValue := range res.ctx.OutputVars {
+				var param v1beta1.ParamValue
 
-					if val, ok := ctx.OutputVars[paramKey]; !ok {
-						param = v1beta1.ParamValue{
-							Type: v1beta1.ParamTypeArray,
-						}
-					} else {
-						param = val
+				if val, ok := ctx.OutputVars[paramKey]; !ok {
+					param = v1beta1.ParamValue{
+						Type: v1beta1.ParamTypeArray,
 					}
-
-					if paramValue.Type == v1beta1.ParamTypeString && paramValue.StringVal != "" {
-						param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
-					}
-
-					ctx.OutputVars[paramKey] = param
+				} else {
+					param = val
 				}
+
+				if paramValue.Type == v1beta1.ParamTypeString && paramValue.StringVal != "" {
+					param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
+				}
+
+				ctx.OutputVars[paramKey] = param
 			}
 
 			if res.err != nil && AbortOnError(res.err) {

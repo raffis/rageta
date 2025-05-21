@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 	"time"
 
@@ -15,7 +13,7 @@ import (
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string, tags map[string]processor.Tag) *Task {
+func NewTask(name string, tags []processor.Tag) *Task {
 	viewport := pager.New(0, 0)
 	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
@@ -26,12 +24,8 @@ func NewTask(name string, tags map[string]processor.Tag) *Task {
 		viewport: &viewport,
 		name:     name,
 		status:   StepStatusWaiting,
+		tags:     tags,
 	}
-
-	for _, key := range slices.Sorted(maps.Keys(tags)) {
-		task.tags = append(task.tags, tags[key])
-	}
-
 	return task
 }
 

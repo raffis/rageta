@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -28,9 +29,13 @@ type model struct {
 	scanInput textinput.Model
 	scanState bool
 	sizeMsg   *tea.WindowSizeMsg
+	mu        sync.Mutex
 }
 
 func (m *model) AddTasks(tasks ...*Task) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, task := range tasks {
 		if m.sizeMsg != nil {
 			task.viewport.Width = m.sizeMsg.Width

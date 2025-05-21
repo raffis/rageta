@@ -49,7 +49,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		inheritCtx := ctx.DeepCopy()
 		inheritCtx.NamePrefix = suffixName(s.stepName, ctx.NamePrefix)
-		inheritCtx.Tags = append(inheritCtx.Tags, Tag{
+		inheritCtx = inheritCtx.WithTag(Tag{
 			Key:   "inherit",
 			Value: inherit.Pipeline,
 			Color: styles.RandHEXColor(0, 255),

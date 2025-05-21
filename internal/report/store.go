@@ -1,7 +1,9 @@
 package report
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -36,8 +38,26 @@ func (s *store) Add(stepName string, ctx processor.StepContext) {
 }
 
 func (s *store) Ordered() []stepResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	sort.Slice(s.steps, func(i, j int) bool {
-		return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
+		var iTags, jTags []string
+		for _, tag := range s.steps[i].result.Tags() {
+			iTags = append(iTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+		}
+		for _, tag := range s.steps[j].result.Tags() {
+			jTags = append(jTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+		}
+
+		iTagsKey := strings.Join(iTags, "-")
+		jTagsKey := strings.Join(jTags, "-")
+
+		if iTagsKey == jTagsKey {
+			return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
+		}
+
+		return iTagsKey < jTagsKey
 	})
 
 	return s.steps

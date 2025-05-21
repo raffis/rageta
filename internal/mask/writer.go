@@ -4,9 +4,17 @@ import (
 	"bytes"
 	"io"
 	"sync"
+
+	"github.com/charmbracelet/x/term"
 )
 
-func Writer(w io.Writer, maskPlaceholder []byte, secrets ...[]byte) *maskedWriter {
+type fd interface {
+	Fd() uintptr
+}
+
+var _ term.File = &maskedWriter{}
+
+func Writer(w io.ReadWriteCloser, maskPlaceholder []byte, secrets ...[]byte) *maskedWriter {
 	return &maskedWriter{
 		w:           w,
 		secrets:     secrets,
@@ -15,7 +23,7 @@ func Writer(w io.Writer, maskPlaceholder []byte, secrets ...[]byte) *maskedWrite
 }
 
 type maskedWriter struct {
-	w           io.Writer
+	w           io.ReadWriteCloser
 	mu          sync.Mutex
 	placeholder []byte
 	secrets     [][]byte
@@ -33,6 +41,22 @@ func (w *maskedWriter) Write(b []byte) (n int, err error) {
 	}
 
 	return w.w.Write(b)
+}
+
+func (w *maskedWriter) Read(p []byte) (n int, err error) {
+	return w.w.Read(p)
+}
+
+func (w *maskedWriter) Close() error {
+	return w.w.Close()
+}
+
+func (w *maskedWriter) Fd() uintptr {
+	if f, ok := w.w.(fd); ok {
+		return f.Fd()
+	}
+
+	return 0
 }
 
 type SecretStore interface {

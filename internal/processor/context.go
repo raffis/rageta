@@ -14,16 +14,18 @@ import (
 )
 
 type StepContext struct {
-	context.Context
+	context.Context  `json:"-"`
 	Dir              string
 	DataDir          string
 	Matrix           map[string]string
 	Inputs           map[string]v1beta1.ParamValue
-	Steps            map[string]*StepContext
+	Steps            map[string]*StepContext `json:"-"`
 	Envs             map[string]string
+	Secrets          map[string]string
 	Containers       map[string]cruntime.ContainerStatus
-	Tags             []Tag
+	tags             []Tag
 	NamePrefix       string
+	Secret           string
 	Env              string
 	Outputs          []OutputParam
 	Stdin            io.Reader
@@ -52,6 +54,7 @@ type OutputParam struct {
 func NewContext() StepContext {
 	return StepContext{
 		Envs:       make(map[string]string),
+		Secrets:    make(map[string]string),
 		Steps:      make(map[string]*StepContext),
 		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
@@ -84,9 +87,10 @@ func (c StepContext) DeepCopy() StepContext {
 
 	copy.OutputVars = maps.Clone(c.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
-	copy.Tags = append(copy.Tags, c.Tags...)
+	copy.tags = append(copy.tags, c.tags...)
 	copy.Inputs = maps.Clone(c.Inputs)
 	copy.Envs = maps.Clone(c.Envs)
+	copy.Secrets = maps.Clone(c.Secrets)
 	copy.Containers = maps.Clone(c.Containers)
 	copy.Matrix = maps.Clone(c.Matrix)
 	if c.Template != nil {
@@ -94,6 +98,32 @@ func (c StepContext) DeepCopy() StepContext {
 	}
 
 	return copy
+}
+
+func (t StepContext) Tags() []Tag {
+	return t.tags
+}
+
+func (t StepContext) HasTag(key string) bool {
+	for _, v := range t.tags {
+		if v.Key == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (t StepContext) WithTag(tag Tag) StepContext {
+	for i, v := range t.tags {
+		if v.Key == tag.Key {
+			t.tags[i] = tag
+			return t
+		}
+	}
+
+	t.tags = append(t.tags, tag)
+	return t
 }
 
 func (t StepContext) Merge(c StepContext) StepContext {
@@ -133,8 +163,10 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 		Containers: make(map[string]*v1beta1.ContainerStatus),
 		Matrix:     maps.Clone(t.Matrix),
 		Envs:       maps.Clone(t.Envs),
+		Secrets:    maps.Clone(t.Secrets),
 		Inputs:     maps.Clone(t.Inputs),
 		Env:        t.Env,
+		Secret:     t.Secret,
 		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
 		Arch:       runtime.GOARCH,

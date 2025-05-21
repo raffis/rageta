@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"os/signal"
 	"os/user"
@@ -140,7 +139,7 @@ func init() {
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
 	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 	pipelineFlags.BoolVarP(&runArgs.fork, "fork", "", runArgs.fork, "Creates a controller container which handles this pipeline and exit.")
-	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
+	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "s", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
 	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
 	pipelineFlags.StringSliceVarP(&runArgs.volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
 	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
@@ -227,7 +226,6 @@ var (
 	reportTypeTable    reportType = "table"
 	reportTypeJSON     reportType = "json"
 	reportTypeMarkdown reportType = "markdown"
-	reportTypeTimeline reportType = "timeline"
 )
 
 func (d reportType) String() string {
@@ -375,7 +373,8 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 func stepBuilder(
 	logger logr.Logger,
 	osEnv,
-	envs map[string]string,
+	envs,
+	secrets map[string]string,
 	secretStore mask.SecretStore,
 	celEnv *cel.Env,
 	driver cruntime.Interface,
@@ -397,7 +396,8 @@ func stepBuilder(
 			processor.WithRetry(),
 			processor.WithResult(),
 			processor.WithInputVars(celEnv),
-			processor.WithEnvVars(osEnv, envs, secretStore),
+			processor.WithEnvVars(osEnv, envs),
+			processor.WithSecretVars(osEnv, secrets, secretStore),
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.decouple),
@@ -434,7 +434,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 	secretWriter := mask.SecretWriter(maskedStdout, maskedStderr)
 	envs := envMap(runArgs.envs)
 	secrets := envMap(runArgs.secretEnvs)
-	maps.Copy(envs, secrets)
 
 	for _, secretValue := range secrets {
 		secretWriter.AddSecrets([]byte(secretValue))
@@ -572,6 +571,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			logger,
 			osEnvMap(),
 			envs,
+			secrets,
 			mask.SecretWriter(maskedStdout, maskedStderr),
 			celEnv,
 			driver,
@@ -616,8 +616,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	stepCtx := processor.NewContext()
 	stepCtx.Context = ctx
-	stepCtx.Stdout = os.Stdout
-	stepCtx.Stderr = os.Stderr
 
 	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, stepCtx)
 	if err != nil {
@@ -650,7 +648,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		}*/
 
 		<-tuiDone
-		tuiApp.ReleaseTerminal()
 	}
 
 	if prefixOutputDone != nil {
@@ -948,8 +945,7 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 	tuiModel = tui.NewModel()
 
 	zone.NewGlobal()
-
-	p := tea.NewProgram(
+	tuiApp = tea.NewProgram(
 		tuiModel,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
@@ -958,7 +954,7 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 
 	go func() {
 		for c := range time.Tick(300 * time.Millisecond) {
-			p.Send(tickMsg(c))
+			tuiApp.Send(tickMsg(c))
 		}
 	}()
 
@@ -1041,21 +1037,16 @@ type reporter interface {
 }
 
 func reportFactory() (reporter, error) {
-
-	//if runArgs.report != "" && runArgs.report != "none" {
-
 	outputPath := runArgs.reportOutput
-	var output *os.File
+	var output io.Writer
 	if outputPath == "/dev/stdout" || outputPath == "" {
-		output = os.Stdout
+		output = stdout
 	} else {
 		var err error
 		output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 		if err != nil {
 			return nil, err
 		}
-
-		//defer output.Close()
 	}
 
 	switch runArgs.report {

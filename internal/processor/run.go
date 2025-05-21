@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,10 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
+		envs := make(map[string]string)
+		maps.Copy(envs, ctx.Envs)
+		maps.Copy(envs, ctx.Secrets)
+
 		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
@@ -63,7 +68,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
 			Args:            args,
-			Env:             ctx.Envs,
+			Env:             envs,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}

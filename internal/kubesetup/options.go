@@ -79,7 +79,7 @@ func (o *Options) BindFlags(flags *pflag.FlagSet) {
 	}
 
 	if o.APIServer != nil {
-		flags.StringVarP(o.APIServer, flagAPIServer, "s", *o.APIServer, "The address and port of the Kubernetes API server")
+		flags.StringVar(o.APIServer, flagAPIServer, *o.APIServer, "The address and port of the Kubernetes API server")
 	}
 	if o.TLSServerName != nil {
 		flags.StringVar(o.TLSServerName, flagTLSServerName, *o.TLSServerName, "Server name to use for server certificate validation. If it is not provided, the hostname used to contact the server is used")

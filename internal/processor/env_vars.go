@@ -1,29 +1,23 @@
 package processor
 
 import (
+	"maps"
 	"os"
 
-	"maps"
-
-	"github.com/raffis/rageta/internal/mask"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithEnvVars(osEnv, defaultEnv map[string]string, secretWriter mask.SecretStore) ProcessorBuilder {
+func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		return &EnvVars{
-			stepName:     spec.Name,
-			env:          envMap(spec.Env, osEnv, defaultEnv),
-			secretWriter: secretWriter,
+			env: envMap(spec.Env, osEnv, defaultEnv),
 		}
 	}
 }
 
 type EnvVars struct {
-	stepName     string
-	env          map[string]string
-	secretWriter mask.SecretStore
+	env map[string]string
 }
 
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {

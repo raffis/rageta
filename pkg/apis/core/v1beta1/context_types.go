@@ -26,10 +26,12 @@ type Output struct {
 type Context struct {
 	Inputs     map[string]ParamValue       `cel:"inputs"`
 	Envs       map[string]string           `cel:"envs"`
+	Secrets    map[string]string           `cel:"secrets"`
 	Containers map[string]*ContainerStatus `cel:"containers"`
 	Steps      map[string]*StepResult      `cel:"steps"`
 	TmpDir     string                      `cel:"tmpDir"`
 	Matrix     map[string]string           `cel:"matrix"`
+	Secret     string                      `cel:"secret"`
 	Env        string                      `cel:"env"`
 	Outputs    map[string]*Output          `cel:"outputs"`
 	Os         string                      `cel:"os"`
@@ -45,6 +47,7 @@ func (v *Context) Index() map[string]string {
 		"context.uid":    v.Uid,
 		"context.guid":   v.Guid,
 		"context.env":    v.Env,
+		"context.secret": v.Secret,
 		"context.tmpDir": v.TmpDir,
 	}
 
@@ -59,6 +62,10 @@ func (v *Context) Index() map[string]string {
 			b, _ := json.Marshal(v.ObjectVal)
 			vars[fmt.Sprintf("context.inputs.%s", k)] = string(b)
 		}
+	}
+
+	for k, v := range v.Secrets {
+		vars[fmt.Sprintf("context.secrets.%s", k)] = v
 	}
 
 	for k, v := range v.Envs {

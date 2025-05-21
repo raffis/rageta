@@ -56,13 +56,18 @@ type StepOptions struct {
 	Needs        []StepReference   `json:"needs,omitempty"`
 	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
+	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
 }
 
+type SecretVar struct {
+	Name  string  `json:"name,omitempty"`
+	Value *string `json:"value,omitempty"`
+}
+
 type EnvVar struct {
-	Name   string  `json:"name,omitempty"`
-	Value  *string `json:"value,omitempty"`
-	Secret bool    `json:"secret,omitempty"`
+	Name  string  `json:"name,omitempty"`
+	Value *string `json:"value,omitempty"`
 }
 
 type IfCondition struct {

@@ -12,7 +12,7 @@ func UI(ui tui.UI) processor.OutputFactory {
 	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
 		task, err := ui.GetTask(stepName)
 		if err != nil {
-			task = tui.NewTask(stepName, ctx.Tags)
+			task = tui.NewTask(stepName, ctx.Tags())
 			ui.AddTasks(task)
 		}
 

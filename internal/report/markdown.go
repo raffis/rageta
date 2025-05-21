@@ -31,7 +31,7 @@ func (r *markdown) Finalize() error {
 
 	for i, step := range r.store.Ordered() {
 		var tags []string
-		for _, tag := range step.result.Tags {
+		for _, tag := range step.result.Tags() {
 			tags = append(tags, fmt.Sprintf("<span style=\"color:%s\">%s: %s</span>", tag.Color, tag.Key, tag.Value))
 		}
 
