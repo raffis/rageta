@@ -33,7 +33,7 @@ func (t *report) Matrix() string {
 }
 
 func (t *report) GetName() string {
-	return lipgloss.NewStyle().Foreground(highlightColor).Bold(true).Render("Report")
+	return lipgloss.NewStyle().Foreground(gridColor).Bold(true).Render("Report")
 }
 
 func (t *report) Title() string {
@@ -41,7 +41,7 @@ func (t *report) Title() string {
 }
 
 func (t *report) Description() string {
-	return lipgloss.NewStyle().Foreground(highlightColor).Render("───")
+	return lipgloss.NewStyle().Foreground(gridColor).Render("───")
 }
 
 func (t *report) FilterValue() string {

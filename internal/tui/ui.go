@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
@@ -65,16 +67,9 @@ func (m *model) GetTask(name string) (*Task, error) {
 }
 
 func NewModel() *model {
-	delegateStyles := list.NewDefaultItemStyles()
-	delegateStyles.SelectedTitle.Border(lipgloss.BlockBorder(), false, false, false, true).BorderForeground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"})
-	delegateStyles.SelectedDesc.Border(lipgloss.BlockBorder(), false, false, false, true).BorderForeground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"}).Foreground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"})
-
-	delegate := list.NewDefaultDelegate()
-	delegate.Styles = delegateStyles
-
 	m := &model{
 		status: StepStatusWaiting,
-		list:   list.New(nil, delegate, 0, 0),
+		list:   list.New(nil, list.NewDefaultDelegate(), 0, 0),
 	}
 
 	m.list.SetShowTitle(false)
@@ -105,7 +100,7 @@ func NewModel() *model {
 
 	m.loader = spinner.New()
 	m.loader.Spinner = spinner.Dot
-	m.loader.Style = lipgloss.NewStyle().Foreground(highlightColor)
+	m.loader.Style = lipgloss.NewStyle().Foreground(gridColor)
 
 	return m
 }
@@ -118,7 +113,7 @@ type navItem interface {
 
 func (m *model) Report(b []byte) {
 	viewport := pager.New(0, 0)
-	viewport.Style = windowStyle
+	//viewport.Style = windowStyle
 
 	if m.sizeMsg != nil {
 		viewport.Width = m.sizeMsg.Width
@@ -163,7 +158,6 @@ func (m *model) renderStatus() string {
 
 func (m *model) Init() tea.Cmd {
 	return nil
-	//return m.loader.Tick
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -218,8 +212,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		h, _ := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-2)
+		//h, _ := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width/100*20, msg.Height-2)
 
 		for _, task := range m.list.Items() {
 			if task != nil {
@@ -264,21 +258,21 @@ func (m *model) View() string {
 		return m.loader.View()
 	}
 
-	list := listStyle.Render(m.list.View())
+	list := listStyle.Width(m.list.Width()).Render(m.list.View())
 	task := selectedItem.(navItem)
 	tags := task.TagsAsString()
 
 	var right []string
 	if tags == "" {
 		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
+			lipgloss.NewStyle().Width(task.getViewport().Width - lipgloss.Width(list)).Render(styles.Bold.Render(task.GetName())),
 			zone.Mark("pager", task.getViewport().View()),
 			m.queryView(lipgloss.Width(list)),
 		}
 	} else {
 		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(tags),
+			lipgloss.NewStyle().Width(task.getViewport().Width - lipgloss.Width(list)).Render(fmt.Sprintf("─ * %s * %s", task.GetName(), strings.Repeat("─", task.getViewport().Width-lipgloss.Width(list)-lipgloss.Width(task.GetName())-7))),
+			lipgloss.NewStyle().Width(task.getViewport().Width - lipgloss.Width(list)).Render(tags),
 			zone.Mark("pager", task.getViewport().View()),
 			m.queryView(lipgloss.Width(list)),
 		}
@@ -286,10 +280,11 @@ func (m *model) View() string {
 
 	return zone.Scan(
 		lipgloss.JoinHorizontal(
-			lipgloss.Bottom,
+			lipgloss.Top,
 			lipgloss.JoinVertical(
 				lipgloss.Top,
-				leftFooterPaddingStyle.Width(lipgloss.Width(list)).Render(""),
+				listTopRight.Width(lipgloss.Width(list)-1).BorderBottom(false).BorderRight(true).Render(""),
+
 				zone.Mark("tasks", list),
 				m.footerLeftView(lipgloss.Width(list)),
 			),

@@ -403,7 +403,7 @@ func stepBuilder(
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.decouple),
 			processor.WithProgress(!runArgs.noProgress),
 			processor.WithOtelTrace(logger, tracer),
-			processor.WithLogger(logger, &zapConfig),
+			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),

@@ -15,7 +15,6 @@ import (
 
 func NewTask(name string, tags []processor.Tag) *Task {
 	viewport := pager.New(0, 0)
-	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
 	viewport.Styles.LineNumber = lineNumberPrefixStyle

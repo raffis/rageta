@@ -2,8 +2,6 @@ package processor
 
 import (
 	"fmt"
-	"runtime/debug"
-
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -24,7 +22,7 @@ func (s *Recover) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		out = ctx
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("panic in step `%s`: %#v\n trace:\n%s", s.stepName, r, debug.Stack())
+				err = fmt.Errorf("panic in step `%s`: %#v\n trace:\n%s", s.stepName, r /*debug.Stack()*/)
 			}
 		}()
 

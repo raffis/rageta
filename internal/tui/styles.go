@@ -9,12 +9,8 @@ var (
 	taskWarningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00"))
 	taskRunningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFC0CB"))
 
-	Bold = lipgloss.NewStyle().Bold(true)
-
-	taskTitle = lipgloss.NewStyle().Bold(true)
-
 	lineNumberPrefixStyle = lipgloss.NewStyle().
-				Background(lipgloss.AdaptiveColor{Light: "#174BFD", Dark: "#1D56F4"}).
+				Background(lipgloss.Color("#8773F5")).
 				Foreground(lipgloss.Color("#FFFFFF")).
 				MarginRight(1).
 				AlignHorizontal(lipgloss.Right)
@@ -25,11 +21,18 @@ var (
 
 	docStyle = lipgloss.NewStyle()
 
-	highlightColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	windowStyle    = lipgloss.NewStyle()
-	listStyle      = lipgloss.NewStyle().
-			BorderForeground(highlightColor).
-			Border(lipgloss.BlockBorder(), false, true, false, false)
+	gridColor = lipgloss.Color("#7D56F4")
+
+	listStyle = lipgloss.NewStyle().
+			BorderForeground(gridColor).
+			Border(lipgloss.NormalBorder(), false, true, false, false)
+
+	listTopRight = lipgloss.NewStyle().
+			BorderForeground(gridColor).
+			BorderStyle(lipgloss.Border{
+			MiddleRight: "┌", Right: "┌",
+		})
+
 	listPaginatorStyle = lipgloss.NewStyle().Padding(1, 0, 2, 2)
 
 	leftFooterPaddingStyle = lipgloss.NewStyle().
