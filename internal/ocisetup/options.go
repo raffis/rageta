@@ -25,6 +25,7 @@ type Options struct {
 func DefaultOptions() *Options {
 	return &Options{
 		Provider: "generic",
+		Timeout:  10 * time.Second,
 	}
 }
 

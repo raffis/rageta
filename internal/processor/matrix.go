@@ -100,7 +100,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			if copyCtx.NamePrefix == "" {
 				copyCtx.NamePrefix = hex.EncodeToString(b)[:6]
 			} else {
-				copyCtx.NamePrefix = suffixName(copyCtx.NamePrefix, hex.EncodeToString(b)[:6])
+				copyCtx.NamePrefix = SuffixName(copyCtx.NamePrefix, hex.EncodeToString(b)[:6])
 			}
 
 			pool.Go(func() {
@@ -115,7 +115,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			done++
 
 			for stepName, step := range res.ctx.Steps {
-				ctx.Steps[suffixName(stepName, res.ctx.NamePrefix)] = step
+				ctx.Steps[SuffixName(stepName, res.ctx.NamePrefix)] = step
 			}
 
 			//Unify matrix outputs into an array output for the current step

@@ -5,61 +5,51 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string, tags []processor.Tag) *Task {
+func NewStep() StepMsg {
 	viewport := pager.New(0, 0)
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
-	viewport.Styles.LineNumber = lineNumberPrefixStyle
+	viewport.Styles.LineNumber = lineNumberInactiveStyle
 
-	task := &Task{
+	loader := spinner.New()
+	loader.Spinner = spinner.MiniDot
+	loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
+
+	return StepMsg{
 		viewport: &viewport,
-		name:     name,
-		status:   StepStatusWaiting,
-		tags:     tags,
+		loader:   loader,
 	}
-	return task
 }
 
-type Task struct {
-	viewport *pager.Model
-	name     string
-	status   StepStatus
-	ready    bool
-	started  time.Time
-	finished time.Time
-	tags     []processor.Tag
+type StepMsg struct {
+	viewport    *pager.Model
+	loader      spinner.Model
+	Name        string
+	DisplayName string
+	Tags        []processor.Tag
+	Status      StepStatus
+	ready       bool
+	started     time.Time
+	finished    time.Time
+	listWidth   int
+	listHeight  int
 }
 
-func (t *Task) getViewport() *pager.Model {
-	return t.viewport
-}
-
-func (t *Task) Write(b []byte) (int, error) {
+func (t StepMsg) Write(b []byte) (int, error) {
 	return t.viewport.Write(b)
 }
-
-func (t *Task) Update(msg tea.Msg) tea.Cmd {
-	var cmds []tea.Cmd
-	return tea.Batch(cmds...)
+func (t StepMsg) GetName() string {
+	return t.DisplayName
 }
 
-func (t *Task) Init() tea.Cmd {
-	return nil
-}
-
-func (t *Task) GetName() string {
-	return t.name
-}
-
-func (t *Task) SetStatus(status StepStatus) {
+func (t StepMsg) WithStatus(status StepStatus) StepMsg {
 	if t.started.IsZero() && status == StepStatusRunning {
 		t.started = time.Now()
 	}
@@ -68,31 +58,72 @@ func (t *Task) SetStatus(status StepStatus) {
 		t.finished = time.Now()
 	}
 
-	t.status = status
+	t.Status = status
+	return t
 }
 
-func (t *Task) TagsAsString() string {
-	var params []string
-	for _, tag := range t.tags {
-		params = append(params, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
+func (t *StepMsg) TagsAsString() string {
+	var tags []string
+	for _, tag := range t.Tags {
+		tags = append(tags, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
 	}
 
-	return strings.Join(params, "")
+	return strings.Join(tags, "")
 }
 
-func (t *Task) Title() string {
-	return zone.Mark(t.name, fmt.Sprintf("%s %s", t.status.Render(), ellipsis(t.name, 30)))
+func (t *StepMsg) shortTags() string {
+	var tags []string
+	for _, tag := range t.Tags {
+		tags = append(tags, listTagLabelStyle.Foreground(lipgloss.Color(tag.Color)).Render("●"))
+	}
+
+	return strings.Join(tags, "")
 }
 
-func (t *Task) Description() string {
-	if t.started.IsZero() {
-		return zone.Mark(t.name, "<not started>")
-	} else if t.finished.IsZero() {
-		return zone.Mark(t.name, fmt.Sprintf("[%s]", time.Since(t.started).Round(time.Millisecond*10)))
+func (t StepMsg) Title() string {
+	listWidth := t.listWidth - 6
+
+	var status string
+	if t.Status == StepStatusRunning {
+		status = t.loader.View()
 	} else {
-		return zone.Mark(t.name, fmt.Sprintf("[%s]", t.finished.Sub(t.started).Round(time.Millisecond*10)))
+		status = t.Status.Render()
 	}
 
+	switch {
+	case listWidth >= 50:
+		return fmt.Sprintf("%s %s %s %s",
+			status,
+			listColumnStyle.Width(int(float64(listWidth)/100*65)).Render(ellipsis(t.DisplayName, int(float64(listWidth)/100*65))),
+			listColumnStyle.Width(int(float64(listWidth)/100*15)).Render(t.shortTags()),
+			durationStyle.Width(int(float64(listWidth)/100*20)).Align(lipgloss.Right).Render(t.duration()),
+		)
+	case listWidth < 50:
+		return fmt.Sprintf("%s %s %s", status, ellipsis(t.DisplayName, t.listWidth-5), t.shortTags())
+	}
+
+	return ""
+}
+
+func (t *StepMsg) duration() string {
+	if t.started.IsZero() {
+		return "<not started>"
+	} else if t.finished.IsZero() {
+		return fmt.Sprintf("%s", time.Since(t.started).Round(time.Millisecond*10))
+	} else {
+		return fmt.Sprintf("%s", t.finished.Sub(t.started).Round(time.Millisecond*10))
+	}
+}
+
+func (t StepMsg) Description() string {
+	listWidth := t.listWidth - 5
+
+	switch {
+	case listWidth < 50:
+		return t.duration()
+	}
+
+	return ""
 }
 
 func ellipsis(s string, maxLen int) string {
@@ -106,8 +137,8 @@ func ellipsis(s string, maxLen int) string {
 	return string(runes[0:maxLen-3]) + "..."
 }
 
-func (t *Task) FilterValue() string {
-	return t.name
+func (t StepMsg) FilterValue() string {
+	return t.DisplayName
 }
 
 type StepStatus int
@@ -129,15 +160,15 @@ func (e StepStatus) String() string {
 func (e StepStatus) Render() string {
 	switch e {
 	case StepStatusRunning:
-		return taskRunningStyle.Render("◴")
+		return stepRunningStyle.Render("◴")
 	case StepStatusDone:
-		return taskOkStyle.Render("✔")
+		return stepOkStyle.Render("✔")
 	case StepStatusFailed:
-		return taskFailedStyle.Render("✗")
+		return stepFailedStyle.Render("✗")
 	case StepStatusWaiting:
-		return taskWaitingStyle.Render("◎")
+		return stepWaitingStyle.Render("◎")
 	case StepStatusSkipped:
-		return taskWarningStyle.Render("⚠")
+		return stepWarningStyle.Render("⚠")
 	}
 
 	return ""

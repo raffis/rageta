@@ -114,8 +114,8 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	contextDir := e.tmpDir
 
-	if pipeline.PipelineSpec.Name != "" {
-		contextDir = filepath.Join(contextDir, pipeline.PipelineSpec.Name)
+	if pipeline.Name != "" {
+		contextDir = filepath.Join(contextDir, pipeline.Name)
 	}
 
 	if _, err := os.Stat(contextDir); errors.Is(err, os.ErrNotExist) {
@@ -217,7 +217,7 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
-		name:       command.PipelineSpec.Name,
+		name:       command.Name,
 		id:         utils.RandString(5),
 		entrypoint: command.PipelineSpec.Entrypoint,
 	}

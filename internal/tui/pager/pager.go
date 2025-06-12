@@ -441,7 +441,7 @@ func (m Model) View() string {
 
 		width := lipgloss.Width(fmt.Sprintf("%d", clamp(firstLine+m.Height, lineNumber, maxLines)))
 		for _, line := range m.visibleLines() {
-			//line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
 			lineNumber++
 		}

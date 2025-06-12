@@ -29,7 +29,7 @@ type Report struct {
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx, err := next(ctx)
-		s.report.Report(ctx, suffixName(s.stepName, ctx.NamePrefix))
+		s.report.Report(ctx, SuffixName(s.stepName, ctx.NamePrefix))
 		return ctx, err
 	}, nil
 }

@@ -28,7 +28,6 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Name             string       `json:"name,omitempty"`
 	Entrypoint       string       `json:"entrypoint,omitempty"`
 	ShortDescription string       `json:"shortDescription,omitempty"`
 	LongDescription  string       `json:"longDescription,omitempty"`
@@ -102,7 +101,7 @@ type Generate struct {
 
 type Step struct {
 	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
+	Short       string `json:"short,omitempty"`
 	StepOptions `json:",inline"`
 	Pipe        *PipeStep       `json:"pipe,omitempty"`
 	And         *AndStep        `json:"and,omitempty"`

@@ -4,33 +4,58 @@ import (
 	"errors"
 	"io"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/tui"
 )
 
-func UI(ui tui.UI) processor.OutputFactory {
-	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
-		task, err := ui.GetTask(stepName)
-		if err != nil {
-			task = tui.NewTask(stepName, ctx.Tags())
-			ui.AddTasks(task)
+type sender interface {
+	Send(msg tea.Msg)
+}
+
+func UI(sender sender) processor.OutputFactory {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+		uniqueName := processor.SuffixName(stepName, ctx.NamePrefix)
+		displayName := stepName
+		if short != "" {
+			displayName = short
 		}
 
-		ui.SetStatus(tui.StepStatusRunning)
-		task.SetStatus(tui.StepStatusRunning)
+		step := tui.NewStep()
+		step.Name = uniqueName
+		step.DisplayName = displayName
+		step.Tags = ctx.Tags()
+		step.Status = tui.StepStatusRunning
 
-		return task, task, func(err error) error {
+		sender.Send(step)
+
+		return step, step, func(err error) error {
 			switch {
 			case err == nil:
-				task.SetStatus(tui.StepStatusDone)
+				sender.Send(tui.StepMsg{
+					Name:   uniqueName,
+					Status: tui.StepStatusDone,
+				})
 			case errors.Is(err, processor.ErrAllowFailure):
-				task.SetStatus(tui.StepStatusSkipped)
+				sender.Send(tui.StepMsg{
+					Name:   uniqueName,
+					Status: tui.StepStatusSkipped,
+				})
 			case errors.Is(err, processor.ErrConditionFalse):
-				task.SetStatus(tui.StepStatusSkipped)
+				sender.Send(tui.StepMsg{
+					Name:   uniqueName,
+					Status: tui.StepStatusSkipped,
+				})
 			case errors.Is(err, processor.ErrSkipDone):
-				task.SetStatus(tui.StepStatusSkipped)
+				sender.Send(tui.StepMsg{
+					Name:   uniqueName,
+					Status: tui.StepStatusSkipped,
+				})
 			default:
-				task.SetStatus(tui.StepStatusFailed)
+				sender.Send(tui.StepMsg{
+					Name:   uniqueName,
+					Status: tui.StepStatusFailed,
+				})
 			}
 
 			return nil

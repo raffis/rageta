@@ -48,7 +48,9 @@ func TerminalWriter(ch chan PrefixMessage) {
 }
 
 func Prefix(color bool, stdout, stderr io.Writer, ch chan PrefixMessage) processor.OutputFactory {
-	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+		uniqueName := processor.SuffixName(stepName, ctx.NamePrefix)
+
 		style := lipgloss.NewStyle()
 
 		if color {
@@ -56,14 +58,14 @@ func Prefix(color bool, stdout, stderr io.Writer, ch chan PrefixMessage) process
 		}
 
 		stdoutWrapper := &prefixWrapper{
-			prefix: fmt.Sprintf("%s ", stepName),
+			prefix: fmt.Sprintf("%s ", uniqueName),
 			style:  style,
 			ch:     ch,
 			w:      stdout,
 		}
 
 		stderrWrapper := &prefixWrapper{
-			prefix: fmt.Sprintf("%s ", stepName),
+			prefix: fmt.Sprintf("%s ", uniqueName),
 			style:  style,
 			ch:     ch,
 			w:      stderr,

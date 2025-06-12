@@ -42,20 +42,20 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		command, err := s.provider.Lookup(ctx, inherit.Pipeline)
+		pipe, err := s.provider.Lookup(ctx, inherit.Pipeline)
 		if err != nil {
 			return ctx, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
 		inheritCtx := ctx.DeepCopy()
-		inheritCtx.NamePrefix = suffixName(s.stepName, ctx.NamePrefix)
+		inheritCtx.NamePrefix = SuffixName(s.stepName, ctx.NamePrefix)
 		inheritCtx = inheritCtx.WithTag(Tag{
-			Key:   "inherit",
-			Value: inherit.Pipeline,
+			Key:   "pipeline",
+			Value: pipe.Name,
 			Color: styles.RandHEXColor(0, 255),
 		})
 
-		cmd, err := s.builder.Build(command, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
+		cmd, err := s.builder.Build(pipe, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
@@ -86,10 +86,10 @@ func (s *Inherit) mergeContext(from, to StepContext) {
 	maps.Copy(to.Envs, from.Envs)
 
 	for k, v := range from.Steps {
-		to.Steps[suffixName(k, s.stepName)] = v
+		to.Steps[SuffixName(k, s.stepName)] = v
 	}
 
 	for k, v := range from.Containers {
-		to.Containers[suffixName(k, s.stepName)] = v
+		to.Containers[SuffixName(k, s.stepName)] = v
 	}
 }

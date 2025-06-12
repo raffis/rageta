@@ -47,7 +47,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
 		pod := &runtime.Pod{
-			Name: fmt.Sprintf("%s-%s-%s", suffixName(s.stepName, ctx.NamePrefix), pipeline.ID(), utils.RandString(5)),
+			Name: fmt.Sprintf("%s-%s-%s", SuffixName(s.stepName, ctx.NamePrefix), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 

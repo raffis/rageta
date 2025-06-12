@@ -42,7 +42,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
-	zone "github.com/lrstanley/bubblezone"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel"
@@ -84,7 +83,7 @@ type runFlags struct {
 	logDetached         bool          `env:"LOG_DETACHED"`
 	fork                bool          `env:"FORK"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
-	decouple            bool          `env:"DECOUPLE"`
+	expand              bool          `env:"DECOUPLE"`
 	noProgress          bool          `env:"NO_PROGRESS"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
@@ -122,7 +121,7 @@ func init() {
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
 	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
-	executionFlags.BoolVarP(&runArgs.decouple, "decouple", "", false, "Decouple steps from inherited pipelines and display them as separate entities.")
+	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
 	executionFlags.BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
 	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
@@ -134,6 +133,7 @@ func init() {
 	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
+	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
 	runCmd.Flags().AddFlagSet(executionFlags)
 
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
@@ -265,9 +265,9 @@ func electDefaultOutput() string {
 		renderOutputBufferDefaultTemplate = `{{- if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}{{- else }}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{- end }}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
-		return renderOutputPrefix.String()
+		return renderOutputUI.String()
 	default:
-		return renderOutputPrefixNoColor.String()
+		return renderOutputPrefix.String()
 	}
 }
 
@@ -400,7 +400,7 @@ func stepBuilder(
 			processor.WithSecretVars(osEnv, secrets, secretStore),
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
-			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.decouple),
+			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
 			processor.WithProgress(!runArgs.noProgress),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
@@ -544,7 +544,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	defer tp.Shutdown(context.Background())
 	meter := otel.Meter(otelName)
 
-	outputFactory, err := outputFactory(cancel)
+	outputFactory, err := outputFactory(logger, cancel)
 	if err != nil {
 		return err
 	}
@@ -612,7 +612,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	var result error
-	command.PipelineSpec.Name = ""
+	command.Name = ""
 
 	stepCtx := processor.NewContext()
 	stepCtx.Context = ctx
@@ -627,25 +627,15 @@ func runRun(cmd *cobra.Command, args []string) error {
 	logger.Info("pipeline completed", "result", result)
 
 	if tuiDone != nil {
-		if errors.Is(result, pipeline.ErrInvalidInput) {
+		/*if errors.Is(result, pipeline.ErrInvalidInput) {
 			tuiApp.Quit()
-		}
+		}*/
 
 		if result != nil {
-			tuiModel.SetStatus(tui.StepStatusFailed)
+			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusFailed, Error: result})
 		} else {
-			tuiModel.SetStatus(tui.StepStatusDone)
+			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusDone, Error: result})
 		}
-
-		/*if resultStore, ok := resultStore.(*report.Store); ok {
-			buf := &bytes.Buffer{}
-
-			if err := printReport(buf, resultStore); err != nil {
-				fmt.Fprintln(buf, err)
-			}
-
-			tuiModel.Report(buf.Bytes())
-		}*/
 
 		<-tuiDone
 	}
@@ -925,26 +915,27 @@ func envMap(from []string) map[string]string {
 }
 
 var (
-	tuiModel         tui.UI
+	tuiManager       *tui.Manager
+	tuiModel         tea.Model
 	tuiDone          chan struct{}
 	tuiApp           *tea.Program
 	prefixOutputDone chan struct{}
 	prefixOutputCH   chan output.PrefixMessage
 )
 
-func uiOutput(cancel context.CancelFunc) tui.UI {
+func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	if runArgs.output != "ui" {
 		return nil
 	}
 
-	if tuiModel != nil {
-		return tuiModel
+	if tuiApp != nil {
+		return tuiApp
 	}
 
 	tuiDone = make(chan struct{})
-	tuiModel = tui.NewModel()
+	tuiModel = tui.NewUI(logger)
+	tuiManager = tui.NewManager(tuiModel)
 
-	zone.NewGlobal()
 	tuiApp = tea.NewProgram(
 		tuiModel,
 		tea.WithAltScreen(),
@@ -953,8 +944,8 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 	)
 
 	go func() {
-		for c := range time.Tick(300 * time.Millisecond) {
-			tuiApp.Send(tickMsg(c))
+		for c := range time.Tick(100 * time.Millisecond) {
+			tuiApp.Send(tui.TickMsg(c))
 		}
 	}()
 
@@ -969,10 +960,8 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 		tuiDone <- struct{}{}
 	}()
 
-	return tuiModel
+	return tuiApp
 }
-
-type tickMsg time.Time
 
 func prefixOutput() chan output.PrefixMessage {
 	if runArgs.output != "prefix" && runArgs.output != "prefix-nocolor" {
@@ -990,7 +979,7 @@ func prefixOutput() chan output.PrefixMessage {
 	return prefixOutputCH
 }
 
-func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
+func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.OutputFactory, error) {
 	var outputHandler processor.OutputFactory
 
 	outputOpt := strings.Split(runArgs.output, "=")
@@ -1004,7 +993,7 @@ func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 
 	switch renderer {
 	case renderOutputUI.String():
-		outputHandler = output.UI(uiOutput(cancel))
+		outputHandler = output.UI(uiOutput(logger, cancel))
 	case renderOutputPrefix.String():
 		outputHandler = output.Prefix(true, stdout, stderr, prefixOutput())
 	case renderOutputPrefixNoColor.String():

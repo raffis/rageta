@@ -46,7 +46,7 @@ func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 	return s[0].Bootstrap(pipeline, next)
 }
 
-func suffixName(name, suffix string) string {
+func SuffixName(name, suffix string) string {
 	if suffix == "" {
 		return name
 	}

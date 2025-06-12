@@ -11,16 +11,18 @@ import (
 )
 
 type bufferVars struct {
-	StepName string
-	Buffer   *bytes.Buffer
-	Error    error
-	Symbol   string
+	StepName    string
+	DisplayName string
+	UniqueName  string
+	Buffer      *bytes.Buffer
+	Error       error
+	Symbol      string
 }
 
 func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 	mu := sync.RWMutex{}
 
-	return func(ctx processor.StepContext, stepName string) (io.Writer, io.Writer, processor.OutputCloser) {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
 		buffer := &bytes.Buffer{}
 
 		return buffer, buffer, func(err error) error {
@@ -39,11 +41,18 @@ func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 				status = tui.StepStatusDone
 			}
 
+			displayName := stepName
+			if short != "" {
+				displayName = short
+			}
+
 			err = tmpl.Execute(stdout, bufferVars{
-				StepName: stepName,
-				Buffer:   buffer,
-				Error:    err,
-				Symbol:   status.Render(),
+				StepName:    stepName,
+				UniqueName:  processor.SuffixName(stepName, ctx.NamePrefix),
+				DisplayName: displayName,
+				Buffer:      buffer,
+				Error:       err,
+				Symbol:      status.Render(),
 			})
 
 			if err != nil {

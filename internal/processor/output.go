@@ -7,7 +7,7 @@ import (
 )
 
 type OutputCloser func(err error) error
-type OutputFactory func(ctx StepContext, stepName string) (io.Writer, io.Writer, OutputCloser)
+type OutputFactory func(ctx StepContext, stepName, short string) (io.Writer, io.Writer, OutputCloser)
 
 func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
@@ -19,6 +19,7 @@ func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) Proce
 
 		stdio := &Output{
 			stepName:      spec.Name,
+			short:         spec.Short,
 			spec:          spec,
 			outputFactory: outputFactory,
 			decouple:      decouple,
@@ -30,6 +31,7 @@ func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) Proce
 
 type Output struct {
 	stepName      string
+	short         string
 	spec          *v1beta1.Step
 	outputFactory OutputFactory
 	decouple      bool
@@ -37,11 +39,11 @@ type Output struct {
 
 func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		if ctx.HasTag("inherit") && !s.decouple {
+		if ctx.HasTag("pipeline") && !s.decouple {
 			return next(ctx)
 		}
 
-		stdout, stderr, close := s.outputFactory(ctx, suffixName(s.stepName, ctx.NamePrefix))
+		stdout, stderr, close := s.outputFactory(ctx, s.stepName, s.short)
 
 		if ctx.Stdout != io.Discard {
 			ctx.Stdout = stdout
