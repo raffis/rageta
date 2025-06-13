@@ -19,9 +19,9 @@ require (
 	github.com/google/cel-go v0.24.1
 	github.com/google/go-containerregistry v0.20.3
 	github.com/joho/godotenv v1.5.1
-	github.com/lrstanley/bubblezone v0.0.0-20240125042004-b7bafc493195
 	github.com/moby/moby v27.4.1+incompatible
 	github.com/moby/term v0.5.0
+	github.com/rmhubbert/bubbletea-overlay v0.3.2
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.6
@@ -148,7 +148,6 @@ require (
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/rmhubbert/bubbletea-overlay v0.3.2 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect

@@ -6,8 +6,21 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// SearchState represents the current state of the filter
+type SearchState int
+
+const (
+	// Unsearched means no filter is active
+	Unsearched SearchState = iota
+	// Searching means the filter input is active
+	Searching
+	// Searching means the filter input is active
+	Searched
 )
 
 // New returns a new model with the given width and height as well as default
@@ -17,6 +30,7 @@ func New(width, height int) (m Model) {
 	m.Height = height
 	m.setInitialValues()
 	m.Styles = DefaultStyles()
+	m.initializeSearch()
 	return m
 }
 
@@ -55,10 +69,15 @@ type Model struct {
 	Styles          Styles
 	Style           lipgloss.Style
 
-	initialized bool
-	lines       []string
-	lineEnd     bool
-	scanString  string
+	initialized  bool
+	lines        []string
+	lineEnd      bool
+	scanString   string
+	matchCount   int
+	currentMatch int
+	matchLines   []int
+	searchState  SearchState
+	filterInput  textinput.Model
 }
 
 func (m *Model) setInitialValues() {
@@ -318,18 +337,10 @@ func ViewUp(m Model, lines []string) tea.Cmd {
 // Update handles standard message-based viewport updates.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
-	m, cmd = m.updateAsModel(msg)
-	return m, cmd
-}
 
-// Author's note: this method has been broken out to make it easier to
-// potentially transition Update to satisfy tea.Model.
-func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.initialized {
 		m.setInitialValues()
 	}
-
-	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -369,8 +380,30 @@ func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 			if m.HighPerformanceRendering {
 				cmd = ViewUp(m, lines)
 			}
-		}
 
+		case key.Matches(msg, m.KeyMap.Search):
+			m.searchState = Searching
+			cmd = m.filterInput.Focus()
+
+		case key.Matches(msg, m.KeyMap.NextMatch) && m.searchState == Searched:
+			m.NextMatch()
+
+		case key.Matches(msg, m.KeyMap.PrevMatch) && m.searchState == Searched:
+			m.PrevMatch()
+
+		case key.Matches(msg, m.KeyMap.ExitSearchMode):
+			m.SetSearchState(Unsearched)
+			m.filterInput.Reset()
+			m.ScanAfter("")
+
+		case m.searchState == Searching:
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			if msg.String() == "enter" {
+				m.searchState = Searched
+				m.ScanAfter(m.filterInput.Value())
+				m.filterInput.SetValue("")
+			}
+		}
 	case tea.MouseMsg:
 		if !m.MouseWheelEnabled || msg.Action != tea.MouseActionPress {
 			break
@@ -394,18 +427,95 @@ func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m *Model) ScanAfter(str string) int {
-	lineNumber := max(0, m.YOffset)
 	m.scanString = str
+	m.matchLines = nil
+	m.matchCount = 0
+	m.currentMatch = 0
 
-	for _, line := range m.lines[lineNumber:] {
-		lineNumber++
+	if str == "" {
+		return 0
+	}
+
+	// Find all matches
+	for i, line := range m.lines {
 		if strings.Contains(line, str) {
-			m.SetYOffset(lineNumber)
-			return lineNumber
+			m.matchLines = append(m.matchLines, i)
+			m.matchCount++
 		}
 	}
 
+	if m.matchCount > 0 {
+		// Find the first match after current position
+		for i, line := range m.matchLines {
+			if line >= m.YOffset {
+				m.currentMatch = i
+				m.SetYOffset(line)
+				return line
+			}
+		}
+		// If no match found after current position, wrap around to first match
+		m.currentMatch = 0
+		m.SetYOffset(m.matchLines[0])
+		return m.matchLines[0]
+	}
+
 	return 0
+}
+
+func (m *Model) ScanBefore(str string) int {
+	m.scanString = str
+	m.matchLines = nil
+	m.matchCount = 0
+	m.currentMatch = 0
+
+	if str == "" {
+		return 0
+	}
+
+	// Find all matches
+	for i, line := range m.lines {
+		if strings.Contains(line, str) {
+			m.matchLines = append(m.matchLines, i)
+			m.matchCount++
+		}
+	}
+
+	if m.matchCount > 0 {
+		// Find the first match before current position
+		for i := len(m.matchLines) - 1; i >= 0; i-- {
+			if m.matchLines[i] <= m.YOffset {
+				m.currentMatch = i
+				m.SetYOffset(m.matchLines[i])
+				return m.matchLines[i]
+			}
+		}
+		// If no match found before current position, wrap around to last match
+		m.currentMatch = len(m.matchLines) - 1
+		m.SetYOffset(m.matchLines[m.currentMatch])
+		return m.matchLines[m.currentMatch]
+	}
+
+	return 0
+}
+
+func (m *Model) NextMatch() int {
+	if m.matchCount == 0 {
+		return 0
+	}
+
+	m.currentMatch = (m.currentMatch + 1) % m.matchCount
+	m.SetYOffset(m.matchLines[m.currentMatch])
+	return m.matchLines[m.currentMatch]
+}
+
+func (m *Model) PrevMatch() int {
+	if m.matchCount == 0 {
+		return 0
+	}
+
+	m.currentMatch = (m.currentMatch - 1 + m.matchCount) % m.matchCount
+	m.SetYOffset(m.matchLines[m.currentMatch])
+	return m.matchLines[m.currentMatch]
 }
 
 // View renders the viewport into a string.
@@ -440,27 +550,58 @@ func (m Model) View() string {
 		}
 
 		width := lipgloss.Width(fmt.Sprintf("%d", clamp(firstLine+m.Height, lineNumber, maxLines)))
+
+		// If we have fewer lines than the visible area, start from line 1
+		if len(m.lines) < h {
+			lineNumber = 1
+			firstLine = 1
+		}
+
 		for _, line := range m.visibleLines() {
-			line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			// Highlight all matches in the line
+			if m.scanString != "" {
+				line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			}
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
 			lineNumber++
 		}
 
-		for ; lineNumber <= h; lineNumber++ {
+		// Fill remaining height with empty line numbers
+		for ; lineNumber <= firstLine+h-1; lineNumber++ {
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
 		lines = m.visibleLines()
+		// Highlight all matches in the lines
+		if m.scanString != "" {
+			for i, line := range lines {
+				lines[i] = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			}
+		}
 	}
 
 	contentWidth := w - m.Style.GetHorizontalFrameSize()
 	contentHeight := h - m.Style.GetVerticalFrameSize()
+
+	if m.searchState > 0 {
+		contentHeight--
+	}
+
 	contents := lipgloss.NewStyle().
 		Width(contentWidth).      // pad to width.
 		Height(contentHeight).    // pad to height.
 		MaxHeight(contentHeight). // truncate height if taller.
 		MaxWidth(contentWidth).   // truncate width if wider.
 		Render(strings.Join(lines, "\n"))
+
+	// Add filter input if active
+	if m.searchState > 0 {
+		contents = lipgloss.JoinVertical(lipgloss.Top,
+			contents,
+			m.filterInput.View(),
+		)
+	}
+
 	return m.Style.Copy().
 		UnsetWidth().UnsetHeight(). // Style size already applied in contents.
 		Render(contents)
@@ -485,4 +626,32 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// initializeSearch sets up the filter input component
+func (m *Model) initializeSearch() {
+	filterInput := textinput.New()
+	filterInput.Prompt = "Search: "
+	filterInput.CharLimit = 64
+	m.filterInput = filterInput
+}
+
+// SearchState returns the current filter state
+func (m Model) SearchState() SearchState {
+	return m.searchState
+}
+
+// SetSearchState sets the filter state
+func (m *Model) SetSearchState(state SearchState) {
+	m.searchState = state
+	if state == Searching {
+		m.filterInput.Focus()
+	} else {
+		m.filterInput.Blur()
+	}
+}
+
+// SearchInput returns the filter input model
+func (m Model) SearchInput() textinput.Model {
+	return m.filterInput
 }
