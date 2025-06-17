@@ -61,8 +61,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("N", "prev match"),
 		),
 		ExitSearchMode: key.NewBinding(
-			key.WithKeys("ESC"),
-			key.WithHelp("ESC", "exit search"),
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "exit search"),
 		),
 	}
 }

@@ -34,6 +34,7 @@ const (
 	MinBottomPanelHeight    = 3
 	FilterInputHeightOffset = 1
 	TagsHeightOffset        = 1
+	AlignHorizontal         = 130
 )
 
 // Keyboard shortcuts
@@ -257,6 +258,12 @@ func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
 		msg.ready = true
 		msg.listWidth = m.list.Width()
 		msg.listHeight = m.list.Height()
+
+		// Initialize viewport dimensions
+		if msg.viewport != nil {
+			m.updateViewportDimensions(&msg)
+		}
+
 		cmds = append(cmds, msg.loader.Tick)
 
 		m.list.InsertItem(-1, msg.WithStatus(msg.Status))
@@ -346,7 +353,7 @@ func (m UI) handleListPanelKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateSelectedViewport updates the viewport for the selected item with mouse input
+// updateSelectedViewport updates the viewport for the selected item
 func (m *UI) updateSelectedViewport(msg tea.Msg) tea.Cmd {
 	items := slices.Clone(m.list.Items())
 	for i, listItem := range items {
@@ -369,8 +376,13 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	m.height = msg.Height
 	m.width = msg.Width
 
-	listWidth := float64(m.width) * ListWidthPercentage / 100
-	m.list.SetSize(int(listWidth), m.height-MinBottomPanelHeight)
+	if m.width < AlignHorizontal {
+		listHeight := float64(m.height) * 50 / 100
+		m.list.SetSize(m.width, int(listHeight)-MinBottomPanelHeight)
+	} else {
+		listWidth := float64(m.width) * ListWidthPercentage / 100
+		m.list.SetSize(int(listWidth), m.height-MinBottomPanelHeight)
+	}
 
 	items := slices.Clone(m.list.Items())
 	for i, listItem := range items {
@@ -401,8 +413,15 @@ func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 
 // updateLastSelected updates the last selected item
 func (m *UI) updateLastSelected() {
-	if selectedItem := m.list.SelectedItem(); selectedItem != nil && selectedItem.(StepMsg).viewport != nil {
-		m.lastSelected = selectedItem
+	if selectedItem := m.list.SelectedItem(); selectedItem != nil {
+		step := selectedItem.(StepMsg)
+		if step.viewport != nil {
+			// Initialize viewport dimensions if not set
+			if step.viewport.Width == 0 || step.viewport.Height == 0 {
+				m.updateViewportDimensions(&step)
+			}
+			m.lastSelected = selectedItem
+		}
 	}
 }
 
@@ -420,12 +439,23 @@ func (m UI) View() string {
 // renderMainLayout renders the main UI layout
 func (m UI) renderMainLayout() string {
 	listPanel := m.renderListPanel()
-	PagerPanel := m.renderPagerPanel()
+	pagerPanel := m.renderPagerPanel()
 	bottomPanel := m.renderBottomPanel()
 
+	// Stack panels vertically if the terminal is too narrow
+	if m.width < AlignHorizontal {
+		return lipgloss.JoinVertical(
+			lipgloss.Top,
+			listPanel,
+			pagerPanel,
+			bottomPanel,
+		)
+	}
+
+	// Otherwise use horizontal layout
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
-		lipgloss.JoinHorizontal(lipgloss.Top, listPanel, PagerPanel),
+		lipgloss.JoinHorizontal(lipgloss.Top, listPanel, pagerPanel),
 		bottomPanel,
 	)
 }
@@ -487,11 +517,16 @@ func (m *UI) updatePanelStyles() {
 
 // updateViewportDimensions updates the viewport dimensions
 func (m *UI) updateViewportDimensions(step *StepMsg) {
-	step.viewport.Width = m.width
-	step.viewport.Height = m.height - MinBottomPanelHeight
-
-	if m.scanState > 0 {
-		step.viewport.Height -= FilterInputHeightOffset
+	// Set viewport width based on layout
+	if m.width < AlignHorizontal {
+		// In vertical layout, viewport takes full width
+		step.viewport.Width = m.width
+		// Height is reduced by list height and bottom panel
+		step.viewport.Height = m.height - m.list.Height() - MinBottomPanelHeight
+	} else {
+		// In horizontal layout, viewport takes remaining width
+		step.viewport.Width = m.width - m.list.Width()
+		step.viewport.Height = m.height - MinBottomPanelHeight
 	}
 
 	if step.TagsAsString() != "" {
@@ -506,7 +541,7 @@ func (m UI) buildPagerContent(step StepMsg) []string {
 	// Add tags if present
 	if tags := step.TagsAsString(); tags != "" {
 		content = append(content, lipgloss.NewStyle().
-			Width(step.viewport.Width-lipgloss.Width(m.renderListPanel())).
+			Width(step.viewport.Width).
 			Render(tags))
 	}
 
@@ -518,11 +553,9 @@ func (m UI) buildPagerContent(step StepMsg) []string {
 
 // buildPagerHeader builds the header for the details panel
 func (m UI) buildPagerHeader(step StepMsg) string {
-	listPanelWidth := lipgloss.Width(m.renderListPanel())
-	headerWidth := m.width - listPanelWidth - 9 - lipgloss.Width(step.GetName())
-
+	headerWidth := step.viewport.Width - 9 - lipgloss.Width(step.GetName())
 	return lipgloss.NewStyle().
-		Width(step.viewport.Width - listPanelWidth).
+		Width(step.viewport.Width).
 		Render(fmt.Sprintf("%s %s %s %s",
 			topStyle.Render("┌─ ·"),
 			topTitleStyle.Render(step.GetName()),

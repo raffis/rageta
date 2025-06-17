@@ -25,3 +25,25 @@ func RandAdaptiveColor() lipgloss.AdaptiveColor {
 		Light: RandHEXColor(0, 127),
 	}
 }
+
+func AdaptiveBrightnessColor(color lipgloss.TerminalColor) lipgloss.TerminalColor {
+	r, g, b, a := color.RGBA()
+	r8 := float64(r) / 257
+	g8 := float64(g) / 257
+	b8 := float64(b) / 257
+	a8 := float64(a) / 257
+
+	if a8 < 127 {
+		return lipgloss.AdaptiveColor{
+			Dark:  "#FFFFFF",
+			Light: "#000000",
+		}
+	}
+
+	brightness := (r8*299 + g8*587 + b8*114) / 1000
+	if brightness < 128 {
+		return lipgloss.Color("#FFFFFF")
+	}
+
+	return lipgloss.Color("#000000")
+}

@@ -35,7 +35,11 @@ func (r *table) Finalize() error {
 
 		var tags []string
 		for _, tag := range step.result.Tags() {
-			tags = append(tags, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
+			tags = append(tags, styles.TagLabel.
+				Background(lipgloss.Color(tag.Color)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
+			)
 		}
 
 		rows = append(rows, []string{

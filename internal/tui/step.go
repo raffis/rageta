@@ -14,11 +14,10 @@ import (
 
 // Display constants for step formatting
 const (
-	MinListWidth        = 50
-	ShortListThreshold  = 50
-	StatusColumnWidth   = 4
-	EllipsisLength      = 3
-	NotStartedDuration  = "<not started>"
+	ShortListThreshold = 50
+	StatusColumnWidth  = 4
+	EllipsisLength     = 3
+	NotStartedDuration = "<not started>"
 )
 
 // Column width percentages for wide layouts
@@ -94,6 +93,7 @@ func (t *StepMsg) TagsAsString() string {
 	for _, tag := range t.Tags {
 		tagLabel := styles.TagLabel.
 			Background(lipgloss.Color(tag.Color)).
+			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
 			Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value))
 		tags = append(tags, tagLabel)
 	}
@@ -129,19 +129,9 @@ func (t StepMsg) Title() string {
 		status = t.Status.Render()
 	}
 
-	switch {
-	case listWidth >= MinListWidth:
-		return t.formatWideTitle(status, listWidth)
-	default:
-		return t.formatNarrowTitle(status, listWidth)
-	}
-}
-
-// formatWideTitle formats the title for wide display with multiple columns
-func (t StepMsg) formatWideTitle(status string, width int) string {
-	nameWidth := int(float64(width) * NameColumnPercent / 100)
-	tagsWidth := int(float64(width) * TagsColumnPercent / 100)
-	durationWidth := int(float64(width) * DurationColumnPercent / 100)
+	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
+	tagsWidth := int(float64(listWidth) * TagsColumnPercent / 100)
+	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
 	return fmt.Sprintf("%s %s %s %s",
 		status,
@@ -151,25 +141,16 @@ func (t StepMsg) formatWideTitle(status string, width int) string {
 	)
 }
 
-// formatNarrowTitle formats the title for narrow display
-func (t StepMsg) formatNarrowTitle(status string, width int) string {
-	nameWidth := width - len(t.shortTags()) - 1
-	return fmt.Sprintf("%s %s %s", 
-		status, 
-		ellipsis(t.DisplayName, nameWidth), 
-		t.shortTags())
-}
-
 // duration returns a formatted duration string for the step
 func (t *StepMsg) duration() string {
 	if t.started.IsZero() {
 		return NotStartedDuration
-	} 
-	
+	}
+
 	if t.finished.IsZero() {
 		return time.Since(t.started).Round(time.Millisecond * 10).String()
 	}
-	
+
 	return t.finished.Sub(t.started).Round(time.Millisecond * 10).String()
 }
 
@@ -201,12 +182,12 @@ func (t StepMsg) FilterValue() string {
 		t.DisplayName,
 		t.Name,
 	}
-	
+
 	for _, tag := range t.Tags {
 		values = append(values, tag.Key)
 		values = append(values, tag.Value)
 	}
-	
+
 	return strings.Join(values, " ")
 }
 
@@ -223,10 +204,10 @@ const (
 
 // Step status string representations
 var stepStatusStrings = []string{
-	"waiting", 
-	"running", 
-	"failed", 
-	"done", 
+	"waiting",
+	"running",
+	"failed",
+	"done",
 	"skipped",
 }
 

@@ -9,13 +9,10 @@ type Styles struct {
 
 // DefaultStyles returns a set of default style definitions for this component.
 func DefaultStyles() (s Styles) {
-	verySubduedColor := lipgloss.AdaptiveColor{Light: "#DDDADA", Dark: "#3C3C3C"}
-	subduedColor := lipgloss.AdaptiveColor{Light: "#9B9B9B", Dark: "#5C5C5C"}
-
-	s.LineNumber = lipgloss.NewStyle().Foreground(verySubduedColor).
+	s.LineNumber = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#DDDADA", Dark: "#3C3C3C"}).
 		MarginRight(1).
 		AlignHorizontal(lipgloss.Right)
 
-	s.MatchResult = lipgloss.NewStyle().Background(subduedColor)
+	s.MatchResult = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#9B9B9B", Dark: "#5C5C5C"})
 	return
 }
