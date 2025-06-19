@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+var DefaultMask []byte = []byte("***")
+
 type fd interface {
 	Fd() uintptr
 }

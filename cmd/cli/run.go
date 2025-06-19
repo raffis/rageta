@@ -35,6 +35,7 @@ import (
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	transport "github.com/raffis/rageta/pkg/http/middleware"
+	"github.com/sethvargo/go-retry"
 
 	"github.com/alitto/pond/v2"
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,6 +79,7 @@ type runFlags struct {
 	envs                []string      `env:"ENVS"`
 	secretEnvs          []string      `env:"SECRET_ENVS"`
 	volumes             []string      `env:"VOLUMES"`
+	retry               int           `env:"RETRY"`
 	skipDone            bool          `env:"SKIP_DONE"`
 	skipSteps           []string      `env:"SKIP_STEPS"`
 	logDetached         bool          `env:"LOG_DETACHED"`
@@ -134,6 +136,7 @@ func init() {
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
 	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
+	executionFlags.IntVarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
 	runCmd.Flags().AddFlagSet(executionFlags)
 
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
@@ -427,8 +430,8 @@ func stepBuilder(
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	maskedStdout := mask.Writer(os.Stdout, []byte("***"))
-	maskedStderr := mask.Writer(os.Stderr, []byte("***"))
+	maskedStdout := mask.Writer(os.Stdout, mask.DefaultMask)
+	maskedStderr := mask.Writer(os.Stderr, mask.DefaultMask)
 	stdout = maskedStdout
 	stderr = maskedStderr
 	secretWriter := mask.SecretWriter(maskedStdout, maskedStderr)
@@ -621,7 +624,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		result = err
 	} else {
-		_, _, result = pipelineCmd()
+		result = retryRun(ctx, pipelineCmd)
 	}
 
 	logger.Info("pipeline completed", "result", result)
@@ -682,6 +685,26 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func retryRun(ctx context.Context, pipeline processor.Executable) error {
+	var backoff retry.Backoff
+	if runArgs.retry > 0 {
+		if err := retry.Do(ctx, retry.WithMaxRetries(3, backoff), func(ctx context.Context) error {
+			_, _, result := pipeline()
+
+			if result != nil {
+				return retry.RetryableError(result)
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	_, _, result := pipeline()
+	return result
 }
 
 func helpAndExit(flagSet *pflag.FlagSet, err error) {

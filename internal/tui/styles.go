@@ -81,7 +81,7 @@ func init() {
 	listTagLabelStyle = newStyle().PaddingRight(1)
 	listStyle = newStyle().
 		BorderForeground(activePanelColor).
-		Border(lipgloss.NormalBorder(), true, true, true, false)
+		Border(lipgloss.NormalBorder(), false, true, true, false)
 
 	listColumnStyle = newStyle().MaxHeight(1)
 	durationStyle = newStyle().Foreground(lightGrey)

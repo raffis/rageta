@@ -52,7 +52,6 @@ type UI struct {
 	loader       spinner.Model
 	status       StepStatus
 	scanInput    textinput.Model
-	scanState    list.FilterState
 	width        int
 	height       int
 	mu           *sync.Mutex
@@ -438,6 +437,7 @@ func (m UI) View() string {
 
 // renderMainLayout renders the main UI layout
 func (m UI) renderMainLayout() string {
+	headerPanel := m.renderHeaderPanel()
 	listPanel := m.renderListPanel()
 	pagerPanel := m.renderPagerPanel()
 	bottomPanel := m.renderBottomPanel()
@@ -447,6 +447,7 @@ func (m UI) renderMainLayout() string {
 		return lipgloss.JoinVertical(
 			lipgloss.Top,
 			listPanel,
+			headerPanel,
 			pagerPanel,
 			bottomPanel,
 		)
@@ -455,9 +456,57 @@ func (m UI) renderMainLayout() string {
 	// Otherwise use horizontal layout
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
+		headerPanel,
 		lipgloss.JoinHorizontal(lipgloss.Top, listPanel, pagerPanel),
 		bottomPanel,
 	)
+}
+
+// renderHeaderPanel renders the combined header panel
+func (m UI) renderHeaderPanel() string {
+	var listStyle lipgloss.Style
+	var pagerStyle lipgloss.Style
+	var activeStyle = lipgloss.NewStyle().Foreground(activePanelColor)
+	var pagerHeader string
+
+	if m.activePanel == PanelList {
+		listStyle = listStyle.Foreground(activePanelColor)
+		pagerStyle = listStyle.Foreground(inactivePanelColor)
+	} else {
+		listStyle = listStyle.Foreground(inactivePanelColor)
+		pagerStyle = listStyle.Foreground(activePanelColor)
+	}
+
+	if m.width < AlignHorizontal {
+		tab := activeStyle.Render(" ⇅ ")
+		line := strings.Repeat("─", m.width/2-1)
+
+		pagerHeader = fmt.Sprintf("%s%s%s%s",
+			pagerStyle.Render("┌"),
+			pagerStyle.Render(line),
+			pagerStyle.Render(tab),
+			pagerStyle.Render(line),
+		)
+
+		return lipgloss.JoinVertical(lipgloss.Top, pagerHeader)
+	}
+
+	listHeader := listStyle.
+		Render(strings.Repeat("─", m.list.Width()-1))
+
+	if m.lastSelected != nil {
+		step := m.lastSelected.(StepMsg)
+		headerWidth := step.viewport.Width - 10 - lipgloss.Width(step.GetName())
+		pagerHeader = fmt.Sprintf("%s %s %s %s",
+			pagerStyle.Render("─── ·"),
+			topTitleStyle.Render(step.GetName()),
+			pagerStyle.Render("·"),
+			pagerStyle.Render(strings.Repeat("─", headerWidth)),
+		)
+	}
+
+	tab := activeStyle.Render(" ⇆ ")
+	return lipgloss.JoinHorizontal(lipgloss.Top, listHeader, tab, pagerHeader)
 }
 
 // renderListPanel renders the left list panel
@@ -490,11 +539,9 @@ func (m UI) renderPagerPanel() string {
 	m.updateViewportDimensions(&step)
 
 	detailsContent := m.buildPagerContent(step)
-	detailsHeader := m.buildPagerHeader(step)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
-		detailsHeader,
 		viewportStyle.Render(lipgloss.JoinVertical(lipgloss.Top, detailsContent...)),
 	)
 }
@@ -549,18 +596,6 @@ func (m UI) buildPagerContent(step StepMsg) []string {
 	content = append(content, step.viewport.View())
 
 	return content
-}
-
-// buildPagerHeader builds the header for the details panel
-func (m UI) buildPagerHeader(step StepMsg) string {
-	headerWidth := step.viewport.Width - 9 - lipgloss.Width(step.GetName())
-	return lipgloss.NewStyle().
-		Width(step.viewport.Width).
-		Render(fmt.Sprintf("%s %s %s %s",
-			topStyle.Render("┌─ ·"),
-			topTitleStyle.Render(step.GetName()),
-			topStyle.Render("· "),
-			topStyle.Render(strings.Repeat("─", headerWidth))))
 }
 
 // renderBottomPanel renders the bottom status panel

@@ -3,7 +3,6 @@ package pager
 import (
 	"fmt"
 	"math"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -23,13 +22,6 @@ const (
 	// Searching means the filter input is active
 	Searched
 )
-
-var log *os.File
-
-func init() {
-	l, _ := os.OpenFile("/tmp/debug", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	log = l
-}
 
 // New returns a new model with the given width and height as well as default
 // key mappings.
@@ -180,8 +172,6 @@ func (m Model) visibleLines() []string {
 		contentHeight += (lipgloss.Width(line) + (m.Width - 1)) / m.Width
 		lines = append(lines, line)
 
-		log.Write([]byte(fmt.Sprintf("visibleLines() line: %s, contentHeight: %d, height: %d c %d\n", line, contentHeight, m.Height, (lipgloss.Width(line)+(m.Width-1))/m.Width)))
-
 		if contentHeight >= m.Height {
 			break
 		}
@@ -193,43 +183,6 @@ func (m Model) visibleLines() []string {
 // SetYOffset sets the Y offset.
 func (m *Model) SetYOffset(n int) {
 	m.YOffset = clamp(n, 0, m.maxYOffset())
-}
-
-// ViewDown moves the view down by the number of lines in the viewport.
-// Basically, "page down".
-func (m *Model) ViewDown() []string {
-	if m.AtBottom() {
-		return nil
-	}
-
-	return m.LineDown(m.Height)
-}
-
-// ViewUp moves the view up by one height of the viewport. Basically, "page up".
-func (m *Model) ViewUp() []string {
-	if m.AtTop() {
-		return nil
-	}
-
-	return m.LineUp(m.Height)
-}
-
-// HalfViewDown moves the view down by half the height of the viewport.
-func (m *Model) HalfViewDown() (lines []string) {
-	if m.AtBottom() {
-		return nil
-	}
-
-	return m.LineDown(m.Height / 2)
-}
-
-// HalfViewUp moves the view up by half the height of the viewport.
-func (m *Model) HalfViewUp() (lines []string) {
-	if m.AtTop() {
-		return nil
-	}
-
-	return m.LineUp(m.Height / 2)
 }
 
 // LineDown moves the view down by the given number of lines.
@@ -302,16 +255,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.PageDown):
-			m.ViewDown()
+			m.LineDown(m.Height)
 
 		case key.Matches(msg, m.KeyMap.PageUp):
-			m.ViewUp()
+			m.LineUp(m.Height)
 
 		case key.Matches(msg, m.KeyMap.HalfPageDown):
-			m.HalfViewDown()
+			m.LineDown(m.Height / 2)
 
 		case key.Matches(msg, m.KeyMap.HalfPageUp):
-			m.HalfViewUp()
+			m.LineUp(m.Height / 2)
 
 		case key.Matches(msg, m.KeyMap.Down):
 			m.LineDown(1)
@@ -354,9 +307,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.LineDown(m.MouseWheelDelta)
 		}
 	}
-
-	log.Write([]byte(fmt.Sprintf("update()  lines %d, visible %d, offfset %d, height %d\n", len(m.lines), len(m.visibleLines()), m.YOffset, m.Height)))
-	log.Sync()
 
 	return m, cmd
 }
