@@ -6,8 +6,21 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// SearchState represents the current state of the filter
+type SearchState int
+
+const (
+	// Unsearched means no filter is active
+	Unsearched SearchState = iota
+	// Searching means the filter input is active
+	Searching
+	// Searching means the filter input is active
+	Searched
 )
 
 // New returns a new model with the given width and height as well as default
@@ -17,6 +30,7 @@ func New(width, height int) (m Model) {
 	m.Height = height
 	m.setInitialValues()
 	m.Styles = DefaultStyles()
+	m.initializeSearch()
 	return m
 }
 
@@ -36,29 +50,25 @@ type Model struct {
 	// YOffset is the vertical scroll position.
 	YOffset int
 
-	// YPosition is the position of the viewport in relation to the terminal
-	// window. It's used in high performance rendering only.
-	YPosition int
-
-	// HighPerformanceRendering bypasses the normal Bubble Tea renderer to
-	// provide higher performance rendering. Most of the time the normal Bubble
-	// Tea rendering methods will suffice, but if you're passing content with
-	// a lot of ANSI escape codes you may see improved rendering in certain
-	// terminals with this enabled.
-	//
-	// This should only be used in program occupying the entire terminal,
-	// which is usually via the alternate screen buffer.
-	HighPerformanceRendering bool
-
 	ShowLineNumbers bool
 	AutoScroll      bool
 	Styles          Styles
 	Style           lipgloss.Style
 
-	initialized bool
-	lines       []string
-	lineEnd     bool
-	scanString  string
+	initialized  bool
+	lines        []line
+	lineEnd      bool
+	scanString   string
+	matchCount   int
+	currentMatch int
+	matchLines   []int
+	searchState  SearchState
+	filterInput  textinput.Model
+}
+
+type line struct {
+	msg   string
+	width int
 }
 
 func (m *Model) setInitialValues() {
@@ -97,17 +107,25 @@ func (m Model) ScrollPercent() float64 {
 	}
 	y := float64(m.YOffset)
 	h := float64(m.Height)
-	t := float64(len(m.lines) - 1)
+	t := float64(len(m.lines))
 	v := y / (t - h)
 	return math.Max(0.0, math.Min(1.0, v))
 }
 
-// SetContent replaces the pager's text content. For high performance rendering the
-// Sync command should also be called.
+// SetContent replaces the pager's text content.
 func (m *Model) SetContent(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n") // normalize line endings
 	s = strings.ReplaceAll(s, "\r", "")     // remove carriage returns (avoid breaking the ui)
-	m.lines = strings.Split(s, "\n")
+
+	lines := strings.Split(s, "\n")
+	m.lines = make([]line, 0, len(lines))
+
+	for _, l := range lines {
+		m.lines = append(m.lines, line{
+			msg:   l,
+			width: lipgloss.Width(l),
+		})
+	}
 
 	if m.YOffset > len(m.lines)-1 || m.AutoScroll {
 		m.GotoBottom()
@@ -128,7 +146,7 @@ func (m *Model) Write(b []byte) (int, error) {
 	if len(m.lines) > 0 && !m.lineEnd {
 		lastLine := m.lines[len(m.lines)-1]
 		m.lines = m.lines[:len(m.lines)-1]
-		s = lastLine + s
+		s = lastLine.msg + s
 	}
 
 	m.lineEnd = strings.HasSuffix(s, "\n")
@@ -137,7 +155,12 @@ func (m *Model) Write(b []byte) (int, error) {
 		s = strings.TrimSuffix(s, "\n")
 	}
 
-	m.lines = append(m.lines, strings.Split(s, "\n")...)
+	for _, l := range strings.Split(s, "\n") {
+		m.lines = append(m.lines, line{
+			msg:   l,
+			width: lipgloss.Width(l),
+		})
+	}
 
 	if m.AutoScroll {
 		m.GotoBottom()
@@ -149,28 +172,44 @@ func (m *Model) Write(b []byte) (int, error) {
 // maxYOffset returns the maximum possible value of the y-offset based on the
 // viewport's content and set height.
 func (m Model) maxYOffset() int {
-	return max(0, len(m.lines)-m.Height)
+	var offset int
+
+	for i := len(m.lines) - 1; i >= 0; i-- {
+		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width)))
+
+		if offset >= m.Height {
+			return i - 1
+		}
+	}
+
+	return m.YOffset
 }
 
 // visibleLines returns the lines that should currently be visible in the
 // viewport.
-func (m Model) visibleLines() (lines []string) {
-	if len(m.lines) > 0 {
-		top := max(0, m.YOffset)
-		bottom := clamp(m.YOffset+m.Height, top, len(m.lines))
-		lines = m.lines[top:bottom]
+func (m Model) visibleLines() []string {
+	var lines []string
+	if len(m.lines) == 0 {
+		return lines
 	}
-	return lines
-}
 
-// scrollArea returns the scrollable boundaries for high performance rendering.
-func (m Model) scrollArea() (top, bottom int) {
-	top = max(0, m.YPosition)
-	bottom = max(top, top+m.Height)
-	if top > 0 && bottom > top {
-		bottom--
+	top := max(0, m.YOffset)
+	var contentHeight int
+
+	if top >= len(m.lines) {
+		top = len(m.lines)
 	}
-	return top, bottom
+
+	for _, line := range m.lines[top:] {
+		contentHeight += int(math.Ceil(float64(line.width) / float64(m.Width)))
+		lines = append(lines, line.msg)
+
+		if contentHeight >= m.Height {
+			break
+		}
+	}
+
+	return lines
 }
 
 // SetYOffset sets the Y offset.
@@ -178,77 +217,23 @@ func (m *Model) SetYOffset(n int) {
 	m.YOffset = clamp(n, 0, m.maxYOffset())
 }
 
-// ViewDown moves the view down by the number of lines in the viewport.
-// Basically, "page down".
-func (m *Model) ViewDown() []string {
-	if m.AtBottom() {
-		return nil
-	}
-
-	return m.LineDown(m.Height)
-}
-
-// ViewUp moves the view up by one height of the viewport. Basically, "page up".
-func (m *Model) ViewUp() []string {
-	if m.AtTop() {
-		return nil
-	}
-
-	return m.LineUp(m.Height)
-}
-
-// HalfViewDown moves the view down by half the height of the viewport.
-func (m *Model) HalfViewDown() (lines []string) {
-	if m.AtBottom() {
-		return nil
-	}
-
-	return m.LineDown(m.Height / 2)
-}
-
-// HalfViewUp moves the view up by half the height of the viewport.
-func (m *Model) HalfViewUp() (lines []string) {
-	if m.AtTop() {
-		return nil
-	}
-
-	return m.LineUp(m.Height / 2)
-}
-
 // LineDown moves the view down by the given number of lines.
-func (m *Model) LineDown(n int) (lines []string) {
+func (m *Model) LineDown(n int) {
 	if m.AtBottom() || n == 0 || len(m.lines) == 0 {
-		return nil
+		return
 	}
 
-	// Make sure the number of lines by which we're going to scroll isn't
-	// greater than the number of lines we actually have left before we reach
-	// the bottom.
 	m.SetYOffset(m.YOffset + n)
-
-	// Gather lines to send off for performance scrolling.
-	bottom := clamp(m.YOffset+m.Height, 0, len(m.lines))
-	top := clamp(m.YOffset+m.Height-n, 0, bottom)
-	lines = m.lines[top:bottom]
-
-	return
 }
 
 // LineUp moves the view down by the given number of lines. Returns the new
 // lines to show.
-func (m *Model) LineUp(n int) (lines []string) {
+func (m *Model) LineUp(n int) {
 	if m.AtTop() || n == 0 || len(m.lines) == 0 {
-		return nil
+		return
 	}
 
-	// Make sure the number of lines by which we're going to scroll isn't
-	// greater than the number of lines we are from the top.
 	m.SetYOffset(m.YOffset - n)
-
-	// Gather lines to send off for performance scrolling.
-	top := max(0, m.YOffset)
-	bottom := clamp(m.YOffset+n, 0, m.maxYOffset())
-	return m.lines[top:bottom]
 }
 
 // TotalLineCount returns the total number of lines (both hidden and visible) within the viewport.
@@ -256,137 +241,73 @@ func (m Model) TotalLineCount() int {
 	return len(m.lines)
 }
 
-// VisibleLineCount returns the number of the visible lines within the viewport.
-func (m Model) VisibleLineCount() int {
-	return len(m.visibleLines())
-}
-
-// GotoTop sets the viewport to the top position.
-func (m *Model) GotoTop() (lines []string) {
-	if m.AtTop() {
-		return nil
-	}
-
-	m.SetYOffset(0)
-	return m.visibleLines()
-}
-
 // GotoBottom sets the viewport to the bottom position.
-func (m *Model) GotoBottom() (lines []string) {
+func (m *Model) GotoBottom() {
 	m.SetYOffset(m.maxYOffset())
-	return m.visibleLines()
-}
-
-// Sync tells the renderer where the viewport will be located and requests
-// a render of the current state of the viewport. It should be called for the
-// first render and after a window resize.
-//
-// For high performance rendering only.
-func Sync(m Model) tea.Cmd {
-	if len(m.lines) == 0 {
-		return nil
-	}
-	top, bottom := m.scrollArea()
-	return tea.SyncScrollArea(m.visibleLines(), top, bottom)
-}
-
-// ViewDown is a high performance command that moves the viewport up by a given
-// number of lines. Use Model.ViewDown to get the lines that should be rendered.
-// For example:
-//
-//	lines := model.ViewDown(1)
-//	cmd := ViewDown(m, lines)
-func ViewDown(m Model, lines []string) tea.Cmd {
-	if len(lines) == 0 {
-		return nil
-	}
-	top, bottom := m.scrollArea()
-	return tea.ScrollDown(lines, top, bottom)
-}
-
-// ViewUp is a high performance command the moves the viewport down by a given
-// number of lines height. Use Model.ViewUp to get the lines that should be
-// rendered.
-func ViewUp(m Model, lines []string) tea.Cmd {
-	if len(lines) == 0 {
-		return nil
-	}
-	top, bottom := m.scrollArea()
-	return tea.ScrollUp(lines, top, bottom)
 }
 
 // Update handles standard message-based viewport updates.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
-	m, cmd = m.updateAsModel(msg)
-	return m, cmd
-}
 
-// Author's note: this method has been broken out to make it easier to
-// potentially transition Update to satisfy tea.Model.
-func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.initialized {
 		m.setInitialValues()
 	}
-
-	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.PageDown):
-			lines := m.ViewDown()
-			if m.HighPerformanceRendering {
-				cmd = ViewDown(m, lines)
-			}
+			m.LineDown(m.Height)
 
 		case key.Matches(msg, m.KeyMap.PageUp):
-			lines := m.ViewUp()
-			if m.HighPerformanceRendering {
-				cmd = ViewUp(m, lines)
-			}
+			m.LineUp(m.Height)
 
 		case key.Matches(msg, m.KeyMap.HalfPageDown):
-			lines := m.HalfViewDown()
-			if m.HighPerformanceRendering {
-				cmd = ViewDown(m, lines)
-			}
+			m.LineDown(m.Height / 2)
 
 		case key.Matches(msg, m.KeyMap.HalfPageUp):
-			lines := m.HalfViewUp()
-			if m.HighPerformanceRendering {
-				cmd = ViewUp(m, lines)
-			}
+			m.LineUp(m.Height / 2)
 
 		case key.Matches(msg, m.KeyMap.Down):
-			lines := m.LineDown(1)
-			if m.HighPerformanceRendering {
-				cmd = ViewDown(m, lines)
-			}
+			m.LineDown(1)
 
 		case key.Matches(msg, m.KeyMap.Up):
-			lines := m.LineUp(1)
-			if m.HighPerformanceRendering {
-				cmd = ViewUp(m, lines)
+			m.LineUp(1)
+
+		case key.Matches(msg, m.KeyMap.Search):
+			m.searchState = Searching
+			cmd = m.filterInput.Focus()
+
+		case key.Matches(msg, m.KeyMap.NextMatch) && m.searchState == Searched:
+			m.NextMatch()
+
+		case key.Matches(msg, m.KeyMap.PrevMatch) && m.searchState == Searched:
+			m.PrevMatch()
+
+		case key.Matches(msg, m.KeyMap.ExitSearchMode):
+			m.SetSearchState(Unsearched)
+			m.filterInput.Reset()
+			m.ScanAfter("")
+
+		case m.searchState == Searching:
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			if msg.String() == "enter" {
+				m.searchState = Searched
+				m.ScanAfter(m.filterInput.Value())
+				m.filterInput.SetValue("")
 			}
 		}
-
 	case tea.MouseMsg:
 		if !m.MouseWheelEnabled || msg.Action != tea.MouseActionPress {
 			break
 		}
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			lines := m.LineUp(m.MouseWheelDelta)
-			if m.HighPerformanceRendering {
-				cmd = ViewUp(m, lines)
-			}
+			m.LineUp(m.MouseWheelDelta)
 
 		case tea.MouseButtonWheelDown:
-			lines := m.LineDown(m.MouseWheelDelta)
-			if m.HighPerformanceRendering {
-				cmd = ViewDown(m, lines)
-			}
+			m.LineDown(m.MouseWheelDelta)
 		}
 	}
 
@@ -394,30 +315,99 @@ func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m *Model) ScanAfter(str string) int {
-	lineNumber := max(0, m.YOffset)
 	m.scanString = str
+	m.matchLines = nil
+	m.matchCount = 0
+	m.currentMatch = 0
 
-	for _, line := range m.lines[lineNumber:] {
-		lineNumber++
-		if strings.Contains(line, str) {
-			m.SetYOffset(lineNumber)
-			return lineNumber
+	if str == "" {
+		return 0
+	}
+
+	// Find all matches
+	for i, line := range m.lines {
+		if strings.Contains(line.msg, str) {
+			m.matchLines = append(m.matchLines, i)
+			m.matchCount++
 		}
+	}
+
+	if m.matchCount > 0 {
+		// Find the first match after current position
+		for i, line := range m.matchLines {
+			if line >= m.YOffset {
+				m.currentMatch = i
+				m.SetYOffset(line)
+				return line
+			}
+		}
+		// If no match found after current position, wrap around to first match
+		m.currentMatch = 0
+		m.SetYOffset(m.matchLines[0])
+		return m.matchLines[0]
 	}
 
 	return 0
 }
 
-// View renders the viewport into a string.
-func (m Model) View() string {
-	if m.HighPerformanceRendering {
-		// Just send newlines since we're going to be rendering the actual
-		// content separately. We still need to send something that equals the
-		// height of this view so that the Bubble Tea standard renderer can
-		// position anything below this view properly.
-		return strings.Repeat("\n", max(0, m.Height-1))
+func (m *Model) ScanBefore(str string) int {
+	m.scanString = str
+	m.matchLines = nil
+	m.matchCount = 0
+	m.currentMatch = 0
+
+	if str == "" {
+		return 0
 	}
 
+	// Find all matches
+	for i, line := range m.lines {
+		if strings.Contains(line.msg, str) {
+			m.matchLines = append(m.matchLines, i)
+			m.matchCount++
+		}
+	}
+
+	if m.matchCount > 0 {
+		// Find the first match before current position
+		for i := len(m.matchLines) - 1; i >= 0; i-- {
+			if m.matchLines[i] <= m.YOffset {
+				m.currentMatch = i
+				m.SetYOffset(m.matchLines[i])
+				return m.matchLines[i]
+			}
+		}
+		// If no match found before current position, wrap around to last match
+		m.currentMatch = len(m.matchLines) - 1
+		m.SetYOffset(m.matchLines[m.currentMatch])
+		return m.matchLines[m.currentMatch]
+	}
+
+	return 0
+}
+
+func (m *Model) NextMatch() int {
+	if m.matchCount == 0 {
+		return 0
+	}
+
+	m.currentMatch = (m.currentMatch + 1) % m.matchCount
+	m.SetYOffset(m.matchLines[m.currentMatch])
+	return m.matchLines[m.currentMatch]
+}
+
+func (m *Model) PrevMatch() int {
+	if m.matchCount == 0 {
+		return 0
+	}
+
+	m.currentMatch = (m.currentMatch - 1 + m.matchCount) % m.matchCount
+	m.SetYOffset(m.matchLines[m.currentMatch])
+	return m.matchLines[m.currentMatch]
+}
+
+// View renders the viewport into a string.
+func (m Model) View() string {
 	w, h := m.Width, m.Height
 	if sw := m.Style.GetWidth(); sw != 0 {
 		w = min(w, sw)
@@ -440,30 +430,59 @@ func (m Model) View() string {
 		}
 
 		width := lipgloss.Width(fmt.Sprintf("%d", clamp(firstLine+m.Height, lineNumber, maxLines)))
+
+		// If we have fewer lines than the visible area, start from line 1
+		if len(m.lines) < h {
+			lineNumber = 1
+			firstLine = 1
+		}
+
 		for _, line := range m.visibleLines() {
-			//line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			// Highlight all matches in the line
+			if m.scanString != "" {
+				line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			}
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
 			lineNumber++
 		}
 
-		for ; lineNumber <= h; lineNumber++ {
+		// Fill remaining height with empty line numbers
+		for ; lineNumber <= firstLine+h-1; lineNumber++ {
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
 		lines = m.visibleLines()
+		// Highlight all matches in the lines
+		if m.scanString != "" {
+			for i, line := range lines {
+				lines[i] = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+			}
+		}
 	}
 
 	contentWidth := w - m.Style.GetHorizontalFrameSize()
 	contentHeight := h - m.Style.GetVerticalFrameSize()
+
+	if m.searchState > 0 {
+		contentHeight--
+	}
+
 	contents := lipgloss.NewStyle().
-		Width(contentWidth).      // pad to width.
-		Height(contentHeight).    // pad to height.
-		MaxHeight(contentHeight). // truncate height if taller.
-		MaxWidth(contentWidth).   // truncate width if wider.
+		Width(contentWidth).
+		Height(contentHeight).
+		MaxHeight(contentHeight).
+		MaxWidth(contentWidth).
 		Render(strings.Join(lines, "\n"))
-	return m.Style.Copy().
-		UnsetWidth().UnsetHeight(). // Style size already applied in contents.
-		Render(contents)
+
+	// Add filter input if active
+	if m.searchState > 0 {
+		contents = lipgloss.JoinVertical(lipgloss.Top,
+			contents,
+			m.filterInput.View(),
+		)
+	}
+
+	return m.Style.Render(contents)
 }
 
 func clamp(v, low, high int) int {
@@ -485,4 +504,32 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// initializeSearch sets up the filter input component
+func (m *Model) initializeSearch() {
+	filterInput := textinput.New()
+	filterInput.Prompt = "Search: "
+	filterInput.CharLimit = 64
+	m.filterInput = filterInput
+}
+
+// SearchState returns the current filter state
+func (m Model) SearchState() SearchState {
+	return m.searchState
+}
+
+// SetSearchState sets the filter state
+func (m *Model) SetSearchState(state SearchState) {
+	m.searchState = state
+	if state == Searching {
+		m.filterInput.Focus()
+	} else {
+		m.filterInput.Blur()
+	}
+}
+
+// SearchInput returns the filter input model
+func (m Model) SearchInput() textinput.Model {
+	return m.filterInput
 }

@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,8 +114,8 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	contextDir := e.tmpDir
 
-	if pipeline.PipelineSpec.Name != "" {
-		contextDir = filepath.Join(contextDir, pipeline.PipelineSpec.Name)
+	if pipeline.Name != "" {
+		contextDir = filepath.Join(contextDir, pipeline.Name)
 	}
 
 	if _, err := os.Stat(contextDir); errors.Is(err, os.ErrNotExist) {
@@ -126,11 +125,11 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		}
 	}
 
-	return func(ctx context.Context) (processor.StepContext, map[string]v1beta1.ParamValue, error) {
+	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.Dir = contextDir
 		stepCtx.DataDir = filepath.Join(contextDir, "_data")
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
-		stepCtx.Steps = make(map[string]*processor.StepResult)
+		stepCtx.Steps = make(map[string]*processor.StepContext)
 		stepCtx.Inputs = mappedInputs
 
 		outputs := make(map[string]v1beta1.ParamValue)
@@ -139,7 +138,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
 		}
 
-		stepCtx, pipelineErr := entrypoint(ctx, stepCtx)
+		stepCtx, pipelineErr := entrypoint(stepCtx)
 
 		for _, pipelineOutput := range pipeline.Outputs {
 			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {
@@ -151,7 +150,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 				from = pipelineOutput.From
 			}
 
-			if output, ok := stepCtx.Steps[pipelineOutput.Step.Name].Outputs[from]; ok {
+			if output, ok := stepCtx.OutputVars[from]; ok {
 				outputs[pipelineOutput.Name] = output
 			}
 		}
@@ -218,7 +217,7 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
-		name:       command.PipelineSpec.Name,
+		name:       command.Name,
 		id:         utils.RandString(5),
 		entrypoint: command.PipelineSpec.Entrypoint,
 	}

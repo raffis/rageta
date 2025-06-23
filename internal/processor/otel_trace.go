@@ -1,10 +1,9 @@
 package processor
 
 import (
-	"context"
-
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -29,23 +28,21 @@ type OtelTrace struct {
 }
 
 func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		ctx, span := s.tracer.Start(ctx, s.stepName)
+	return func(ctx StepContext) (StepContext, error) {
+		var span trace.Span
+		ctx.Context, span = s.tracer.Start(ctx, s.stepName, trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
-		ctx = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues(
+		for _, tag := range ctx.Tags() {
+			span.SetAttributes(attribute.String(tag.Key, tag.Value))
+		}
+
+		ctx.Context = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues(
 			"step", s.stepName,
 			"span-id", span.SpanContext().SpanID(),
 			"trace-id", span.SpanContext().TraceID()),
 		)
 
-		/*
-		   logger.Info("process step")
-		   logger.V(1).Info("step context input", "context", stepContext)
-		   stepContext, err := next(ctx, stepContext)
-		   logger.Info("process step done", "err", err)
-		   logger.V(1).Info("step done", "err", err, "context", stepContext)
-		*/
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

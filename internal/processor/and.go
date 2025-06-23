@@ -1,8 +1,6 @@
 package processor
 
 import (
-	"context"
-
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -28,20 +26,20 @@ func (s *And) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		for _, step := range steps {
 			next, err := step.Entrypoint()
 
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
-			stepContext, err = next(ctx, stepContext)
+			ctx, err = next(ctx)
 			if AbortOnError(err) {
-				return stepContext, err
+				return ctx, err
 			}
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

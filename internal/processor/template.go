@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 
@@ -25,18 +24,18 @@ type Template struct {
 }
 
 func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		if stepContext.Template == nil {
-			stepContext.Template = &s.globalTemplate
+	return func(ctx StepContext) (StepContext, error) {
+		if ctx.Template == nil {
+			ctx.Template = &s.globalTemplate
 		}
 
 		if s.stepTemplate != nil {
-			if err := mergeTemplate(stepContext.Template, s.stepTemplate); err != nil {
-				return stepContext, err
+			if err := mergeTemplate(ctx.Template, s.stepTemplate); err != nil {
+				return ctx, err
 			}
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }
 

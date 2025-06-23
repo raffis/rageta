@@ -42,9 +42,7 @@ code-gen:
 
 build:
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
-	CGO_ENABLED=0 go build -C cmd/gateway/ -o ../../gateway
-	docker build . -t ghcr.io/rageta/rageta:v0.0.1
-	docker build . -f Dockerfile.wrapper -t ghcr.io/rageta/gateway:v0.0.1
+	docker build . -t ghcr.io/rageta/rageta:latest
 
 .PHONY: docker-build
 docker-build: build

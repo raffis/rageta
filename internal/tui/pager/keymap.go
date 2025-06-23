@@ -4,45 +4,62 @@ import "github.com/charmbracelet/bubbles/key"
 
 const spacebar = " "
 
-// KeyMap defines the keybindings for the viewport. Note that you don't
-// necessary need to use keybindings at all; the viewport can be controlled
-// programmatically with methods like Model.LineDown(1). See the GoDocs for
-// details.
+// KeyMap defines the keybindings for the viewport
 type KeyMap struct {
-	PageDown     key.Binding
-	PageUp       key.Binding
-	HalfPageUp   key.Binding
-	HalfPageDown key.Binding
-	Down         key.Binding
-	Up           key.Binding
+	PageDown       key.Binding
+	PageUp         key.Binding
+	HalfPageUp     key.Binding
+	HalfPageDown   key.Binding
+	Down           key.Binding
+	Up             key.Binding
+	Search         key.Binding
+	NextMatch      key.Binding
+	PrevMatch      key.Binding
+	ExitSearchMode key.Binding
 }
 
 // DefaultKeyMap returns a set of pager-like default keybindings.
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		PageDown: key.NewBinding(
-			key.WithKeys("pgdown", spacebar, "f"),
+			key.WithKeys("pgdown", spacebar),
 			key.WithHelp("f/pgdn", "page down"),
 		),
 		PageUp: key.NewBinding(
-			key.WithKeys("pgup", "b"),
+			key.WithKeys("pgup"),
 			key.WithHelp("b/pgup", "page up"),
 		),
 		HalfPageUp: key.NewBinding(
-			key.WithKeys("u", "ctrl+u"),
-			key.WithHelp("u", "½ page up"),
+			key.WithKeys("ctrl+u"),
+			key.WithHelp("ctrl+u", "½ page up"),
 		),
 		HalfPageDown: key.NewBinding(
-			key.WithKeys("d", "ctrl+d"),
-			key.WithHelp("d", "½ page down"),
+			key.WithKeys("ctrl+d"),
+			key.WithHelp("ctrl+", "½ page down"),
 		),
 		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
+			key.WithKeys("up"),
 			key.WithHelp("↑/k", "up"),
 		),
 		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
+			key.WithKeys("down"),
 			key.WithHelp("↓/j", "down"),
+		),
+		Search: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "search"),
+		),
+		NextMatch: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "next match"),
+		),
+		PrevMatch: key.NewBinding(
+			key.WithKeys("N"),
+			key.WithHelp("N", "prev match"),
+		),
+		ExitSearchMode: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "exit search"),
 		),
 	}
 }

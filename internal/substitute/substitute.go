@@ -1,4 +1,4 @@
-package processor
+package substitute
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ type Indexable interface {
 	Index() map[string]string
 }
 
-func Subst(index Indexable, substitute ...any) error {
+func Substitute(index Indexable, substitute ...any) error {
 	vars := index.Index()
 
 	for _, subst := range substitute {

@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"errors"
 	"slices"
 
@@ -29,11 +28,11 @@ type SkipBlacklist struct {
 var ErrSkipBlacklist = errors.New("skip blacklisted step")
 
 func (s *SkipBlacklist) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		if !slices.Contains(s.blacklist, s.stepName) {
-			return next(ctx, stepContext)
+			return next(ctx)
 		}
 
-		return stepContext, ErrSkipBlacklist
+		return ctx, ErrSkipBlacklist
 	}, nil
 }

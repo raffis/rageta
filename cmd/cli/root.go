@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var (
@@ -17,10 +18,19 @@ var (
 
 type rootFlags struct {
 	timeout time.Duration `env:"TIMEOUT"`
+	verbose int8          `env:"VERBOSE"`
 	log     struct {
-		level    string `env:"LOG_LEVEL"`
 		encoding string `env:"LOG_ENCODING"`
 	}
+}
+
+var logLevels = map[int8]zapcore.Level{
+	0: zapcore.FatalLevel,
+	1: zapcore.PanicLevel,
+	2: zapcore.ErrorLevel,
+	3: zapcore.WarnLevel,
+	4: zapcore.InfoLevel,
+	5: zapcore.DebugLevel,
 }
 
 var rootArgs rootFlags
@@ -29,8 +39,7 @@ var zapConfig zap.Config
 
 var rootCmd = &cobra.Command{
 	Use:               "rageta",
-	Short:             "Run opinionated tasks everywhere anyhow",
-	Long:              `Cloud native task engine`,
+	Short:             "Cloud native pipeline engine",
 	PersistentPreRunE: runRoot,
 }
 
@@ -43,17 +52,20 @@ func main() {
 
 func init() {
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
-	rootCmd.PersistentFlags().StringVarP(&rootArgs.log.level, "log-level", "", "panic", "")
+	rootCmd.PersistentFlags().Int8VarP(&rootArgs.verbose, "verbose", "v", 0, "")
 	rootCmd.PersistentFlags().StringVarP(&rootArgs.log.encoding, "log-encoding", "", "json", "")
 }
 
 func runRoot(cmd *cobra.Command, args []string) error {
 	zapConfig = zap.NewDevelopmentConfig()
 	zapConfig.Encoding = rootArgs.log.encoding
-	err := zapConfig.Level.UnmarshalText([]byte(rootArgs.log.level))
-	if err != nil {
-		return err
+
+	if level, ok := logLevels[rootArgs.verbose]; ok {
+		zapConfig.Level = zap.NewAtomicLevelAt(level)
+	} else {
+		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	}
+
 	zapConfig.DisableStacktrace = false
 	l, err := buildLogger(zapConfig)
 	if err != nil {

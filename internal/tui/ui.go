@@ -2,165 +2,181 @@ package tui
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
+	"slices"
+
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
-	"github.com/raffis/rageta/internal/tui/pager"
+	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/internal/processor"
 )
 
-type UI interface {
-	tea.Model
-	AddTasks(tasks ...*Task)
-	GetTask(name string) (*Task, error)
-	SetStatus(status StepStatus)
-	Report(b []byte)
+// Panel represents which panel is currently active
+type Panel int8
+
+const (
+	// PanelList represents the left list panel
+	PanelList Panel = iota
+	// PanelDetails represents the right details panel
+	PanelDetails
+)
+
+// UI dimensions and layout constants
+const (
+	ListWidthPercentage     = 30.0
+	MinBottomPanelHeight    = 3
+	FilterInputHeightOffset = 1
+	TagsHeightOffset        = 1
+	AlignHorizontal         = 130
+)
+
+// Keyboard shortcuts
+const (
+	KeyFilter = "/"
+	KeyEscape = "esc"
+	KeyTab    = "tab"
+	KeyEnter  = "enter"
+	KeyQuit   = "ctrl+c"
+)
+
+// UI represents the main Terminal User Interface model
+type UI struct {
+	list         list.Model
+	loader       spinner.Model
+	status       StepStatus
+	scanInput    textinput.Model
+	width        int
+	height       int
+	mu           *sync.Mutex
+	logger       logr.Logger
+	exitErr      error
+	activePanel  Panel
+	lastSelected list.Item
 }
 
-type model struct {
-	list      list.Model
-	loader    spinner.Model
-	status    StepStatus
-	scanInput textinput.Model
-	scanState bool
-	sizeMsg   *tea.WindowSizeMsg
+// TickMsg represents a tick message for animations
+type TickMsg time.Time
+
+// PipelineDoneMsg represents a message when the pipeline is complete
+type PipelineDoneMsg struct {
+	Status StepStatus
+	Error  error
 }
 
-func (m *model) AddTasks(tasks ...*Task) {
-	for _, task := range tasks {
-		if m.sizeMsg != nil {
-			task.viewport.Width = m.sizeMsg.Width
-			task.viewport.Height = m.sizeMsg.Height - 2
-
-			if task.TagsAsString() == "" {
-				task.viewport.Height = m.sizeMsg.Height - 2
-			} else {
-				task.viewport.Height = m.sizeMsg.Height - 3
-			}
-
-			task.ready = true
-		}
-
-		m.list.InsertItem(len(m.list.Items()), task)
-	}
-}
-
-func (m *model) GetTask(name string) (*Task, error) {
-	for _, task := range m.list.Items() {
-		if v, ok := task.(*Task); ok && v.GetName() == name {
-			return task.(*Task), nil
-		}
-	}
-
-	return nil, fmt.Errorf("no such task: %s", name)
-}
-
-func NewModel() *model {
-	delegateStyles := list.NewDefaultItemStyles()
-	delegateStyles.SelectedTitle.Border(lipgloss.BlockBorder(), false, false, false, true).BorderForeground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"})
-	delegateStyles.SelectedDesc.Border(lipgloss.BlockBorder(), false, false, false, true).BorderForeground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"}).Foreground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#874BFD"})
-
+// NewUI creates a new UI instance with the given logger
+func NewUI(logger logr.Logger) UI {
 	delegate := list.NewDefaultDelegate()
-	delegate.Styles = delegateStyles
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
+		BorderForeground(activePanelColor).
+		Border(lipgloss.BlockBorder(), false, false, false, true)
 
-	m := &model{
-		status: StepStatusWaiting,
-		list:   list.New(nil, delegate, 0, 0),
+	delegate.ShowDescription = false
+
+	ui := UI{
+		status:      StepStatusWaiting,
+		list:        list.New(nil, delegate, 0, 0),
+		mu:          &sync.Mutex{},
+		activePanel: PanelList,
+		logger:      logger,
 	}
 
+	ui.initializeList()
+	ui.initializeScanInput()
+	ui.initializeLoader()
+
+	return ui
+}
+
+// initializeList sets up the list component
+func (m *UI) initializeList() {
 	m.list.SetShowTitle(false)
 	m.list.SetShowStatusBar(false)
 	m.list.SetShowHelp(false)
-	m.list.Styles.PaginationStyle = listPaginatorStyle
-
 	m.list.SetShowFilter(false)
-	m.list.SetFilteringEnabled(false)
+	m.list.SetFilteringEnabled(true)
+	m.list.Styles.PaginationStyle = listPaginatorStyle
+}
 
+// initializeScanInput sets up the scan input component
+func (m *UI) initializeScanInput() {
 	scanInput := textinput.New()
 	scanInput.Prompt = "Filter: "
-	//filterInput.PromptStyle = styles.FilterPrompt
-	//filterInput.Cursor.Style = styles.FilterCursor
 	scanInput.CharLimit = 64
 	scanInput.Focus()
 	m.scanInput = scanInput
+}
 
-	m.list.KeyMap.CursorUp = key.NewBinding(
-		key.WithKeys("shift+tab"),
-		key.WithHelp("↑/k", "up"),
-	)
-
-	m.list.KeyMap.CursorDown = key.NewBinding(
-		key.WithKeys("tab"),
-		key.WithHelp("↓/j", "down"),
-	)
-
+// initializeLoader sets up the loading spinner
+func (m *UI) initializeLoader() {
 	m.loader = spinner.New()
 	m.loader.Spinner = spinner.Dot
-	m.loader.Style = lipgloss.NewStyle().Foreground(highlightColor)
-
-	return m
+	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 }
 
-func Program(model tea.Model) *tea.Program {
-	zone.NewGlobal()
+// sortList sorts the list items by tags and start time
+func (m *UI) sortList() {
+	items := m.list.Items()
+	sort.Slice(items, func(i, j int) bool {
+		iTags := m.formatTagsForSorting(items[i].(StepMsg).Tags)
+		jTags := m.formatTagsForSorting(items[j].(StepMsg).Tags)
 
-	p := tea.NewProgram(
-		model,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
+		iTagsKey := strings.Join(iTags, "-")
+		jTagsKey := strings.Join(jTags, "-")
 
-	go func() {
-		for c := range time.Tick(300 * time.Millisecond) {
-			p.Send(tickMsg(c))
+		if iTagsKey == jTagsKey {
+			return items[i].(StepMsg).started.Before(items[j].(StepMsg).started)
 		}
-	}()
 
-	return p
+		return iTagsKey < jTagsKey
+	})
+
+	current := m.findCurrentSelection(items)
+	m.list.SetItems(items)
+	m.list.Select(current)
 }
 
-type navItem interface {
-	getViewport() *pager.Model
-	GetName() string
-	TagsAsString() string
+// formatTagsForSorting formats tags for sorting purposes
+func (m *UI) formatTagsForSorting(tags []processor.Tag) []string {
+	var formattedTags []string
+	for _, tag := range tags {
+		formattedTags = append(formattedTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+	}
+	return formattedTags
 }
 
-func (m *model) Report(b []byte) {
-	viewport := pager.New(0, 0)
-	viewport.Style = windowStyle
-
-	if m.sizeMsg != nil {
-		viewport.Width = m.sizeMsg.Width
-		viewport.Height = m.sizeMsg.Height - 1
+// findCurrentSelection finds the index of the currently selected item
+func (m *UI) findCurrentSelection(items []list.Item) int {
+	if m.lastSelected == nil {
+		return 0
 	}
 
-	report := &report{
-		viewport: &viewport,
-	}
-
-	report.Write(b)
-
-	m.list.InsertItem(len(m.list.Items()), report)
-}
-
-func (m *model) SetStatus(status StepStatus) {
-	m.status = status
-
-	if status == StepStatusFailed {
-		for _, task := range m.list.Items() {
-			if v, ok := task.(*Task); ok && v.status == StepStatusRunning {
-				task.(*Task).SetStatus(StepStatusFailed)
-			}
+	for i, item := range items {
+		if item.(StepMsg).Name == m.lastSelected.(StepMsg).Name {
+			return i
 		}
 	}
+	return 0
 }
 
-func (m *model) renderStatus() string {
+// getStepMsg retrieves a step message by name
+func (m *UI) getStepMsg(name string) (StepMsg, error) {
+	for _, step := range m.list.Items() {
+		if v, ok := step.(StepMsg); ok && v.Name == name {
+			return v, nil
+		}
+	}
+	return StepMsg{}, fmt.Errorf("no such step: %s", name)
+}
+
+// renderStatus renders the current pipeline status
+func (m *UI) renderStatus() string {
 	switch m.status {
 	case StepStatusDone:
 		return pipelineOkStyle.Render("SUCCESS")
@@ -171,169 +187,429 @@ func (m *model) renderStatus() string {
 	case StepStatusRunning:
 		return pipelineWaitingStyle.Render("RUNNING")
 	}
-
 	return ""
 }
 
-type tickMsg time.Time
-
-func (m *model) Init() tea.Cmd {
+// Init initializes the UI model
+func (m UI) Init() tea.Cmd {
 	return nil
-	//return m.loader.Tick
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
+// Update handles all UI updates and events
+func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
 
-	l, c := m.loader.Update(msg)
-	m.loader = l
-	cmds = append(cmds, c)
-
-	switch msg := msg.(type) {
-	case tea.MouseMsg:
-		if !zone.Get("tasks").InBounds(msg) {
-			break
-		}
-
-		if msg.Type == tea.MouseWheelUp {
-			m.list.CursorUp()
-			return m, nil
-		}
-
-		if msg.Type == tea.MouseWheelDown {
-			m.list.CursorDown()
-			return m, nil
-		}
-
-		if msg.Type == tea.MouseLeft {
-			for i, listItem := range m.list.VisibleItems() {
-				item, _ := listItem.(navItem)
-				// Check each item to see if it's in bounds.
-				if zone.Get(item.GetName()).InBounds(msg) {
-					// If so, select it in the list.
-					m.list.Select(i)
-					break
-				}
-			}
-		}
-
-	case tea.KeyMsg:
-		m.list, cmd = m.list.Update(msg)
-		switch keypress := msg.String(); keypress {
-		case "/":
-			m.scanState = true
-			m.scanInput.CursorEnd()
-			m.scanInput.Focus()
-			return m, textinput.Blink
-
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		}
-
-	case tea.WindowSizeMsg:
-		h, _ := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-2)
-
-		for _, task := range m.list.Items() {
-			if task != nil {
-				task.(navItem).getViewport().Width = msg.Width
-
-				if task.(navItem).TagsAsString() == "" {
-					task.(navItem).getViewport().Height = msg.Height - 2
-				} else {
-					task.(navItem).getViewport().Height = msg.Height - 3
-				}
-			}
-		}
-
-		m.sizeMsg = &msg
-	}
-
-	task := m.list.SelectedItem()
-	if task != nil {
-		if task, ok := task.(*Task); ok {
-			viewport, cmd := task.viewport.Update(msg)
-			task.viewport = &viewport
-			cmds = append(cmds, cmd)
-		}
-		if report, ok := task.(*report); ok {
-			viewport, cmd := report.viewport.Update(msg)
-			report.viewport = &viewport
-			cmds = append(cmds, cmd)
-		}
-
-		m.scanInput, cmd = m.scanInput.Update(msg)
-	}
-
+	// Update loader
+	loader, cmd := m.loader.Update(msg)
+	m.loader = loader
 	cmds = append(cmds, cmd)
 
+	m.logger.V(1).Info("tui update msg", "msg", msg)
+
+	switch msg := msg.(type) {
+	case PipelineDoneMsg:
+		cmds = append(cmds, m.handlePipelineDone(msg)...)
+	case StepMsg:
+		cmds = append(cmds, m.handleStepMessage(msg)...)
+	case tea.MouseMsg:
+		cmds = append(cmds, m.handleMouseMessage(msg))
+	case tea.KeyMsg:
+		return m.handleKeyMessage(msg)
+	case tea.WindowSizeMsg:
+		cmds = append(cmds, m.handleWindowResize(msg)...)
+	case TickMsg:
+		cmds = append(cmds, m.handleTick(msg)...)
+	}
+
+	m.updateLastSelected()
 	return m, tea.Batch(cmds...)
 }
 
-func (m *model) View() string {
-	selectedItem := m.list.SelectedItem()
+// handlePipelineDone handles pipeline completion
+func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
+	m.status = msg.Status
+	m.exitErr = msg.Error
 
-	if selectedItem == nil {
+	if msg.Status == StepStatusFailed {
+		items := slices.Clone(m.list.Items())
+		for i, listItem := range items {
+			if item, ok := listItem.(StepMsg); ok && item.Status == StepStatusRunning {
+				items[i] = item.WithStatus(StepStatusFailed)
+			}
+		}
+		m.list.SetItems(items)
+	}
+
+	return nil
+}
+
+// handleStepMessage handles step status updates
+func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var cmds []tea.Cmd
+	items := slices.Clone(m.list.Items())
+
+	_, err := m.getStepMsg(msg.Name)
+	if err != nil {
+		// New step
+		msg.ready = true
+		msg.listWidth = m.list.Width()
+		msg.listHeight = m.list.Height()
+
+		// Initialize viewport dimensions
+		if msg.viewport != nil {
+			m.updateViewportDimensions(&msg)
+		}
+
+		cmds = append(cmds, msg.loader.Tick)
+
+		m.list.InsertItem(-1, msg.WithStatus(msg.Status))
+		m.sortList()
+	} else {
+		// Update existing step
+		for i, listItem := range items {
+			if item, ok := listItem.(StepMsg); ok && item.Name == msg.Name {
+				items[i] = item.WithStatus(msg.Status)
+			}
+		}
+		m.list.SetItems(items)
+	}
+
+	if msg.Status == StepStatusRunning {
+		m.status = StepStatusRunning
+	}
+
+	return cmds
+}
+
+// handleMouseMessage handles mouse interactions
+func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
+	var cmd tea.Cmd
+
+	if m.activePanel == PanelList {
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.list.CursorUp()
+		case tea.MouseWheelDown:
+			m.list.CursorDown()
+		}
+	} else {
+		cmd = m.updateSelectedViewport(msg)
+	}
+
+	return cmd
+}
+
+// handleKeyMessage handles keyboard input
+func (m UI) handleKeyMessage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case KeyQuit:
+		return m, tea.Quit
+	case KeyTab:
+		m.toggleActivePanel()
+		return m, nil
+	}
+
+	if m.activePanel == PanelList {
+		return m.handleListPanelKeys(msg)
+	}
+	return m, m.updateSelectedViewport(msg)
+}
+
+// toggleActivePanel switches between the list and details panels
+func (m *UI) toggleActivePanel() {
+	if m.activePanel == PanelList {
+		m.activePanel = PanelDetails
+	} else {
+		m.activePanel = PanelList
+	}
+}
+
+// handleListPanelKeys handles keyboard input for the list panel
+func (m UI) handleListPanelKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case KeyFilter:
+		m.list.SetFilterState(list.Filtering)
+		m.list.FilterInput.Focus()
+	case KeyEscape:
+		m.list.FilterInput.Reset()
+		m.list.SetFilterState(list.Unfiltered)
+	default:
+		if m.list.FilterState() > 0 {
+			m.list.FilterInput, cmd = m.list.FilterInput.Update(msg)
+			filterText := m.list.FilterInput.Value()
+			m.list.SetFilterText(filterText)
+			m.list.SetFilterState(list.Filtering)
+		} else {
+			m.list, cmd = m.list.Update(msg)
+		}
+	}
+
+	return m, cmd
+}
+
+// updateSelectedViewport updates the viewport for the selected item
+func (m *UI) updateSelectedViewport(msg tea.Msg) tea.Cmd {
+	items := slices.Clone(m.list.Items())
+	for i, listItem := range items {
+		if m.lastSelected != nil && listItem.(StepMsg).Name == m.lastSelected.(StepMsg).Name {
+			viewport, cmd := m.lastSelected.(StepMsg).viewport.Update(msg)
+			last := m.lastSelected.(StepMsg)
+			last.viewport = &viewport
+			items[i] = last
+
+			m.list.SetItems(items)
+			return cmd
+		}
+	}
+
+	return nil
+}
+
+// handleWindowResize handles window resize events
+func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
+	m.height = msg.Height
+	m.width = msg.Width
+
+	if m.width < AlignHorizontal {
+		listHeight := float64(m.height) * 50 / 100
+		m.list.SetSize(m.width, int(listHeight)-MinBottomPanelHeight)
+	} else {
+		listWidth := float64(m.width) * ListWidthPercentage / 100
+		m.list.SetSize(int(listWidth), m.height-MinBottomPanelHeight)
+	}
+
+	items := slices.Clone(m.list.Items())
+	for i, listItem := range items {
+		if item, ok := listItem.(StepMsg); ok {
+			item.listWidth = m.list.Width()
+			item.listHeight = m.list.Height()
+			items[i] = item
+		}
+	}
+	m.list.SetItems(items)
+
+	return nil
+}
+
+// handleTick handles tick messages for animations
+func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
+	items := slices.Clone(m.list.Items())
+	for i, listItem := range items {
+		if item, ok := listItem.(StepMsg); ok {
+			loader, _ := item.loader.Update(item.loader.Tick())
+			item.loader = loader
+			items[i] = item
+		}
+	}
+	m.list.SetItems(items)
+	return nil
+}
+
+// updateLastSelected updates the last selected item
+func (m *UI) updateLastSelected() {
+	if selectedItem := m.list.SelectedItem(); selectedItem != nil {
+		step := selectedItem.(StepMsg)
+		if step.viewport != nil {
+			// Initialize viewport dimensions if not set
+			if step.viewport.Width == 0 || step.viewport.Height == 0 {
+				m.updateViewportDimensions(&step)
+			}
+			m.lastSelected = selectedItem
+		}
+	}
+}
+
+// View renders the UI
+func (m UI) View() string {
+	m.logger.Info("tUI view", "height", m.height, "width", m.width, "last", m.lastSelected)
+
+	if m.lastSelected == nil || m.height == 0 || m.width == 0 {
 		return m.loader.View()
 	}
 
-	list := listStyle.Render(m.list.View())
-	task := selectedItem.(navItem)
-	tags := task.TagsAsString()
+	return m.renderMainLayout()
+}
 
-	var right []string
-	if tags == "" {
-		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
-			zone.Mark("pager", task.getViewport().View()),
-			m.queryView(lipgloss.Width(list)),
-		}
-	} else {
-		right = []string{
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(taskTitle.Render(task.GetName())),
-			leftFooterPaddingStyle.Width(task.getViewport().Width - lipgloss.Width(list)).Render(tags),
-			zone.Mark("pager", task.getViewport().View()),
-			m.queryView(lipgloss.Width(list)),
-		}
+// renderMainLayout renders the main UI layout
+func (m UI) renderMainLayout() string {
+	headerPanel := m.renderHeaderPanel()
+	listPanel := m.renderListPanel()
+	pagerPanel := m.renderPagerPanel()
+	bottomPanel := m.renderBottomPanel()
+
+	// Stack panels vertically if the terminal is too narrow
+	if m.width < AlignHorizontal {
+		return lipgloss.JoinVertical(
+			lipgloss.Top,
+			listPanel,
+			headerPanel,
+			pagerPanel,
+			bottomPanel,
+		)
 	}
 
-	return zone.Scan(
-		lipgloss.JoinHorizontal(
-			lipgloss.Bottom,
-			lipgloss.JoinVertical(
-				lipgloss.Top,
-				leftFooterPaddingStyle.Width(lipgloss.Width(list)).Render(""),
-				zone.Mark("tasks", list),
-				m.footerLeftView(lipgloss.Width(list)),
-			),
-			lipgloss.JoinVertical(
-				lipgloss.Top,
-				right...,
-			),
-		),
+	// Otherwise use horizontal layout
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		headerPanel,
+		lipgloss.JoinHorizontal(lipgloss.Top, listPanel, pagerPanel),
+		bottomPanel,
 	)
 }
 
-func (m *model) footerLeftView(width int) string {
-	firstColumn := m.renderStatus()
-	secondColumn := leftFooterPaddingStyle.Copy().Width(width - lipgloss.Width(firstColumn)).Render()
+// renderHeaderPanel renders the combined header panel
+func (m UI) renderHeaderPanel() string {
+	var listStyle lipgloss.Style
+	var pagerStyle lipgloss.Style
+	var activeStyle = lipgloss.NewStyle().Foreground(activePanelColor)
+	var pagerHeader string
 
-	return lipgloss.JoinHorizontal(lipgloss.Bottom,
-		firstColumn,
-		secondColumn,
+	if m.activePanel == PanelList {
+		listStyle = listStyle.Foreground(activePanelColor)
+		pagerStyle = listStyle.Foreground(inactivePanelColor)
+	} else {
+		listStyle = listStyle.Foreground(inactivePanelColor)
+		pagerStyle = listStyle.Foreground(activePanelColor)
+	}
+
+	if m.width < AlignHorizontal {
+		tab := activeStyle.Render(" ⇅ ")
+		line := strings.Repeat("─", m.width/2-1)
+
+		pagerHeader = fmt.Sprintf("%s%s%s%s",
+			pagerStyle.Render("┌"),
+			pagerStyle.Render(line),
+			pagerStyle.Render(tab),
+			pagerStyle.Render(line),
+		)
+
+		return lipgloss.JoinVertical(lipgloss.Top, pagerHeader)
+	}
+
+	listHeader := listStyle.
+		Render(strings.Repeat("─", m.list.Width()-1))
+
+	if m.lastSelected != nil {
+		step := m.lastSelected.(StepMsg)
+		headerWidth := step.viewport.Width - 10 - lipgloss.Width(step.GetName())
+		pagerHeader = fmt.Sprintf("%s %s %s %s",
+			pagerStyle.Render("─── ·"),
+			topTitleStyle.Render(step.GetName()),
+			pagerStyle.Render("·"),
+			pagerStyle.Render(strings.Repeat("─", headerWidth)),
+		)
+	}
+
+	tab := activeStyle.Render(" ⇆ ")
+	return lipgloss.JoinHorizontal(lipgloss.Top, listHeader, tab, pagerHeader)
+}
+
+// renderListPanel renders the left list panel
+func (m UI) renderListPanel() string {
+	listPanelContent := []string{m.list.View()}
+
+	if m.list.FilterState() > 0 {
+		listPanelContent = append(listPanelContent, m.list.FilterInput.View())
+		m.list.SetHeight(m.list.Height() - FilterInputHeightOffset)
+	}
+
+	var style lipgloss.Style
+	if m.activePanel == PanelList {
+		style = listStyle.BorderForeground(activePanelColor)
+	} else {
+		style = listStyle.BorderForeground(inactivePanelColor)
+	}
+
+	return style.
+		Height(m.list.Height()).
+		Width(m.list.Width()).
+		Render(lipgloss.JoinVertical(lipgloss.Top, listPanelContent...))
+}
+
+// renderPagerPanel renders the right details panel
+func (m UI) renderPagerPanel() string {
+	step := m.lastSelected.(StepMsg)
+
+	m.updatePanelStyles()
+	m.updateViewportDimensions(&step)
+
+	detailsContent := m.buildPagerContent(step)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		viewportStyle.Render(lipgloss.JoinVertical(lipgloss.Top, detailsContent...)),
 	)
 }
 
-func (m *model) queryView(width int) string {
-	task := m.list.SelectedItem().(navItem)
-	secondColumn := scrollPercentageStyle.Width(8).Render(fmt.Sprintf("%3.f%%", task.getViewport().ScrollPercent()*100))
-	firstColumn := leftFooterPaddingStyle.Width(task.getViewport().Width - width - 8).Render()
+// updatePanelStyles updates the styles based on the active panel
+func (m *UI) updatePanelStyles() {
+	if m.activePanel == PanelList {
+		topStyle = topStyle.Foreground(inactivePanelColor)
+		topTitleStyle = topTitleStyle.Foreground(inactivePanelColor)
+		viewportStyle = viewportStyle.BorderForeground(inactivePanelColor)
+		m.lastSelected.(StepMsg).viewport.Styles.LineNumber = lineNumberInactiveStyle
+		return
+	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Bottom,
-		firstColumn,
-		secondColumn,
+	topStyle = topStyle.Foreground(activePanelColor)
+	topTitleStyle = newStyle()
+	viewportStyle = viewportStyle.BorderForeground(activePanelColor)
+	m.lastSelected.(StepMsg).viewport.Styles.LineNumber = lineNumberActiveStyle
+}
+
+// updateViewportDimensions updates the viewport dimensions
+func (m *UI) updateViewportDimensions(step *StepMsg) {
+	// Set viewport width based on layout
+	if m.width < AlignHorizontal {
+		// In vertical layout, viewport takes full width
+		step.viewport.Width = m.width
+		// Height is reduced by list height and bottom panel
+		step.viewport.Height = m.height - m.list.Height() - MinBottomPanelHeight
+	} else {
+		// In horizontal layout, viewport takes remaining width
+		step.viewport.Width = m.width - m.list.Width()
+		step.viewport.Height = m.height - MinBottomPanelHeight
+	}
+
+	if step.TagsAsString() != "" {
+		step.viewport.Height -= TagsHeightOffset
+	}
+}
+
+// buildPagerContent builds the content for the details panel
+func (m UI) buildPagerContent(step StepMsg) []string {
+	var content []string
+
+	// Add tags if present
+	if tags := step.TagsAsString(); tags != "" {
+		content = append(content, lipgloss.NewStyle().
+			Width(step.viewport.Width).
+			Render(tags))
+	}
+
+	// Add viewport content
+	content = append(content, step.viewport.View())
+
+	return content
+}
+
+// renderBottomPanel renders the bottom status panel
+func (m UI) renderBottomPanel() string {
+	status := m.renderStatus()
+	scrollPercentage := scrollPercentageStyle.Render(
+		fmt.Sprintf("%3.f%%", m.lastSelected.(StepMsg).viewport.ScrollPercent()*100))
+
+	helpWidth := m.width - lipgloss.Width(status) - lipgloss.Width(scrollPercentage)
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Bottom,
+		status,
+		lipgloss.NewStyle().Width(helpWidth).Render(m.list.Help.View(m.list)),
+		scrollPercentage,
 	)
 }

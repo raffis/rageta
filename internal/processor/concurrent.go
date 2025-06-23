@@ -31,8 +31,8 @@ type Concurrent struct {
 }
 
 type concurrentResult struct {
-	stepContext StepContext
-	err         error
+	ctx StepContext
+	err error
 }
 
 func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -41,11 +41,11 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		results := make(chan concurrentResult)
 		var errs []error
 
-		ctx, cancel := context.WithCancel(ctx)
+		cancelCtx, cancel := context.WithCancel(ctx.Context)
 		defer cancel()
 
 		pool := s.pool
@@ -57,12 +57,13 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			next, err := step.Entrypoint()
 
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
-			stepContext := stepContext.DeepCopy()
+			copyCtx := ctx.DeepCopy()
+			copyCtx.Context = cancelCtx
 			pool.Go(func() {
-				t, err := next(ctx, stepContext)
+				t, err := next(copyCtx)
 				results <- concurrentResult{t, err}
 			})
 		}
@@ -71,7 +72,7 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	WAIT:
 		for res := range results {
 			done++
-			stepContext = stepContext.Merge(res.stepContext)
+			ctx = ctx.Merge(res.ctx)
 			if res.err != nil && AbortOnError(res.err) {
 				errs = append(errs, res.err)
 
@@ -86,9 +87,9 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		if len(errs) > 0 {
-			return stepContext, errors.Join(errs...)
+			return ctx, errors.Join(errs...)
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

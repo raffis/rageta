@@ -3,28 +3,81 @@ package report
 import (
 	"fmt"
 	"io"
+	"strings"
 
-	"github.com/olekukonko/tablewriter"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/styles"
 )
 
-func Table(w io.Writer, steps []stepResult) error {
-	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{"#", "Step", "Status", "Duration", "Error"})
-	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-	table.SetBorder(false)
-	table.SetAutoWrapText(false)
+type table struct {
+	store *store
+	w     io.Writer
+}
 
-	for i, step := range steps {
-		errMsg, status, duration := stringify(step)
+func Table(w io.Writer) *table {
+	return &table{
+		w:     w,
+		store: &store{},
+	}
+}
 
-		table.Append([]string{
+func (r *table) Report(ctx processor.StepContext, name string) error {
+	r.store.Add(name, ctx)
+	return nil
+}
+
+func (r *table) Finalize() error {
+	var rows [][]string
+	rows = append(rows, []string{"#", "STEP", "STATUS", "DURATION", "TAGS", "ERROR"})
+	for i, step := range r.store.Ordered() {
+		errMsg, status, duration := stringify(step.result)
+
+		var tags []string
+		for _, tag := range step.result.Tags() {
+			tags = append(tags, styles.TagLabel.
+				Background(lipgloss.Color(tag.Color)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
+			)
+		}
+
+		rows = append(rows, []string{
 			fmt.Sprintf("%d", i),
 			step.stepName,
 			status,
 			duration,
-			errMsg})
+			strings.Join(tags, ""),
+			errMsg,
+		})
 	}
 
-	table.Render()
+	var columnWidth []int
+	for _, row := range rows {
+		for key, cell := range row {
+			if len(columnWidth) <= key {
+				columnWidth = append(columnWidth, 0)
+			}
+
+			width := lipgloss.Width(cell)
+			if width > columnWidth[key] {
+				columnWidth[key] = width
+			}
+		}
+	}
+
+	for _, row := range rows {
+		for key, cell := range row {
+			width := lipgloss.Width(cell)
+			if key < len(row)-1 && width < columnWidth[key] {
+				row[key] = cell + strings.Repeat(" ", columnWidth[key]-width)
+			}
+		}
+	}
+
+	for _, row := range rows {
+		fmt.Fprintf(r.w, "%s\n", strings.Join(row, " | "))
+	}
+
 	return nil
 }

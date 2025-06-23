@@ -1,4 +1,4 @@
-package storage
+package provider
 
 import (
 	"context"
@@ -6,10 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fluxcd/pkg/oci/client"
+	"github.com/fluxcd/pkg/oci"
 )
 
-func WithOCI(ociClient *client.Client) LookupHandler {
+type ociPuller interface {
+	Pull(context.Context, string, string, ...oci.PullOption) (*oci.Metadata, error)
+}
+
+func WithOCI(ociClient ociPuller) LookupHandler {
 	return func(ctx context.Context, ref string) (io.Reader, error) {
 		tmp, err := os.MkdirTemp("", "rageta")
 		if err != nil {

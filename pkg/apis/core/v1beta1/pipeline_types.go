@@ -28,7 +28,6 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Name             string       `json:"name,omitempty"`
 	Entrypoint       string       `json:"entrypoint,omitempty"`
 	ShortDescription string       `json:"shortDescription,omitempty"`
 	LongDescription  string       `json:"longDescription,omitempty"`
@@ -56,7 +55,13 @@ type StepOptions struct {
 	Needs        []StepReference   `json:"needs,omitempty"`
 	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
+	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
+}
+
+type SecretVar struct {
+	Name  string  `json:"name,omitempty"`
+	Value *string `json:"value,omitempty"`
 }
 
 type EnvVar struct {
@@ -96,7 +101,7 @@ type Generate struct {
 
 type Step struct {
 	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
+	Short       string `json:"short,omitempty"`
 	StepOptions `json:",inline"`
 	Pipe        *PipeStep       `json:"pipe,omitempty"`
 	And         *AndStep        `json:"and,omitempty"`

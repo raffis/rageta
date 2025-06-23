@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -48,8 +47,8 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 	}
 
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		vars := stepContext.ToV1Beta1()
+	return func(ctx StepContext) (StepContext, error) {
+		vars := ctx.ToV1Beta1()
 		for i, condition := range s.conditions {
 			switch {
 			case condition.CelExpression != nil:
@@ -58,19 +57,19 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				})
 
 				if err != nil {
-					return stepContext, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CelExpression, err)
+					return ctx, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CelExpression, err)
 				}
 
 				// if expression evaluates to false the next step is called in the pipeline without calling the
 				// step handled by this wrapper first
 				if !value.Value().(bool) {
-					return stepContext, ErrConditionFalse
+					return ctx, ErrConditionFalse
 				}
 			default:
-				return stepContext, fmt.Errorf("invalid if condition given")
+				return ctx, fmt.Errorf("invalid if condition given")
 			}
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

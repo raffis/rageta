@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -25,8 +24,7 @@ type Progress struct {
 }
 
 func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-
+	return func(ctx StepContext) (StepContext, error) {
 		ticker := time.NewTicker(5 * time.Second)
 		quit := make(chan struct{})
 		defer func() {
@@ -34,8 +32,8 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}()
 
 		progress := func() {
-			if stepContext.Stderr != nil {
-				stepContext.Stderr.Write(fmt.Appendf(nil, "Waiting for %s to finish\n", s.stepName))
+			if ctx.Stderr != nil {
+				ctx.Stderr.Write(fmt.Appendf(nil, "Waiting for %s to finish\n", s.stepName))
 			}
 		}
 
@@ -52,6 +50,6 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}()
 
 		progress()
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }

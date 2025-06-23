@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -42,27 +44,31 @@ type Run struct {
 }
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
 		pod := &runtime.Pod{
-			Name: fmt.Sprintf("%s-%s-%s", suffixName(s.stepName, stepContext.NamePrefix), pipeline.ID(), utils.RandString(5)),
+			Name: fmt.Sprintf("%s-%s-%s", SuffixName(s.stepName, ctx.NamePrefix), pipeline.ID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(), run.Guid, run.Uid); err != nil {
-			return stepContext, err
+		if err := substitute.Substitute(ctx.ToV1Beta1(), run.Guid, run.Uid); err != nil {
+			return ctx, err
 		}
+
+		envs := make(map[string]string)
+		maps.Copy(envs, ctx.Envs)
+		maps.Copy(envs, ctx.Secrets)
 
 		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
-			Stdin:           stepContext.Stdin != nil || run.Stdin,
+			Stdin:           ctx.Stdin != nil || run.Stdin,
 			TTY:             run.TTY,
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
 			Args:            args,
-			Env:             envSlice(stepContext.Envs),
+			Env:             envs,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
@@ -85,12 +91,12 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			})
 		}
 
-		if stepContext.Template != nil {
-			if err := Subst(stepContext.ToV1Beta1(), stepContext.Template.Guid, stepContext.Template.Uid); err != nil {
-				return stepContext, err
+		if ctx.Template != nil {
+			if err := substitute.Substitute(ctx.ToV1Beta1(), ctx.Template.Guid, ctx.Template.Uid); err != nil {
+				return ctx, err
 			}
 
-			s.containerSpec(&container, stepContext.Template)
+			ContainerSpec(&container, ctx.Template)
 		}
 
 		subst := []any{
@@ -104,35 +110,35 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			subst = append(subst, &container.Volumes[i].HostPath, &container.Volumes[i].Path)
 		}
 
-		if err := Subst(stepContext.ToV1Beta1(), subst...); err != nil {
-			return stepContext, err
+		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
+			return ctx, err
 		}
 
 		for _, vol := range container.Volumes {
 			srcPath, err := filepath.Abs(vol.HostPath)
 			if err != nil {
-				return stepContext, fmt.Errorf("failed to get absolute path: %w", err)
+				return ctx, fmt.Errorf("failed to get absolute path: %w", err)
 			}
 
 			vol.HostPath = srcPath
 		}
 
-		if run.Stdin && stepContext.Stdin == nil {
-			stepContext.Stdin = os.Stdin
+		if run.Stdin && ctx.Stdin == nil {
+			ctx.Stdin = os.Stdin
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		stepContext, err := s.exec(ctx, stepContext, pod)
+		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
-			return stepContext, fmt.Errorf("container %s failed: %w", pod.Name, err)
+			return ctx, fmt.Errorf("container %s failed: %w", pod.Name, err)
 		}
 
-		return next(ctx, stepContext)
+		return next(ctx)
 	}, nil
 }
 
-func (s *Run) containerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
+func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
 	if len(container.Args) == 0 {
 		container.Args = template.Args
 	}
@@ -199,27 +205,18 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
 	return command, append(args, "-c", script)
 }
 
-func envSlice(env map[string]string) []string {
-	var envs []string
-	for k, v := range env {
-		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	return envs
-}
-
-func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Pod) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, stepContext.Stdin,
-		io.MultiWriter(append(stepContext.AdditionalStdout, stepContext.Stdout)...),
-		io.MultiWriter(append(stepContext.AdditionalStderr, stepContext.Stderr)...),
+func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
+	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin,
+		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
+		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
 	)
 
 	if err != nil {
-		return stepContext, err
+		return ctx, err
 	}
 
 	for _, v := range pod.Status.Containers {
-		stepContext.Containers[v.Name] = v
+		ctx.Containers[v.Name] = v
 	}
 
 	if s.step.Await == v1beta1.AwaitStatusReady {
@@ -237,9 +234,9 @@ func (s *Run) exec(ctx context.Context, stepContext StepContext, pod *runtime.Po
 		}
 	} else {
 		if err := await.Wait(); err != nil {
-			return stepContext, err
+			return ctx, err
 		}
 	}
 
-	return stepContext, err
+	return ctx, err
 }

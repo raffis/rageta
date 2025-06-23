@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/fluxcd/pkg/oci"
-	"github.com/fluxcd/pkg/oci/client"
 )
 
 var pushCmd = &cobra.Command{
@@ -193,7 +192,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		logs.Warn.SetOutput(os.Stderr)
 	}
 
-	meta := client.Metadata{
+	meta := oci.Metadata{
 		Source:      pushArgs.source,
 		Revision:    pushArgs.revision,
 		Annotations: annotations,
@@ -204,7 +203,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	digestURL, err := ociClient.Push(ctx, ociURL, path,
-		client.WithPushMetadata(meta),
+		oci.WithPushMetadata(meta),
 	)
 	if err != nil {
 		return fmt.Errorf("pushing artifact failed: %w", err)

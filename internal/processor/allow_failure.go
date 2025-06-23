@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -24,13 +23,13 @@ type AllowFailure struct {
 var ErrAllowFailure = errors.New("ignore error returned from step")
 
 func (s *AllowFailure) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
-		stepContext, err := next(ctx, stepContext)
+	return func(ctx StepContext) (StepContext, error) {
+		ctx, err := next(ctx)
 
 		if err != nil {
 			err = fmt.Errorf("%w: %w", ErrAllowFailure, err)
 		}
 
-		return stepContext, err
+		return ctx, err
 	}, nil
 }

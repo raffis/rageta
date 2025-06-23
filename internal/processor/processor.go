@@ -10,7 +10,7 @@ type PipelineBuilder interface {
 	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx StepContext) (Executable, error)
 }
 
-type Executable func(ctx context.Context) (StepContext, map[string]v1beta1.ParamValue, error)
+type Executable func() (StepContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
 	Step(name string) (Step, error)
@@ -20,7 +20,7 @@ type Pipeline interface {
 	ID() string
 }
 
-type Next func(ctx context.Context, stepContext StepContext) (StepContext, error)
+type Next func(ctx StepContext) (StepContext, error)
 
 type Bootstraper interface {
 	Bootstrap(pipeline Pipeline, next Next) (Next, error)

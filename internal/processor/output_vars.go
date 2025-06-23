@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -28,19 +27,19 @@ type OutputVars struct {
 }
 
 func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (StepContext, error) {
+	return func(ctx StepContext) (StepContext, error) {
 		outputs := make(map[string]*os.File, len(s.outputs))
 
 		for _, output := range s.outputs {
-			outputTmp, err := os.CreateTemp(stepContext.Dir, "output")
+			outputTmp, err := os.CreateTemp(ctx.Dir, "output")
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
 			defer outputTmp.Close()
 			defer os.Remove(outputTmp.Name())
 
-			stepContext.Outputs = append(stepContext.Outputs, OutputParam{
+			ctx.Outputs = append(ctx.Outputs, OutputParam{
 				Name: output.Name,
 				Path: outputTmp.Name(),
 			})
@@ -48,28 +47,28 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			outputs[output.Name] = outputTmp
 		}
 
-		stepContext, err := next(ctx, stepContext)
+		ctx, err := next(ctx)
 		if err != nil {
-			return stepContext, err
+			return ctx, err
 		}
 
 		for name, output := range outputs {
 			_ = output.Sync()
 			b, err := io.ReadAll(output)
 			if err != nil {
-				return stepContext, err
+				return ctx, err
 			}
 
 			value := v1beta1.ParamValue{}
 
 			if err := value.UnmarshalJSON(b); err != nil {
-				return stepContext, fmt.Errorf("param output failed: %w", err)
+				return ctx, fmt.Errorf("param output failed: %w", err)
 			}
 
-			stepContext.Steps[s.stepName].Outputs[name] = value
+			ctx.OutputVars[name] = value
 		}
 
-		return stepContext, err
+		return ctx, err
 
 	}, nil
 }

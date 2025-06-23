@@ -2,121 +2,196 @@ package tui
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
 )
 
-func NewTask(name string, tags map[string]processor.Tag) *Task {
+// Display constants for step formatting
+const (
+	ShortListThreshold = 50
+	StatusColumnWidth  = 4
+	EllipsisLength     = 3
+	NotStartedDuration = "<not started>"
+)
+
+// Column width percentages for wide layouts
+const (
+	NameColumnPercent     = 65
+	TagsColumnPercent     = 15
+	DurationColumnPercent = 20
+)
+
+// NewStep creates a new StepMsg with initialized components
+func NewStep() StepMsg {
 	viewport := pager.New(0, 0)
-	viewport.Style = windowStyle
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
-	viewport.Styles.LineNumber = lineNumberPrefixStyle
+	viewport.Styles.LineNumber = lineNumberInactiveStyle
 
-	task := &Task{
+	loader := spinner.New()
+	loader.Spinner = spinner.MiniDot
+	loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
+
+	return StepMsg{
 		viewport: &viewport,
-		name:     name,
-		status:   StepStatusWaiting,
+		loader:   loader,
 	}
-
-	for _, key := range slices.Sorted(maps.Keys(tags)) {
-		task.tags = append(task.tags, tags[key])
-	}
-
-	return task
 }
 
-type Task struct {
-	viewport *pager.Model
-	name     string
-	status   StepStatus
-	ready    bool
-	started  time.Time
-	finished time.Time
-	tags     []processor.Tag
+// StepMsg represents a pipeline step with its state and UI components
+type StepMsg struct {
+	viewport    *pager.Model
+	loader      spinner.Model
+	Name        string
+	DisplayName string
+	Tags        []processor.Tag
+	Status      StepStatus
+	ready       bool
+	started     time.Time
+	finished    time.Time
+	listWidth   int
+	listHeight  int
 }
 
-func (t *Task) getViewport() *pager.Model {
-	return t.viewport
-}
-
-func (t *Task) Write(b []byte) (int, error) {
+// Write implements io.Writer interface for the step's viewport
+func (t StepMsg) Write(b []byte) (int, error) {
 	return t.viewport.Write(b)
 }
 
-func (t *Task) Update(msg tea.Msg) tea.Cmd {
-	var cmds []tea.Cmd
-	return tea.Batch(cmds...)
+// GetName returns the display name of the step
+func (t StepMsg) GetName() string {
+	return t.DisplayName
 }
 
-func (t *Task) Init() tea.Cmd {
-	return nil
-}
-
-func (t *Task) GetName() string {
-	return t.name
-}
-
-func (t *Task) SetStatus(status StepStatus) {
+// WithStatus creates a new StepMsg with the given status, updating timestamps
+func (t StepMsg) WithStatus(status StepStatus) StepMsg {
 	if t.started.IsZero() && status == StepStatusRunning {
 		t.started = time.Now()
 	}
 
-	if t.finished.IsZero() && (status > 1) {
+	if t.finished.IsZero() && status > StepStatusRunning {
 		t.finished = time.Now()
 	}
 
-	t.status = status
+	t.Status = status
+	return t
 }
 
-func (t *Task) TagsAsString() string {
-	var params []string
-	for _, tag := range t.tags {
-		params = append(params, styles.TagLabel.Background(lipgloss.Color(tag.Color)).Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)))
+// TagsAsString returns a formatted string representation of all tags
+func (t *StepMsg) TagsAsString() string {
+	if len(t.Tags) == 0 {
+		return ""
 	}
 
-	return strings.Join(params, "")
+	var tags []string
+	for _, tag := range t.Tags {
+		tagLabel := styles.TagLabel.
+			Background(lipgloss.Color(tag.Color)).
+			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+			Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value))
+		tags = append(tags, tagLabel)
+	}
+
+	return strings.Join(tags, "")
 }
 
-func (t *Task) Title() string {
-	return zone.Mark(t.name, fmt.Sprintf("%s %s", t.status.Render(), ellipsis(t.name, 30)))
+// shortTags returns a compact representation of tags using colored dots
+func (t *StepMsg) shortTags() string {
+	if len(t.Tags) == 0 {
+		return ""
+	}
+
+	var tags []string
+	for _, tag := range t.Tags {
+		dot := listTagLabelStyle.
+			Foreground(lipgloss.Color(tag.Color)).
+			Render("●")
+		tags = append(tags, dot)
+	}
+
+	return strings.Join(tags, "")
 }
 
-func (t *Task) Description() string {
-	if t.started.IsZero() {
-		return zone.Mark(t.name, "<not started>")
-	} else if t.finished.IsZero() {
-		return zone.Mark(t.name, fmt.Sprintf("[%s]", time.Since(t.started).Round(time.Millisecond*10)))
+// Title returns the formatted title for list display
+func (t StepMsg) Title() string {
+	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
+
+	var status string
+	if t.Status == StepStatusRunning {
+		status = t.loader.View()
 	} else {
-		return zone.Mark(t.name, fmt.Sprintf("[%s]", t.finished.Sub(t.started).Round(time.Millisecond*10)))
+		status = t.Status.Render()
 	}
 
+	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
+	tagsWidth := int(float64(listWidth) * TagsColumnPercent / 100)
+	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
+
+	return fmt.Sprintf("%s %s %s %s",
+		status,
+		listColumnStyle.Width(nameWidth).Render(ellipsis(t.DisplayName, nameWidth)),
+		listColumnStyle.Width(tagsWidth).Render(t.shortTags()),
+		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration()),
+	)
 }
 
+// duration returns a formatted duration string for the step
+func (t *StepMsg) duration() string {
+	if t.started.IsZero() {
+		return NotStartedDuration
+	}
+
+	if t.finished.IsZero() {
+		return time.Since(t.started).Round(time.Millisecond * 10).String()
+	}
+
+	return t.finished.Sub(t.started).Round(time.Millisecond * 10).String()
+}
+
+// Description returns the description for list display (used in narrow layouts)
+func (t StepMsg) Description() string {
+	if t.listWidth-5 < ShortListThreshold {
+		return t.duration()
+	}
+	return ""
+}
+
+// ellipsis truncates a string to maxLen characters, adding "..." if needed
 func ellipsis(s string, maxLen int) string {
+	if maxLen < EllipsisLength {
+		maxLen = EllipsisLength
+	}
+
 	runes := []rune(s)
 	if len(runes) <= maxLen {
 		return s
 	}
-	if maxLen < 3 {
-		maxLen = 3
+
+	return string(runes[0:maxLen-EllipsisLength]) + "..."
+}
+
+// FilterValue returns the value used for filtering
+func (t StepMsg) FilterValue() string {
+	values := []string{
+		t.DisplayName,
+		t.Name,
 	}
-	return string(runes[0:maxLen-3]) + "..."
+
+	for _, tag := range t.Tags {
+		values = append(values, tag.Key)
+		values = append(values, tag.Value)
+	}
+
+	return strings.Join(values, " ")
 }
 
-func (t *Task) FilterValue() string {
-	return t.name
-}
-
+// StepStatus represents the current state of a pipeline step
 type StepStatus int
 
 const (
@@ -127,25 +202,37 @@ const (
 	StepStatusSkipped
 )
 
-var eventTypes = []string{"waiting", "running", "failed", "done", "skipped"}
-
-func (e StepStatus) String() string {
-	return eventTypes[e]
+// Step status string representations
+var stepStatusStrings = []string{
+	"waiting",
+	"running",
+	"failed",
+	"done",
+	"skipped",
 }
 
+// String returns the string representation of the step status
+func (e StepStatus) String() string {
+	if int(e) >= len(stepStatusStrings) {
+		return "unknown"
+	}
+	return stepStatusStrings[e]
+}
+
+// Render returns the styled visual representation of the step status
 func (e StepStatus) Render() string {
 	switch e {
 	case StepStatusRunning:
-		return taskRunningStyle.Render("◴")
+		return stepRunningStyle.Render("◴")
 	case StepStatusDone:
-		return taskOkStyle.Render("✔")
+		return stepOkStyle.Render("✔")
 	case StepStatusFailed:
-		return taskFailedStyle.Render("✗")
+		return stepFailedStyle.Render("✗")
 	case StepStatusWaiting:
-		return taskWaitingStyle.Render("◎")
+		return stepWaitingStyle.Render("◎")
 	case StepStatusSkipped:
-		return taskWarningStyle.Render("⚠")
+		return stepWarningStyle.Render("⚠")
+	default:
+		return stepWaitingStyle.Render("?")
 	}
-
-	return ""
 }

@@ -37,6 +37,12 @@ func WithContext(ctx context.Context) func(*docker) {
 	}
 }
 
+func WithLogger(logger logr.Logger) func(*docker) {
+	return func(d *docker) {
+		d.logger = logger
+	}
+}
+
 func WithHidePullOutput(hide bool) func(*docker) {
 	return func(d *docker) {
 		d.hidePullOutput = hide
@@ -47,6 +53,7 @@ type docker struct {
 	client         *dockerclient.Client
 	self           *types.ContainerJSON
 	ctx            context.Context
+	logger         logr.Logger
 	hidePullOutput bool
 }
 
@@ -54,6 +61,7 @@ func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
 	d := &docker{
 		client: client,
 		ctx:    context.Background(),
+		logger: logr.Discard(),
 	}
 
 	for _, o := range opts {
@@ -93,7 +101,7 @@ func (d *docker) resetContainer(ctx context.Context, containerID string) error {
 func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
 	logger, err := logr.FromContext(ctx)
 	if err != nil {
-		return nil, err
+		logger = d.logger
 	}
 
 	for _, container := range pod.Spec.InitContainers {
@@ -226,6 +234,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 			return ctx.Err()
 		case await := <-waitC:
 			if await.StatusCode > 0 {
+				streams.Close()
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}
@@ -328,6 +337,15 @@ func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error
 	return err
 }
 
+func envSlice(env map[string]string) []string {
+	var envs []string
+	for k, v := range env {
+		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	return envs
+}
+
 func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
 	containerConfig := dockercontainer.Config{
 		Image:      container.Image,
@@ -335,7 +353,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 		OpenStdin:  container.Stdin,
 		Entrypoint: strslice.StrSlice(container.Command),
 		Cmd:        strslice.StrSlice(container.Args),
-		Env:        container.Env,
+		Env:        envSlice(container.Env),
 		WorkingDir: container.PWD,
 	}
 

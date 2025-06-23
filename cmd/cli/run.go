@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -20,36 +19,42 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/raffis/rageta/internal/dockersetup"
+	"github.com/raffis/rageta/internal/kubesetup"
+	"github.com/raffis/rageta/internal/mask"
+	"github.com/raffis/rageta/internal/ocisetup"
+	"github.com/raffis/rageta/internal/otelsetup"
+	"github.com/raffis/rageta/internal/output"
+	"github.com/raffis/rageta/internal/pipeline"
+	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/provider"
+	"github.com/raffis/rageta/internal/report"
+	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/styles"
+	"github.com/raffis/rageta/internal/tui"
+	"github.com/raffis/rageta/internal/utils"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	transport "github.com/raffis/rageta/pkg/http/middleware"
+	"github.com/sethvargo/go-retry"
+
 	"github.com/alitto/pond/v2"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
-	"github.com/raffis/rageta/internal/dockersetup"
-	"github.com/raffis/rageta/internal/ocisetup"
-	"github.com/raffis/rageta/internal/otelsetup"
-	"github.com/raffis/rageta/internal/output"
-	"github.com/raffis/rageta/internal/pipeline"
-	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/report"
-	cruntime "github.com/raffis/rageta/internal/runtime"
-	"github.com/raffis/rageta/internal/styles"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"golang.org/x/term"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
-
-	"github.com/raffis/rageta/internal/storage"
-	"github.com/raffis/rageta/internal/tui"
-	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	transport "github.com/raffis/rageta/pkg/http/middleware"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-	"go.uber.org/zap"
-	"golang.org/x/term"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/kubernetes"
 )
 
 var runCmd = &cobra.Command{
@@ -72,27 +77,37 @@ type runFlags struct {
 	contextDir          string        `env:"CONTEXT_DIR"`
 	inputs              []string      `env:"INPUTS"`
 	envs                []string      `env:"ENVS"`
+	secretEnvs          []string      `env:"SECRET_ENVS"`
 	volumes             []string      `env:"VOLUMES"`
+	retry               uint64        `env:"RETRY"`
 	skipDone            bool          `env:"SKIP_DONE"`
 	skipSteps           []string      `env:"SKIP_STEPS"`
 	logDetached         bool          `env:"LOG_DETACHED"`
+	fork                bool          `env:"FORK"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
-	decouple            bool          `env:"DECOUPLE"`
+	expand              bool          `env:"DECOUPLE"`
 	noProgress          bool          `env:"NO_PROGRESS"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
+	kubeOptions         *kubesetup.Options
 }
 
 var runArgs = newRunFlags()
 
 func newRunFlags() runFlags {
 	return runFlags{
-		ociOptions: ocisetup.DefaultOptions(),
+		kubeOptions: kubesetup.DefaultOptions(),
+		ociOptions:  ocisetup.DefaultOptions(),
 	}
 }
+
+var (
+	stdout io.Writer = os.Stdout
+	stderr io.Writer = os.Stderr
+)
 
 const otelName = "github.com/raffis/rageta"
 
@@ -107,8 +122,8 @@ func init() {
 	executionFlags.StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
 	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
-	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution. Useful for debugging purposes.")
-	executionFlags.BoolVarP(&runArgs.decouple, "decouple", "", false, "Decouple steps from inherited pipelines and display them as separate entities.")
+	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
+	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
 	executionFlags.BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
 	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
@@ -120,14 +135,18 @@ func init() {
 	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
+	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
+	executionFlags.Uint64VarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
 	runCmd.Flags().AddFlagSet(executionFlags)
 
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
 	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
+	pipelineFlags.BoolVarP(&runArgs.fork, "fork", "", runArgs.fork, "Creates a controller container which handles this pipeline and exit.")
+	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "s", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
 	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
-	pipelineFlags.StringSliceVarP(&runArgs.volumes, "volumes", "v", nil, "Pass volumes to the pipeline.")
+	pipelineFlags.StringSliceVarP(&runArgs.volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
 	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
-	pipelineFlags.StringVarP(&runArgs.user, "user", "", "", "Username or UID (format: <name|uid>[:<group|gid>])")
+	pipelineFlags.StringVarP(&runArgs.user, "user", "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
 	runCmd.Flags().AddFlagSet(pipelineFlags)
 
 	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
@@ -142,6 +161,10 @@ func init() {
 	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
 	runArgs.ociOptions.BindFlags(ociFlags)
 	runCmd.Flags().AddFlagSet(ociFlags)
+
+	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
+	runArgs.kubeOptions.BindFlags(kubeFlags)
+	runCmd.Flags().AddFlagSet(kubeFlags)
 
 	sets := []struct {
 		set         *pflag.FlagSet
@@ -158,6 +181,10 @@ func init() {
 		{
 			set:         dockerFlags,
 			displayName: "Docker runtime",
+		},
+		{
+			set:         kubeFlags,
+			displayName: "Kubernetes runtime",
 		},
 		{
 			set:         otelFlags,
@@ -202,7 +229,6 @@ var (
 	reportTypeTable    reportType = "table"
 	reportTypeJSON     reportType = "json"
 	reportTypeMarkdown reportType = "markdown"
-	reportTypeTimeline reportType = "timeline"
 )
 
 func (d reportType) String() string {
@@ -242,9 +268,9 @@ func electDefaultOutput() string {
 		renderOutputBufferDefaultTemplate = `{{- if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}{{- else }}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{- end }}`
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
-		return renderOutputPrefix.String()
+		return renderOutputUI.String()
 	default:
-		return renderOutputPrefixNoColor.String()
+		return renderOutputPrefix.String()
 	}
 }
 
@@ -282,7 +308,7 @@ func isPossiblyInsideKube() bool {
 	return set
 }
 
-func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool, contextDir string) (cruntime.Interface, error) {
+func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
 		c, err := runArgs.dockerOptions.Build()
@@ -295,12 +321,35 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		driver := cruntime.NewDocker(c,
 			cruntime.WithContext(ctx),
 			cruntime.WithHidePullOutput(hideOutput),
+			cruntime.WithLogger(logger),
 		)
 
+		return driver, err
+	case d == containerRuntimeKubernetes:
+		clientset, err := getRestClient(runArgs.kubeOptions.ConfigFlags)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kube client: %w", err)
+		}
+
+		driver := cruntime.NewKubernetes(clientset.CoreV1())
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
+}
+
+func getRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
+	config, err := kubeconfigArgs.ToRESTConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
+	return clientset, nil
 }
 
 func getRunLogger() (logr.Logger, *os.File, error) {
@@ -327,34 +376,37 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 func stepBuilder(
 	logger logr.Logger,
 	osEnv,
-	envs map[string]string,
+	envs,
+	secrets map[string]string,
+	secretStore mask.SecretStore,
 	celEnv *cel.Env,
 	driver cruntime.Interface,
 	imagePullPolicy cruntime.PullImagePolicy,
 	tracer trace.Tracer,
 	meter metric.Meter,
 	outputFactory processor.OutputFactory,
-	resultStore processor.ResultStore,
+	reporter processor.Reporter,
 	teardown chan processor.Teardown,
 	builder *processor.PipelineBuilder,
-	store storage.Interface,
+	provider provider.Interface,
 	pool pond.Pool,
 	template v1beta1.Template,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
-			processor.WithReport(resultStore),
+			processor.WithReport(reporter),
 			processor.WithRetry(),
-			processor.WithProgress(!runArgs.noProgress),
 			processor.WithResult(),
 			processor.WithInputVars(celEnv),
 			processor.WithEnvVars(osEnv, envs),
+			processor.WithSecretVars(osEnv, secrets, secretStore),
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
-			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.decouple),
+			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
+			processor.WithProgress(!runArgs.noProgress),
 			processor.WithOtelTrace(logger, tracer),
-			processor.WithLogger(logger, &zapConfig),
+			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
@@ -367,22 +419,29 @@ func stepBuilder(
 			processor.WithTmpDir(),
 			processor.WithStdioRedirect(runArgs.tee),
 			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
-			processor.WithInherit(*builder, store),
+			processor.WithInherit(*builder, provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
 			processor.WithPipe(runArgs.tee),
 		)
 
-		logger.V(1).Info("register step", "spec", spec)
-		for _, processor := range processors {
-			logger.V(1).Info("register step processor", "processor", fmt.Sprintf("%T", processor))
-		}
-
-		return processors
+		return processor.WithDebug(logger, zapConfig.Level.Level() == zap.DebugLevel, &spec, processors...)
 	}
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
+	maskedStdout := mask.Writer(os.Stdout, mask.DefaultMask)
+	maskedStderr := mask.Writer(os.Stderr, mask.DefaultMask)
+	stdout = maskedStdout
+	stderr = maskedStderr
+	secretWriter := mask.SecretWriter(maskedStdout, maskedStderr)
+	envs := envMap(runArgs.envs)
+	secrets := envMap(runArgs.secretEnvs)
+
+	for _, secretValue := range secrets {
+		secretWriter.AddSecrets([]byte(secretValue))
+	}
+
 	logger, _, err := getRunLogger()
 	if err != nil {
 		return err
@@ -399,32 +458,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-
-	var ref string
-	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		ref = args[0]
-	}
-
-	store := storage.New(
-		decoder,
-		storage.WithFile(),
-		storage.WithRagetafile(),
-		func(ctx context.Context, ref string) (io.Reader, error) {
-			runArgs.ociOptions.URL = ref
-			ociClient, err := runArgs.ociOptions.Build(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return storage.WithOCI(ociClient)(ctx, ref)
-		},
-	)
-
-	command, err := store.Lookup(ctx, ref)
+	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.dockerQuiet)
 	if err != nil {
 		return err
 	}
@@ -441,7 +475,46 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	logger.Info("use context directory", "path", contextDir)
 
-	driver, err := createContainerRuntime(ctx, containerRuntime(runArgs.containerRuntime), logger, runArgs.dockerQuiet, contextDir)
+	template, err := buildTemplate(contextDir)
+	if err != nil {
+		return fmt.Errorf("failed to create template: %w", err)
+	}
+
+	imagePullPolicy, err := imagePullPolicy()
+	if err != nil {
+		return err
+	}
+
+	if runArgs.fork {
+		return fork(ctx, driver, template, envs, imagePullPolicy)
+	}
+
+	scheme := kruntime.NewScheme()
+	v1beta1.AddToScheme(scheme)
+	factory := serializer.NewCodecFactory(scheme)
+	decoder := factory.UniversalDeserializer()
+
+	var ref string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		ref = args[0]
+	}
+
+	store := provider.New(
+		decoder,
+		provider.WithFile(),
+		provider.WithRagetafile(),
+		func(ctx context.Context, ref string) (io.Reader, error) {
+			runArgs.ociOptions.URL = ref
+			ociClient, err := runArgs.ociOptions.Build(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return provider.WithOCI(ociClient)(ctx, ref)
+		},
+	)
+
+	command, err := store.Lookup(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -466,11 +539,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("setup cel env failed: %w", err)
 	}
 
-	imagePullPolicy, err := imagePullPolicy()
-	if err != nil {
-		return err
-	}
-
 	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
 	if err != nil {
 		return err
@@ -479,15 +547,14 @@ func runRun(cmd *cobra.Command, args []string) error {
 	defer tp.Shutdown(context.Background())
 	meter := otel.Meter(otelName)
 
-	outputFactory, err := outputFactory(cancel)
+	outputFactory, err := outputFactory(logger, cancel)
 	if err != nil {
 		return err
 	}
 
-	var resultStore processor.ResultStore
-
-	if runArgs.report != "" && runArgs.report != "none" {
-		resultStore = &report.Store{}
+	reportFactory, err := reportFactory()
+	if err != nil {
+		return err
 	}
 
 	var teardownFuncs []processor.Teardown
@@ -500,14 +567,28 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}()
 
 	pool := pond.NewPool(runArgs.maxConcurrent)
-	template, err := buildTemplate(contextDir)
-	if err != nil {
-		return fmt.Errorf("failed to create template: %w", err)
-	}
 
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(stepBuilder(logger, osEnvMap(), envMap(), celEnv, driver, imagePullPolicy, tp.Tracer(otelName), meter, outputFactory, resultStore, teardown, &builder, store, pool, template)),
+		pipeline.WithStepBuilder(stepBuilder(
+			logger,
+			osEnvMap(),
+			envs,
+			secrets,
+			mask.SecretWriter(maskedStdout, maskedStderr),
+			celEnv,
+			driver,
+			imagePullPolicy,
+			tp.Tracer(otelName),
+			meter,
+			outputFactory,
+			reportFactory,
+			teardown,
+			&builder,
+			store,
+			pool,
+			template,
+		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
 	)
@@ -524,7 +605,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if flagStart := slices.Index(os.Args, "--"); flagStart != -1 {
 		err = flagSet.Parse(os.Args[flagStart+1:])
 		if err != nil {
-			return err
+			helpAndExit(flagSet, err)
 		}
 	}
 
@@ -534,39 +615,32 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	var result error
-	command.PipelineSpec.Name = ""
-	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, processor.NewContext())
+	command.Name = ""
+
+	stepCtx := processor.NewContext()
+	stepCtx.Context = ctx
+
+	pipelineCmd, err := builder.Build(command, runArgs.entrypoint, inputs, stepCtx)
 	if err != nil {
 		result = err
 	} else {
-		_, _, result = pipelineCmd(ctx)
+		result = retryRun(ctx, pipelineCmd)
 	}
 
 	logger.Info("pipeline completed", "result", result)
 
 	if tuiDone != nil {
-		if errors.Is(result, pipeline.ErrInvalidInput) {
+		/*if errors.Is(result, pipeline.ErrInvalidInput) {
 			tuiApp.Quit()
-		}
+		}*/
 
 		if result != nil {
-			tuiModel.SetStatus(tui.StepStatusFailed)
+			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusFailed, Error: result})
 		} else {
-			tuiModel.SetStatus(tui.StepStatusDone)
-		}
-
-		if resultStore, ok := resultStore.(*report.Store); ok {
-			buf := &bytes.Buffer{}
-
-			if err := printReport(buf, resultStore); err != nil {
-				fmt.Fprintln(buf, err)
-			}
-
-			tuiModel.Report(buf.Bytes())
+			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusDone, Error: result})
 		}
 
 		<-tuiDone
-		tuiApp.ReleaseTerminal()
 	}
 
 	if prefixOutputDone != nil {
@@ -600,41 +674,86 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	wg.Wait()
 
-	if resultStore, ok := resultStore.(*report.Store); ok && len(resultStore.Ordered()) != 0 {
-		outputPath := runArgs.reportOutput
-		var output *os.File
-		if outputPath == "/dev/stdout" || outputPath == "" {
-			output = os.Stdout
-		} else {
-			var err error
-			output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
-			if err != nil {
-				return err
-			}
-			defer output.Close()
-		}
-
-		if err := printReport(output, resultStore); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+	if reportFactory != nil {
+		if err := reportFactory.Finalize(); err != nil {
+			result = errors.Join(result, err)
 		}
 	}
 
 	if result != nil {
-		style := lipgloss.NewStyle().Bold(true)
-		fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Error:"))
-		fmt.Fprintln(os.Stderr, result.Error())
-
-		fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Inputs:"))
-		flagSet.PrintDefaults()
-
-		if res, ok := result.(*cruntime.Result); ok {
-			os.Exit(res.ExitCode)
-		}
-
-		os.Exit(1)
+		helpAndExit(flagSet, result)
 	}
 
 	return nil
+}
+
+func retryRun(ctx context.Context, pipeline processor.Executable) error {
+	var backoff retry.Backoff
+	return retry.Do(ctx, retry.WithMaxRetries(runArgs.retry, backoff), func(ctx context.Context) error {
+		_, _, result := pipeline()
+
+		if result != nil {
+			return retry.RetryableError(result)
+		}
+
+		return nil
+	})
+}
+
+func helpAndExit(flagSet *pflag.FlagSet, err error) {
+	style := lipgloss.NewStyle().Bold(true)
+	fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Error:"))
+	fmt.Fprintln(os.Stderr, err.Error())
+
+	fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Inputs:"))
+	flagSet.PrintDefaults()
+
+	if res, ok := err.(*cruntime.Result); ok {
+		os.Exit(res.ExitCode)
+	}
+
+	os.Exit(1)
+}
+
+func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Template, env map[string]string, imagePullPolicy cruntime.PullImagePolicy) error {
+	forkFlags := os.Args[1:]
+	forkFlags = slices.DeleteFunc(forkFlags, func(s string) bool {
+		return s == "--fork"
+	})
+
+	container := cruntime.ContainerSpec{
+		Name:            "rageta",
+		Image:           "ghcr.io/rageta/rageta:latest",
+		Args:            forkFlags,
+		Stdin:           true,
+		TTY:             term.IsTerminal(int(os.Stdout.Fd())),
+		Env:             env,
+		ImagePullPolicy: imagePullPolicy,
+	}
+
+	processor.ContainerSpec(&container, &template)
+
+	pod := cruntime.Pod{
+		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
+		Spec: cruntime.PodSpec{
+			Containers: []cruntime.ContainerSpec{
+				container,
+			},
+		},
+	}
+
+	status, err := driver.CreatePod(ctx, &pod, os.Stdin, stdout, stderr)
+	if err != nil {
+		return err
+	}
+
+	if !runArgs.noGC {
+		defer func() {
+			_ = driver.DeletePod(ctx, &pod)
+		}()
+	}
+
+	return status.Wait()
 }
 
 func buildTemplate(contextDir string) (v1beta1.Template, error) {
@@ -674,7 +793,6 @@ func buildTemplate(contextDir string) (v1beta1.Template, error) {
 			intOrStr := intstr.FromInt(guid)
 			tmpl.Guid = &intOrStr
 		}
-
 	}
 
 	return tmpl, nil
@@ -796,9 +914,9 @@ func osEnvMap() map[string]string {
 	return envs
 }
 
-func envMap() map[string]string {
+func envMap(from []string) map[string]string {
 	envs := make(map[string]string)
-	for _, v := range runArgs.envs {
+	for _, v := range from {
 		s := strings.SplitN(v, "=", 2)
 		if len(s) == 1 {
 			if env, ok := os.LookupEnv(s[0]); ok {
@@ -813,25 +931,39 @@ func envMap() map[string]string {
 }
 
 var (
-	tuiModel         tui.UI
+	tuiManager       *tui.Manager
+	tuiModel         tea.Model
 	tuiDone          chan struct{}
 	tuiApp           *tea.Program
 	prefixOutputDone chan struct{}
 	prefixOutputCH   chan output.PrefixMessage
 )
 
-func uiOutput(cancel context.CancelFunc) tui.UI {
+func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	if runArgs.output != "ui" {
 		return nil
 	}
 
-	if tuiModel != nil {
-		return tuiModel
+	if tuiApp != nil {
+		return tuiApp
 	}
 
 	tuiDone = make(chan struct{})
-	tuiModel = tui.NewModel()
-	tuiApp = tui.Program(tuiModel)
+	tuiModel = tui.NewUI(logger)
+	tuiManager = tui.NewManager(tuiModel)
+
+	tuiApp = tea.NewProgram(
+		tuiModel,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		tea.WithOutput(stdout),
+	)
+
+	go func() {
+		for c := range time.Tick(100 * time.Millisecond) {
+			tuiApp.Send(tui.TickMsg(c))
+		}
+	}()
 
 	go func() {
 		_, err := tuiApp.Run()
@@ -844,7 +976,7 @@ func uiOutput(cancel context.CancelFunc) tui.UI {
 		tuiDone <- struct{}{}
 	}()
 
-	return tuiModel
+	return tuiApp
 }
 
 func prefixOutput() chan output.PrefixMessage {
@@ -863,7 +995,7 @@ func prefixOutput() chan output.PrefixMessage {
 	return prefixOutputCH
 }
 
-func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
+func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.OutputFactory, error) {
 	var outputHandler processor.OutputFactory
 
 	outputOpt := strings.Split(runArgs.output, "=")
@@ -877,15 +1009,15 @@ func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 
 	switch renderer {
 	case renderOutputUI.String():
-		outputHandler = output.UI(uiOutput(cancel))
+		outputHandler = output.UI(uiOutput(logger, cancel))
 	case renderOutputPrefix.String():
-		outputHandler = output.Prefix(true, os.Stdout, os.Stderr, prefixOutput())
+		outputHandler = output.Prefix(true, stdout, stderr, prefixOutput())
 	case renderOutputPrefixNoColor.String():
-		outputHandler = output.Prefix(false, os.Stdout, os.Stderr, prefixOutput())
+		outputHandler = output.Prefix(true, stdout, stderr, prefixOutput())
 	case renderOutputPassthrough.String():
-		outputHandler = output.Passthrough(os.Stdout, os.Stderr)
+		outputHandler = output.Passthrough(stdout, stderr)
 	case renderOutputJSON.String():
-		outputHandler = output.JSON(os.Stdout, os.Stderr)
+		outputHandler = output.JSON(stdout, stderr)
 	case renderOutputBuffer.String():
 		if opts == "" {
 			opts = renderOutputBufferDefaultTemplate
@@ -896,29 +1028,40 @@ func outputFactory(cancel context.CancelFunc) (processor.OutputFactory, error) {
 			return nil, fmt.Errorf("failed to parse report buffer template: %w", err)
 		}
 
-		outputHandler = output.Buffer(tmpl, os.Stdout)
+		outputHandler = output.Buffer(tmpl, stdout)
 	default:
-		return nil, fmt.Errorf("invalid output format given: %s", runArgs.output)
+		return nil, fmt.Errorf("invalid output type given: %s", runArgs.output)
 	}
 
 	return outputHandler, nil
 }
 
-func printReport(w io.Writer, store *report.Store) error {
-	switch runArgs.report {
-	case reportTypeTable.String():
-		report.Table(w, store.Ordered())
-	case reportTypeJSON.String():
-		report.JSON(w, store.Ordered())
-	case reportTypeTimeline.String():
-		return report.Timeline(w, store.Ordered())
-	case reportTypeMarkdown.String():
-		return report.Markdown(w, store.Ordered())
-	case reportTypeNone.String():
-		return nil
-	default:
-		return errors.New("unknown report type given")
+type reporter interface {
+	report.Finalizer
+	processor.Reporter
+}
+
+func reportFactory() (reporter, error) {
+	outputPath := runArgs.reportOutput
+	var output io.Writer
+	if outputPath == "/dev/stdout" || outputPath == "" {
+		output = stdout
+	} else {
+		var err error
+		output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return nil
+	switch runArgs.report {
+	case reportTypeNone.String():
+		return nil, nil
+	case reportTypeTable.String():
+		return report.Table(output), nil
+	case reportTypeMarkdown.String():
+		return report.Markdown(output), nil
+	default:
+		return nil, fmt.Errorf("invalid report type given: %s", runArgs.report)
+	}
 }

@@ -6,7 +6,6 @@ import (
 )
 
 type Interface interface {
-	//Watch(ctx context.Context, pod *Pod) chan Event
 	CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error)
 	DeletePod(ctx context.Context, pod *Pod) error
 }
@@ -46,7 +45,7 @@ type ContainerSpec struct {
 	ImagePullPolicy PullImagePolicy
 	Stdin           bool
 	TTY             bool
-	Env             []string
+	Env             map[string]string
 	Uid             *int
 	Guid            *int
 	PWD             string

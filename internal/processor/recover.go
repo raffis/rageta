@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"fmt"
 	"runtime/debug"
 
@@ -21,15 +20,15 @@ type Recover struct {
 }
 
 func (s *Recover) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx context.Context, stepContext StepContext) (out StepContext, err error) {
-		out = stepContext
+	return func(ctx StepContext) (out StepContext, err error) {
+		out = ctx
 		defer func() {
 			if r := recover(); r != nil {
 				err = fmt.Errorf("panic in step `%s`: %#v\n trace:\n%s", s.stepName, r, debug.Stack())
 			}
 		}()
 
-		out, err = next(ctx, stepContext)
+		out, err = next(ctx)
 		return
 	}, nil
 }
