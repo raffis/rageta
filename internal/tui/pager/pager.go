@@ -56,7 +56,7 @@ type Model struct {
 	Style           lipgloss.Style
 
 	initialized  bool
-	lines        []string
+	lines        []line
 	lineEnd      bool
 	scanString   string
 	matchCount   int
@@ -64,6 +64,11 @@ type Model struct {
 	matchLines   []int
 	searchState  SearchState
 	filterInput  textinput.Model
+}
+
+type line struct {
+	msg   string
+	width int
 }
 
 func (m *Model) setInitialValues() {
@@ -107,12 +112,20 @@ func (m Model) ScrollPercent() float64 {
 	return math.Max(0.0, math.Min(1.0, v))
 }
 
-// SetContent replaces the pager's text content. For high performance rendering the
-// Sync command should also be called.
+// SetContent replaces the pager's text content.
 func (m *Model) SetContent(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n") // normalize line endings
 	s = strings.ReplaceAll(s, "\r", "")     // remove carriage returns (avoid breaking the ui)
-	m.lines = strings.Split(s, "\n")
+
+	lines := strings.Split(s, "\n")
+	m.lines = make([]line, 0, len(lines))
+
+	for _, l := range lines {
+		m.lines = append(m.lines, line{
+			msg:   l,
+			width: lipgloss.Width(l),
+		})
+	}
 
 	if m.YOffset > len(m.lines)-1 || m.AutoScroll {
 		m.GotoBottom()
@@ -133,7 +146,7 @@ func (m *Model) Write(b []byte) (int, error) {
 	if len(m.lines) > 0 && !m.lineEnd {
 		lastLine := m.lines[len(m.lines)-1]
 		m.lines = m.lines[:len(m.lines)-1]
-		s = lastLine + s
+		s = lastLine.msg + s
 	}
 
 	m.lineEnd = strings.HasSuffix(s, "\n")
@@ -142,7 +155,12 @@ func (m *Model) Write(b []byte) (int, error) {
 		s = strings.TrimSuffix(s, "\n")
 	}
 
-	m.lines = append(m.lines, strings.Split(s, "\n")...)
+	for _, l := range strings.Split(s, "\n") {
+		m.lines = append(m.lines, line{
+			msg:   l,
+			width: lipgloss.Width(l),
+		})
+	}
 
 	if m.AutoScroll {
 		m.GotoBottom()
@@ -154,7 +172,17 @@ func (m *Model) Write(b []byte) (int, error) {
 // maxYOffset returns the maximum possible value of the y-offset based on the
 // viewport's content and set height.
 func (m Model) maxYOffset() int {
-	return max(0, len(m.lines)-m.Height)
+	var offset int
+
+	for i := len(m.lines) - 1; i >= 0; i-- {
+		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width)))
+
+		if offset >= m.Height {
+			return i - 1
+		}
+	}
+
+	return m.YOffset
 }
 
 // visibleLines returns the lines that should currently be visible in the
@@ -168,9 +196,13 @@ func (m Model) visibleLines() []string {
 	top := max(0, m.YOffset)
 	var contentHeight int
 
+	if top >= len(m.lines) {
+		top = len(m.lines)
+	}
+
 	for _, line := range m.lines[top:] {
-		contentHeight += (lipgloss.Width(line) + (m.Width - 1)) / m.Width
-		lines = append(lines, line)
+		contentHeight += int(math.Ceil(float64(line.width) / float64(m.Width)))
+		lines = append(lines, line.msg)
 
 		if contentHeight >= m.Height {
 			break
@@ -186,35 +218,22 @@ func (m *Model) SetYOffset(n int) {
 }
 
 // LineDown moves the view down by the given number of lines.
-func (m *Model) LineDown(n int) (lines []string) {
+func (m *Model) LineDown(n int) {
 	if m.AtBottom() || n == 0 || len(m.lines) == 0 {
-		return nil
+		return
 	}
 
-	// Make sure the number of lines by which we're going to scroll isn't
-	// greater than the number of lines we actually have left before we reach
-	// the bottom.
 	m.SetYOffset(m.YOffset + n)
-
-	// Return the visible lines after scrolling
-	return m.visibleLines()
 }
 
 // LineUp moves the view down by the given number of lines. Returns the new
 // lines to show.
-func (m *Model) LineUp(n int) (lines []string) {
+func (m *Model) LineUp(n int) {
 	if m.AtTop() || n == 0 || len(m.lines) == 0 {
-		return nil
+		return
 	}
 
-	// Make sure the number of lines by which we're going to scroll isn't
-	// greater than the number of lines we are from the top.
 	m.SetYOffset(m.YOffset - n)
-
-	// Gather lines to send off for performance scrolling.
-	top := max(0, m.YOffset)
-	bottom := clamp(m.YOffset+n, 0, m.maxYOffset())
-	return m.lines[top:bottom]
 }
 
 // TotalLineCount returns the total number of lines (both hidden and visible) within the viewport.
@@ -222,25 +241,9 @@ func (m Model) TotalLineCount() int {
 	return len(m.lines)
 }
 
-// VisibleLineCount returns the number of the visible lines within the viewport.
-func (m Model) VisibleLineCount() int {
-	return len(m.visibleLines())
-}
-
-// GotoTop sets the viewport to the top position.
-func (m *Model) GotoTop() (lines []string) {
-	if m.AtTop() {
-		return nil
-	}
-
-	m.SetYOffset(0)
-	return m.visibleLines()
-}
-
 // GotoBottom sets the viewport to the bottom position.
-func (m *Model) GotoBottom() (lines []string) {
+func (m *Model) GotoBottom() {
 	m.SetYOffset(m.maxYOffset())
-	return m.visibleLines()
 }
 
 // Update handles standard message-based viewport updates.
@@ -323,7 +326,7 @@ func (m *Model) ScanAfter(str string) int {
 
 	// Find all matches
 	for i, line := range m.lines {
-		if strings.Contains(line, str) {
+		if strings.Contains(line.msg, str) {
 			m.matchLines = append(m.matchLines, i)
 			m.matchCount++
 		}
@@ -359,7 +362,7 @@ func (m *Model) ScanBefore(str string) int {
 
 	// Find all matches
 	for i, line := range m.lines {
-		if strings.Contains(line, str) {
+		if strings.Contains(line.msg, str) {
 			m.matchLines = append(m.matchLines, i)
 			m.matchCount++
 		}

@@ -79,7 +79,7 @@ type runFlags struct {
 	envs                []string      `env:"ENVS"`
 	secretEnvs          []string      `env:"SECRET_ENVS"`
 	volumes             []string      `env:"VOLUMES"`
-	retry               int           `env:"RETRY"`
+	retry               uint64        `env:"RETRY"`
 	skipDone            bool          `env:"SKIP_DONE"`
 	skipSteps           []string      `env:"SKIP_STEPS"`
 	logDetached         bool          `env:"LOG_DETACHED"`
@@ -136,7 +136,7 @@ func init() {
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
 	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
-	executionFlags.IntVarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
+	executionFlags.Uint64VarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
 	runCmd.Flags().AddFlagSet(executionFlags)
 
 	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
@@ -689,22 +689,15 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 func retryRun(ctx context.Context, pipeline processor.Executable) error {
 	var backoff retry.Backoff
-	if runArgs.retry > 0 {
-		if err := retry.Do(ctx, retry.WithMaxRetries(3, backoff), func(ctx context.Context) error {
-			_, _, result := pipeline()
+	return retry.Do(ctx, retry.WithMaxRetries(runArgs.retry, backoff), func(ctx context.Context) error {
+		_, _, result := pipeline()
 
-			if result != nil {
-				return retry.RetryableError(result)
-			}
-
-			return nil
-		}); err != nil {
-			return err
+		if result != nil {
+			return retry.RetryableError(result)
 		}
-	}
 
-	_, _, result := pipeline()
-	return result
+		return nil
+	})
 }
 
 func helpAndExit(flagSet *pflag.FlagSet, err error) {
