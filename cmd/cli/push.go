@@ -97,8 +97,10 @@ type pushFlags struct {
 var pushArgs = newpushFlags()
 
 func newpushFlags() pushFlags {
+	opts := ocisetup.DefaultOptions()
+	opts.Timeout = rootArgs.timeout
 	return pushFlags{
-		ociOptions: ocisetup.DefaultOptions(),
+		ociOptions: opts,
 	}
 }
 
@@ -199,7 +201,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if pushArgs.output == "" {
-		logger.Info("pushing artifact to %s", ociURL)
+		logger.Info("pushing artifact to %s", "url", ociURL)
 	}
 
 	digestURL, err := ociClient.Push(ctx, ociURL, path,
@@ -253,7 +255,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		}
 		rootCmd.Print(string(marshalled))
 	default:
-		logger.Info("artifact successfully pushed to %s", digestURL)
+		logger.Info("artifact successfully pushed to %s", "url", digestURL)
 	}
 
 	return nil
