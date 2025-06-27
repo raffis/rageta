@@ -4,26 +4,27 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithProgress(progress bool) ProcessorBuilder {
+func WithMonitor(progress bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if !progress {
 			return nil
 		}
 
-		return &Progress{
+		return &Monitor{
 			stepName: spec.Name,
 		}
 	}
 }
 
-type Progress struct {
+type Monitor struct {
 	stepName string
 }
 
-func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ticker := time.NewTicker(5 * time.Second)
 		quit := make(chan struct{})
@@ -33,7 +34,7 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		progress := func() {
 			if ctx.Stderr != nil {
-				ctx.Stderr.Write(fmt.Appendf(nil, "Waiting for %s to finish\n", s.stepName))
+				ctx.Stderr.Write([]byte(styles.Highlight.Render(fmt.Sprintf("Waiting for %q to finish\n", s.stepName))))
 			}
 		}
 
@@ -50,6 +51,11 @@ func (s *Progress) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}()
 
 		progress()
-		return next(ctx)
+		ctx, err := next(ctx)
+		if err != nil {
+			ctx.Stderr.Write([]byte(styles.Highlight.Render(fmt.Sprintf("Error occurred: %q\n", err.Error()))))
+		}
+
+		return ctx, err
 	}, nil
 }

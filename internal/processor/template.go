@@ -12,19 +12,19 @@ func WithTemplate(template v1beta1.Template) ProcessorBuilder {
 		return &Template{
 			globalTemplate: template,
 			stepTemplate:   spec.Template,
-			n:              spec.Name,
 		}
 	}
 }
 
 type Template struct {
-	n              string
 	globalTemplate v1beta1.Template
 	stepTemplate   *v1beta1.Template
 }
 
 func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		originTemplate := ctx.Template
+
 		if ctx.Template == nil {
 			ctx.Template = &s.globalTemplate
 		}
@@ -35,7 +35,9 @@ func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		return next(ctx)
+		ctx, err := next(ctx)
+		ctx.Template = originTemplate
+		return ctx, err
 	}, nil
 }
 

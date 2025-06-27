@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/google/cel-go/cel"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -45,6 +46,9 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}
 
 	return func(ctx StepContext) (StepContext, error) {
+		originInputs := make(map[string]v1beta1.ParamValue, len(ctx.Inputs))
+		maps.Copy(originInputs, ctx.Inputs)
+
 		vars := ctx.ToV1Beta1()
 		for _, input := range s.inputs {
 			switch {
@@ -73,6 +77,8 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		return next(ctx)
+		ctx, err := next(ctx)
+		ctx.Inputs = originInputs
+		return ctx, err
 	}, nil
 }

@@ -404,7 +404,7 @@ func stepBuilder(
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
-			processor.WithProgress(!runArgs.noProgress),
+			processor.WithMonitor(!runArgs.noProgress),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
