@@ -13,7 +13,7 @@ func WithDebug(logger logr.Logger, debug bool, spec *v1beta1.Step, processors ..
 	}
 
 	for k, v := range processors {
-		logger.V(1).Info("step", "spec", spec)
+		logger.V(5).Info("step", "spec", spec)
 
 		processors[k] = &Debug{
 			spec:    spec,
@@ -33,16 +33,16 @@ type Debug struct {
 
 func (s *Debug) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	logger := s.logger.WithValues("step", s.spec.Name, "processor", fmt.Sprintf("%T", s.wrapped))
-	logger.V(1).Info("register step processor")
+	logger.V(7).Info("register step processor")
 	wrappedNext, err := s.wrapped.Bootstrap(pipeline, next)
 	if err != nil {
 		return next, err
 	}
 
 	return func(ctx StepContext) (StepContext, error) {
-		logger.V(1).Info("pre processor", "context", ctx)
+		logger.V(6).Info("pre processor", "context", ctx)
 		ctx, err := wrappedNext(ctx)
-		logger.V(1).Info("post processor", "context", ctx, "err", err)
+		logger.V(6).Info("post processor", "context", ctx, "err", err)
 
 		return ctx, err
 	}, nil

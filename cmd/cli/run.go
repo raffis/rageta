@@ -34,13 +34,13 @@ import (
 	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	transport "github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/sethvargo/go-retry"
 
 	"github.com/alitto/pond/v2"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"
 	"github.com/spf13/cobra"
@@ -86,7 +86,8 @@ type runFlags struct {
 	fork                bool          `env:"FORK"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"DECOUPLE"`
-	noProgress          bool          `env:"NO_PROGRESS"`
+	noUpdate            bool          `env:"NO_UPDATE"`
+	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
 	otelOptions         otelsetup.Options
@@ -121,11 +122,12 @@ func init() {
 	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
 	executionFlags.StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
+	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
 	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
-	executionFlags.BoolVarP(&runArgs.noProgress, "no-progress", "", false, "Do not print wait updates for steps to stderr")
+	executionFlags.BoolVarP(&runArgs.noUpdate, "no-update", "", false, "Do not print task status messages")
+	executionFlags.DurationVarP(&runArgs.waitUpdateInterval, "wait-update-interval", "", time.Second*5, "Print waiting for task status updates every n interval")
 	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
 	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
@@ -243,6 +245,7 @@ var (
 	renderOutputUI                    renderOutput = "ui"
 	renderOutputPassthrough           renderOutput = "passthrough"
 	renderOutputJSON                  renderOutput = "json"
+	renderOutputDiscard               renderOutput = "discard"
 	renderOutputBuffer                renderOutput = "buffer"
 	renderOutputBufferDefaultTemplate string       = "{{ .Buffer }}"
 )
@@ -311,12 +314,11 @@ func isPossiblyInsideKube() bool {
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
 	switch {
 	case d == containerRuntimeDocker:
+		runArgs.dockerOptions.Logger = logger
 		c, err := runArgs.dockerOptions.Build()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create docker client: %w", err)
 		}
-
-		c.HTTPClient().Transport = transport.NewLogger(logger, c.HTTPClient().Transport)
 
 		driver := cruntime.NewDocker(c,
 			cruntime.WithContext(ctx),
@@ -362,12 +364,13 @@ func getRunLogger() (logr.Logger, *os.File, error) {
 		config := zap.NewDevelopmentConfig()
 		config.ErrorOutputPaths = []string{f.Name()}
 		config.OutputPaths = []string{f.Name()}
-		l, err := buildLogger(config)
+
+		zapLog, err := config.Build()
 		if err != nil {
-			return logger, f, err
+			return logger, nil, err
 		}
 
-		return l, f, nil
+		return zapr.NewLogger(zapLog), f, nil
 	}
 
 	return logger, os.Stderr, nil
@@ -391,6 +394,7 @@ func stepBuilder(
 	provider provider.Interface,
 	pool pond.Pool,
 	template v1beta1.Template,
+	monitorDev io.Writer,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
@@ -398,13 +402,14 @@ func stepBuilder(
 			processor.WithReport(reporter),
 			processor.WithRetry(),
 			processor.WithResult(),
+			processor.WithTmpDir(),
 			processor.WithInputVars(celEnv),
 			processor.WithEnvVars(osEnv, envs),
 			processor.WithSecretVars(osEnv, secrets, secretStore),
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
-			processor.WithMonitor(!runArgs.noProgress),
+			processor.WithMonitor(!runArgs.noUpdate, runArgs.waitUpdateInterval, monitorDev),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
@@ -416,7 +421,6 @@ func stepBuilder(
 			processor.WithIf(celEnv),
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
-			processor.WithTmpDir(),
 			processor.WithStdioRedirect(runArgs.tee),
 			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
 			processor.WithInherit(*builder, provider),
@@ -425,7 +429,7 @@ func stepBuilder(
 			processor.WithPipe(runArgs.tee),
 		)
 
-		return processor.WithDebug(logger, zapConfig.Level.Level() == zap.DebugLevel, &spec, processors...)
+		return processor.WithDebug(logger, zapConfig.Level.Level() <= -5, &spec, processors...)
 	}
 }
 
@@ -473,7 +477,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		contextDir = tmpDir
 	}
 
-	logger.Info("use context directory", "path", contextDir)
+	logger.V(1).Info("use context directory", "path", contextDir)
 
 	template, err := buildTemplate(contextDir)
 	if err != nil {
@@ -568,6 +572,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	pool := pond.NewPool(runArgs.maxConcurrent)
 
+	monitorDev := io.Discard
+	if runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String() {
+		monitorDev = stderr
+	}
+
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
 		pipeline.WithStepBuilder(stepBuilder(
@@ -588,6 +597,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			store,
 			pool,
 			template,
+			monitorDev,
 		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
@@ -665,7 +675,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		wg.Add(1)
 		go func(teardownFunc processor.Teardown) {
 			defer wg.Done()
-			logger.V(1).Info("execute teardown", "func", teardownFunc)
+			logger.V(-3).Info("execute teardown", "func", teardownFunc)
 			if err := teardownFunc(teardownCtx); err != nil {
 				logger.Error(err, "failed execute teardown")
 			}
@@ -949,7 +959,7 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	}
 
 	tuiDone = make(chan struct{})
-	tuiModel = tui.NewUI(logger)
+	tuiModel = tui.NewUI(logger.WithValues("component", "tui"))
 	tuiManager = tui.NewManager(tuiModel)
 
 	tuiApp = tea.NewProgram(
@@ -1018,6 +1028,8 @@ func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.Out
 		outputHandler = output.Passthrough(stdout, stderr)
 	case renderOutputJSON.String():
 		outputHandler = output.JSON(stdout, stderr)
+	case renderOutputDiscard.String():
+		outputHandler = output.Discard()
 	case renderOutputBuffer.String():
 		if opts == "" {
 			opts = renderOutputBufferDefaultTemplate

@@ -132,8 +132,7 @@ func (m *Model) SetContent(s string) {
 	}
 }
 
-// Write adds new content to the pager. For high performance rendering the
-// Sync command should also be called.
+// Write adds new content to the pager
 func (m *Model) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
@@ -155,7 +154,7 @@ func (m *Model) Write(b []byte) (int, error) {
 		s = strings.TrimSuffix(s, "\n")
 	}
 
-	for _, l := range strings.Split(s, "\n") {
+	for l := range strings.SplitSeq(s, "\n") {
 		m.lines = append(m.lines, line{
 			msg:   l,
 			width: lipgloss.Width(l),

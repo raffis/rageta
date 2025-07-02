@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -55,7 +56,7 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		logger := s.logger
 
-		if ctx.Stderr != nil && !s.detached {
+		if ctx.Stderr != nil && ctx.Stderr != io.Discard && !s.detached {
 			core := zapcore.NewCore(
 				encoder,
 				zapcore.AddSync(ctx.Stderr),
@@ -68,13 +69,12 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			for _, tag := range ctx.Tags() {
 				logger = logger.WithValues(tag.Key, tag.Value)
 			}
-
-			ctx.Context = logr.NewContext(ctx, logger)
 		}
 
-		logger.V(1).Info("step context input", "context", ctx)
+		ctx.Context = logr.NewContext(ctx, logger)
+		logger.V(2).Info("step context input", "context", ctx)
 		ctx, err := next(ctx)
-		logger.V(1).Info("step done", "err", err, "context", ctx)
+		logger.V(2).Info("step done", "err", err, "context", ctx)
 
 		return ctx, err
 	}, nil

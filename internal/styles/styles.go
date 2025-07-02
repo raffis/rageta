@@ -10,7 +10,7 @@ import (
 var (
 	Bold      = lipgloss.NewStyle().Bold(true)
 	TagLabel  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#000000"}).PaddingRight(1).PaddingLeft(1)
-	Highlight = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#CCC", Dark: "#666666"})
+	Highlight = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#CCCCCC", Dark: "#666666"}).Padding(0, 0, 0, 0).Margin(0, 0, 0, 0)
 )
 
 func RandHEXColor(min, max int) string {

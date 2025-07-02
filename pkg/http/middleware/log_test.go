@@ -1,6 +1,6 @@
 //go:build unit
 
-package transport
+package middleware
 
 import (
 	"errors"
