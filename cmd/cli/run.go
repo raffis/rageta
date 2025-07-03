@@ -123,7 +123,7 @@ func init() {
 	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
 	executionFlags.StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, prefix-nocolor, ui, json, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
+	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, ui, json, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
 	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
@@ -242,7 +242,6 @@ type renderOutput string
 
 var (
 	renderOutputPrefix                renderOutput = "prefix"
-	renderOutputPrefixNoColor         renderOutput = "prefix-nocolor"
 	renderOutputUI                    renderOutput = "ui"
 	renderOutputPassthrough           renderOutput = "passthrough"
 	renderOutputJSON                  renderOutput = "json"
@@ -269,7 +268,27 @@ func (d containerRuntime) String() string {
 func electDefaultOutput() string {
 	switch {
 	case os.Getenv("GITHUB_ACTIONS") == "true":
-		renderOutputBufferDefaultTemplate = `{{- if .Error }}{{ printf "%s %s\n%s\n" .Symbol .StepName .Buffer }}{{- else }}{{ printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol .StepName .Buffer }}{{- end }}`
+		renderOutputBufferDefaultTemplate = `
+            {{- $tags := "" }}
+		    {{- range $tag := .Tags}}
+				{{- if eq $tags "" }}
+					{{- $tags = printf "%s=%s" $tag.Key $tag.Value }}
+				{{- else }}
+					{{- $tags = printf "%s %s=%s" $tags $tag.Key $tag.Value }}
+				{{- end }}
+			{{- end }}
+
+			{{- $stepName := .StepName }}
+			{{- if $tags }}
+				{{- $stepName = printf "%s[%s]" .StepName $tags }}
+			{{- end }}
+
+			{{- if .Error }}
+				{{- printf "%s %s\n%s\n" .Symbol $stepName .Buffer }}
+			{{- else }}
+				{{- printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol $stepName .Buffer }}
+			{{- end }}`
+
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
 	case term.IsTerminal(int(os.Stdout.Fd())):
 		return renderOutputUI.String()
@@ -313,6 +332,8 @@ func isPossiblyInsideKube() bool {
 }
 
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
+	logger.V(3).Info("create container runtime client", "container-runtime", d)
+
 	switch {
 	case d == containerRuntimeDocker:
 		runArgs.dockerOptions.Logger = logger
@@ -412,7 +433,6 @@ func stepBuilder(
 			processor.WithReport(reporter),
 			processor.WithRetry(),
 			processor.WithResult(),
-			processor.WithTmpDir(),
 			processor.WithInputVars(celEnv),
 			processor.WithEnvVars(osEnv, envs),
 			processor.WithSecretVars(osEnv, secrets, secretStore),
@@ -429,6 +449,7 @@ func stepBuilder(
 			processor.WithTimeout(),
 			processor.WithSkipDone(runArgs.skipDone),
 			processor.WithIf(celEnv),
+			processor.WithTmpDir(),
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithStdioRedirect(runArgs.tee),
@@ -471,7 +492,28 @@ func runRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	secretWriter := mask.SecretWriter(maskedStdout, maskedStderr)
+	secretWriters := []mask.SecretStore{
+		maskedStdout,
+		maskedStderr,
+		maskedLog,
+	}
+
+	reportOutput := runArgs.reportOutput
+	var reportDev io.Writer
+
+	if reportOutput == "/dev/stdout" || reportOutput == "" {
+		reportDev = maskedStdout
+	} else {
+		output, err := os.OpenFile(reportOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+		if err != nil {
+			return err
+		}
+
+		reportDev = mask.Writer(output, mask.DefaultMask)
+		secretWriters = append(secretWriters, reportDev.(mask.SecretStore))
+	}
+
+	secretWriter := mask.SecretWriter(secretWriters...)
 	envs := envMap(runArgs.envs)
 	secrets := envMap(runArgs.secretEnvs)
 
@@ -479,6 +521,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		secretWriter.AddSecrets([]byte(secretValue))
 	}
 
+	logger.V(5).Info("run flags", "args", runArgs)
 	logger.V(1).Info("log file at", "path", logFile.Name())
 
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -548,6 +591,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		},
 	)
 
+	logger.V(3).Info("resolve pipeline reference", "source", ref)
 	command, err := store.Lookup(ctx, ref)
 	if err != nil {
 		return err
@@ -586,7 +630,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	reportFactory, err := reportFactory()
+	reportFactory, err := reportFactory(reportDev)
 	if err != nil {
 		return err
 	}
@@ -600,6 +644,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	logger.V(3).Info("worker pool", "max-concurrency", runArgs.maxConcurrent)
 	pool := pond.NewPool(runArgs.maxConcurrent)
 
 	monitorDev := io.Discard
@@ -615,7 +660,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			osEnvMap(),
 			envs,
 			secrets,
-			mask.SecretWriter(maskedStdout, maskedStderr),
+			secretWriter,
 			celEnv,
 			driver,
 			imagePullPolicy,
@@ -706,7 +751,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		wg.Add(1)
 		go func(teardownFunc processor.Teardown) {
 			defer wg.Done()
-			logger.V(-3).Info("execute teardown", "func", teardownFunc)
+			logger.V(-5).Info("execute teardown")
 			if err := teardownFunc(teardownCtx); err != nil {
 				logger.Error(err, "failed execute teardown")
 			}
@@ -731,10 +776,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 func retryRun(ctx context.Context, pipeline processor.Executable) error {
 	var backoff retry.Backoff
 	return retry.Do(ctx, retry.WithMaxRetries(runArgs.retry, backoff), func(ctx context.Context) error {
-		_, _, result := pipeline()
+		_, _, err := pipeline()
 
-		if result != nil {
-			return retry.RetryableError(result)
+		if err != nil {
+			logger.V(0).Error(err, "pipeline failed, retry backoff")
+			return retry.RetryableError(err)
 		}
 
 		return nil
@@ -757,6 +803,8 @@ func helpAndExit(flagSet *pflag.FlagSet, err error) {
 }
 
 func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Template, env map[string]string, imagePullPolicy cruntime.PullImagePolicy) error {
+	logger.V(0).Info("fork pipeline runner, attaching streams. This process can be exited using ctrl+c")
+
 	forkFlags := os.Args[1:]
 	forkFlags = slices.DeleteFunc(forkFlags, func(s string) bool {
 		return s == "--fork"
@@ -1028,7 +1076,7 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 }
 
 func prefixOutput() chan output.PrefixMessage {
-	if runArgs.output != "prefix" && runArgs.output != "prefix-nocolor" {
+	if runArgs.output != "prefix" {
 		return nil
 	}
 
@@ -1059,9 +1107,7 @@ func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.Out
 	case renderOutputUI.String():
 		outputHandler = output.UI(uiOutput(logger, cancel))
 	case renderOutputPrefix.String():
-		outputHandler = output.Prefix(true, stdout, stderr, prefixOutput())
-	case renderOutputPrefixNoColor.String():
-		outputHandler = output.Prefix(true, stdout, stderr, prefixOutput())
+		outputHandler = output.Prefix(stdout, stderr, prefixOutput())
 	case renderOutputPassthrough.String():
 		outputHandler = output.Passthrough(stdout, stderr)
 	case renderOutputJSON.String():
@@ -1091,26 +1137,14 @@ type reporter interface {
 	processor.Reporter
 }
 
-func reportFactory() (reporter, error) {
-	outputPath := runArgs.reportOutput
-	var output io.Writer
-	if outputPath == "/dev/stdout" || outputPath == "" {
-		output = stdout
-	} else {
-		var err error
-		output, err = os.OpenFile(outputPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func reportFactory(w io.Writer) (reporter, error) {
 	switch runArgs.report {
 	case reportTypeNone.String():
 		return nil, nil
 	case reportTypeTable.String():
-		return report.Table(output), nil
+		return report.Table(w), nil
 	case reportTypeMarkdown.String():
-		return report.Markdown(output), nil
+		return report.Markdown(w), nil
 	default:
 		return nil, fmt.Errorf("invalid report type given: %s", runArgs.report)
 	}

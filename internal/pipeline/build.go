@@ -100,7 +100,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		return nil, err
 	}
 
-	e.logger.Info("build task from pipeline spec", "pipeline", pipeline, "inputs", mappedInputs)
+	e.logger.V(1).Info("build task from pipeline spec", "pipeline", pipeline, "inputs", mappedInputs)
 	pipelineCtx, err := e.buildPipeline(pipeline)
 	if err != nil {
 		return nil, err
@@ -118,21 +118,20 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		contextDir = filepath.Join(contextDir, pipeline.Name)
 	}
 
-	if _, err := os.Stat(contextDir); errors.Is(err, os.ErrNotExist) {
-		err := os.MkdirAll(contextDir, 0700)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.Dir = contextDir
 		stepCtx.DataDir = filepath.Join(contextDir, "_data")
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
 		stepCtx.Steps = make(map[string]*processor.StepContext)
 		stepCtx.Inputs = mappedInputs
-
 		outputs := make(map[string]v1beta1.ParamValue)
+
+		if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
+			err := os.MkdirAll(stepCtx.DataDir, 0700)
+			if err != nil {
+				return stepCtx, outputs, fmt.Errorf("failed to create context dir: %w", err)
+			}
+		}
 
 		if err := recoverContext(stepCtx, contextDir); err != nil {
 			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)

@@ -27,7 +27,7 @@ func (r *markdown) Report(ctx processor.StepContext, name string) error {
 
 func (r *markdown) Finalize() error {
 	fmt.Fprintln(r.w, "| # | Step | Status | Duration | Tags | Error |")
-	fmt.Fprintln(r.w, "| --- | --- | --- | --- | --- |")
+	fmt.Fprintln(r.w, "| --- | --- | --- | --- | --- | --- |")
 
 	for i, step := range r.store.Ordered() {
 		var tags []string

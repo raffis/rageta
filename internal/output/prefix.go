@@ -47,15 +47,10 @@ func TerminalWriter(ch chan PrefixMessage) {
 	}
 }
 
-func Prefix(color bool, stdout, stderr io.Writer, ch chan PrefixMessage) processor.OutputFactory {
+func Prefix(stdout, stderr io.Writer, ch chan PrefixMessage) processor.OutputFactory {
 	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
 		uniqueName := processor.SuffixName(stepName, ctx.NamePrefix)
-
-		style := lipgloss.NewStyle()
-
-		if color {
-			style = style.Foreground(styles.RandAdaptiveColor())
-		}
+		style := lipgloss.NewStyle().Foreground(styles.RandAdaptiveColor())
 
 		stdoutWrapper := &prefixWrapper{
 			prefix: fmt.Sprintf("%s ", uniqueName),

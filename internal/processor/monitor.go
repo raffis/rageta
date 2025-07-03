@@ -46,23 +46,21 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			quit <- struct{}{}
 		}()
 
-		progress := func(i int) {
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Waiting for %q to finish [%d]", s.stepName, i))))
+		progress := func() {
+			duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Waiting for %q to finish [%s]", s.stepName, duration))))
 			dev.Write([]byte("\n"))
 		}
 
 		go func() {
-			i := 0
 			for {
 				select {
 				case <-s.ticker.C:
-					progress(i)
+					progress()
 				case <-quit:
 					s.ticker.Stop()
 					return
 				}
-
-				i++
 			}
 		}()
 
@@ -70,18 +68,19 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		dev.Write([]byte("\n"))
 
 		ctx, err := next(ctx)
+		duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
 
 		switch {
 		case err == nil:
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q done", s.stepName))))
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q done [%s]", s.stepName, duration))))
 		case errors.Is(err, ErrAllowFailure):
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q failed and pipeline is continued", s.stepName))))
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q failed and pipeline is continued [%s]", s.stepName, duration))))
 		case errors.Is(err, ErrConditionFalse):
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q condition check did not pass", s.stepName))))
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q condition check did not pass [%s]", s.stepName, duration))))
 		case errors.Is(err, ErrSkipDone):
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q skipped as it was marked as done", s.stepName))))
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q skipped as it was marked as done [%s]", s.stepName, duration))))
 		default:
-			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q failed: %q", s.stepName, err.Error()))))
+			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Task %q failed: %q [%s]", s.stepName, err.Error(), duration))))
 		}
 		dev.Write([]byte("\n"))
 
