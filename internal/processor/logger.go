@@ -1,70 +1,46 @@
 package processor
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/go-logr/logr"
-	"github.com/go-logr/zapr"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
-func WithLogger(logger logr.Logger, zapConfig *zap.Config, detached bool) ProcessorBuilder {
+type LogBuilder func(w io.Writer) (logr.Logger, error)
+
+func WithLogger(defaultLogger logr.Logger, logBuilder LogBuilder, detached bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if zapConfig == nil && logger.IsZero() {
+		if logBuilder == nil && defaultLogger.IsZero() {
 			return nil
 		}
 
 		return &Logger{
-			stepName:  spec.Name,
-			zapConfig: zapConfig,
-			logger:    logger,
-			detached:  detached,
+			stepName:   spec.Name,
+			logger:     defaultLogger,
+			logBuilder: logBuilder,
+			detached:   detached,
 		}
 	}
 }
 
 type Logger struct {
-	stepName  string
-	zapConfig *zap.Config
-	logger    logr.Logger
-	detached  bool
+	stepName   string
+	logBuilder LogBuilder
+	logger     logr.Logger
+	detached   bool
 }
 
 func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:      "time",
-		LevelKey:     "level",
-		MessageKey:   "msg",
-		EncodeTime:   zapcore.ISO8601TimeEncoder,
-		EncodeLevel:  zapcore.CapitalLevelEncoder,
-		EncodeCaller: zapcore.ShortCallerEncoder,
-	}
-
-	var encoder zapcore.Encoder
-	switch s.zapConfig.Encoding {
-	case "json":
-		encoder = zapcore.NewJSONEncoder(encoderConfig)
-	case "console":
-		encoder = zapcore.NewConsoleEncoder(encoderConfig)
-	default:
-		return nil, fmt.Errorf("failed setup step logger: no such log encoder `%s`", s.zapConfig.Encoding)
-	}
-
 	return func(ctx StepContext) (StepContext, error) {
 		logger := s.logger
 
 		if ctx.Stderr != nil && ctx.Stderr != io.Discard && !s.detached {
-			core := zapcore.NewCore(
-				encoder,
-				zapcore.AddSync(ctx.Stderr),
-				s.zapConfig.Level,
-			)
-
-			zapLogger := zap.New(core)
-			logger = zapr.NewLogger(zapLogger)
+			var err error
+			logger, err = s.logBuilder(ctx.Stderr)
+			if err != nil {
+				return ctx, err
+			}
 
 			for _, tag := range ctx.Tags() {
 				logger = logger.WithValues(tag.Key, tag.Value)

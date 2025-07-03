@@ -23,9 +23,10 @@ func TerminalWriter(ch chan PrefixMessage) {
 		}
 
 		for i, line := range lines {
-			// Always render prefix for first line of each message
 			if i == 0 {
-				msg.w.Write([]byte(msg.style.Render(msg.producer)))
+				if (msg.producer == lastProducer && newLine) || msg.producer != lastProducer {
+					msg.w.Write([]byte(msg.style.Render(msg.producer)))
+				}
 			} else {
 				msg.w.Write([]byte(msg.style.Render(msg.producer)))
 			}

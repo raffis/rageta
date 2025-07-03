@@ -49,6 +49,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -354,29 +355,38 @@ func getRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.C
 	return clientset, nil
 }
 
-func getRunLogger() (logr.Logger, *os.File, error) {
-	if runArgs.output == renderOutputUI.String() {
-		f, err := os.CreateTemp(os.TempDir(), "rageta-log")
-		if err != nil {
-			return logger, nil, err
-		}
-
-		config := zap.NewDevelopmentConfig()
-		config.ErrorOutputPaths = []string{f.Name()}
-		config.OutputPaths = []string{f.Name()}
-
-		zapLog, err := config.Build()
-		if err != nil {
-			return logger, nil, err
-		}
-
-		return zapr.NewLogger(zapLog), f, nil
+func buildZapCore(config zap.Config, w io.Writer) (zapcore.Core, error) {
+	var encoder zapcore.Encoder
+	switch config.Encoding {
+	case "json":
+		encoder = zapcore.NewJSONEncoder(config.EncoderConfig)
+	case "console":
+		encoder = zapcore.NewConsoleEncoder(config.EncoderConfig)
+	default:
+		return nil, fmt.Errorf("failed setup step logger: no such log encoder `%s`", config.Encoding)
 	}
 
-	return logger, os.Stderr, nil
+	return zapcore.NewCore(
+		encoder,
+		zapcore.AddSync(w),
+		config.Level,
+	), nil
+}
+
+func logBuilder(defaultLog zapcore.Core, zapConfig zap.Config) processor.LogBuilder {
+	return func(w io.Writer) (logr.Logger, error) {
+		log, err := buildZapCore(zapConfig, w)
+		if err != nil {
+			return logr.Discard(), err
+		}
+
+		zapLogger := zap.New(zapcore.NewTee(defaultLog, log))
+		return zapr.NewLogger(zapLogger), nil
+	}
 }
 
 func stepBuilder(
+	logBuilder processor.LogBuilder,
 	logger logr.Logger,
 	osEnv,
 	envs,
@@ -411,7 +421,7 @@ func stepBuilder(
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
 			processor.WithMonitor(!runArgs.noUpdate, runArgs.waitUpdateInterval, monitorDev),
 			processor.WithOtelTrace(logger, tracer),
-			processor.WithLogger(logger, &zapConfig, runArgs.logDetached),
+			processor.WithLogger(logger, logBuilder, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
 			processor.WithSkipBlacklist(runArgs.skipSteps),
 			processor.WithGarbageCollector(runArgs.noGC, driver, teardown),
@@ -434,10 +444,33 @@ func stepBuilder(
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
+	logFile, err := os.CreateTemp(os.TempDir(), "rageta-log")
+	if err != nil {
+		return err
+	}
+
 	maskedStdout := mask.Writer(os.Stdout, mask.DefaultMask)
 	maskedStderr := mask.Writer(os.Stderr, mask.DefaultMask)
+	maskedLog := mask.Writer(logFile, mask.DefaultMask)
 	stdout = maskedStdout
 	stderr = maskedStderr
+
+	logCoreFile, err := buildZapCore(zapConfig, maskedLog)
+	if err != nil {
+		return err
+	}
+
+	logBuilder := logBuilder(logCoreFile, zapConfig)
+
+	if runArgs.output == renderOutputUI.String() {
+		logger = zapr.NewLogger(zap.New(logCoreFile))
+	} else {
+		logger, err = logBuilder(maskedStderr)
+		if err != nil {
+			return err
+		}
+	}
+
 	secretWriter := mask.SecretWriter(maskedStdout, maskedStderr)
 	envs := envMap(runArgs.envs)
 	secrets := envMap(runArgs.secretEnvs)
@@ -446,10 +479,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		secretWriter.AddSecrets([]byte(secretValue))
 	}
 
-	logger, _, err := getRunLogger()
-	if err != nil {
-		return err
-	}
+	logger.V(1).Info("log file at", "path", logFile.Name())
 
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -580,6 +610,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
 		pipeline.WithStepBuilder(stepBuilder(
+			logBuilder,
 			logger,
 			osEnvMap(),
 			envs,
@@ -740,9 +771,16 @@ func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Templ
 		Env:             env,
 		ImagePullPolicy: imagePullPolicy,
 	}
-
-	processor.ContainerSpec(&container, &template)
-
+	/*
+		processor.ContainerSpec(&container, &template)
+		if runArgs.containerRuntime == containerRuntimeDocker.String() {
+			container.Volumes = append(container.Volumes, cruntime.Volume{
+				Name:     "docker-sock",
+				HostPath: "/var/run/docker.sock",
+				Path:     "/var/run/docker.sock",
+			})
+		}
+	*/
 	pod := cruntime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
 		Spec: cruntime.PodSpec{
