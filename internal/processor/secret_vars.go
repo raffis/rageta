@@ -16,21 +16,24 @@ func WithSecretVars(osEnv, defaultSecret map[string]string, secretWriter mask.Se
 		}
 
 		return &SecretVars{
-			Secret:       secrets,
+			secret:       secrets,
 			secretWriter: secretWriter,
 		}
 	}
 }
 
 type SecretVars struct {
-	Secret       map[string]string
+	secret       map[string]string
 	secretWriter mask.SecretStore
 }
 
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		maps.Copy(ctx.Secrets, s.Secret)
-		secretTmp, err := os.CreateTemp(ctx.Dir, "Secret")
+		originSecrets := make(map[string]string, len(ctx.Secrets))
+		maps.Copy(originSecrets, ctx.Secrets)
+
+		maps.Copy(ctx.Secrets, s.secret)
+		secretTmp, err := os.CreateTemp(ctx.Dir, "secret")
 		if err != nil {
 			return ctx, err
 		}
@@ -51,7 +54,9 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			s.secretWriter.AddSecrets([]byte(v))
 		}
 
-		maps.Copy(ctx.Secrets, secrets)
+		maps.Copy(originSecrets, secrets)
+		ctx.Secrets = originSecrets
+
 		return ctx, nextErr
 
 	}, nil

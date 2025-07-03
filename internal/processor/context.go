@@ -128,10 +128,10 @@ func (t StepContext) WithTag(tag Tag) StepContext {
 
 func (t StepContext) Merge(c StepContext) StepContext {
 	maps.Copy(t.Envs, c.Envs)
+	maps.Copy(t.Secrets, c.Secrets)
 	maps.Copy(t.Inputs, c.Inputs)
 	maps.Copy(t.Steps, c.Steps)
 	maps.Copy(t.Containers, c.Containers)
-
 	_ = mergeTemplate(t.Template, c.Template)
 
 	return t

@@ -211,7 +211,7 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 			if reflect.TypeOf(val).Kind() == reflect.Slice {
 				// If it's a slice, join all its elements with a delimiter
 				sliceVal := reflect.ValueOf(val)
-				for i := 0; i < sliceVal.Len(); i++ {
+				for i := range sliceVal.Len() {
 					combinationValues = append(combinationValues, fmt.Sprintf("%v", sliceVal.Index(i).Interface()))
 				}
 			} else {

@@ -104,8 +104,13 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		logger = d.logger
 	}
 
+	var logConfig dockercontainer.LogConfig
+	if stdout == io.Discard && stderr == io.Discard {
+		logConfig.Type = "none"
+	}
+
 	for _, container := range pod.Spec.InitContainers {
-		createResponse, err := d.createContainer(ctx, logger, pod, container)
+		createResponse, err := d.createContainer(ctx, logger, pod, container, logConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create init container %s: %w", container.Name, err)
 		}
@@ -157,7 +162,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		}
 	}
 
-	createResponse, err := d.createContainer(ctx, logger, pod, container)
+	createResponse, err := d.createContainer(ctx, logger, pod, container, logConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container %s: %w", container.Name, err)
 	}
@@ -346,7 +351,7 @@ func envSlice(env map[string]string) []string {
 	return envs
 }
 
-func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec) (*dockercontainer.CreateResponse, error) {
+func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec, logConfig dockercontainer.LogConfig) (*dockercontainer.CreateResponse, error) {
 	containerConfig := dockercontainer.Config{
 		Image:      container.Image,
 		StdinOnce:  container.Stdin,
@@ -367,9 +372,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 
 	hostConfig := dockercontainer.HostConfig{
 		RestartPolicy: d.getRestartPolicy(container.RestartPolicy),
-		LogConfig: dockercontainer.LogConfig{
-			Type: "none",
-		},
+		LogConfig:     logConfig,
 	}
 
 	netConfig := network.NetworkingConfig{
@@ -405,7 +408,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 
 	hostConfig.Mounts = mounts
 
-	logger.V(1).Info("create new container", "container-spec", containerConfig, "host-config", hostConfig, "network-config", netConfig)
+	logger.V(3).Info("create new container", "container-spec", containerConfig, "host-config", hostConfig, "network-config", netConfig)
 	cont, err := d.client.ContainerCreate(ctx, &containerConfig, &hostConfig, &netConfig, nil, fmt.Sprintf("%s-%s", pod.Name, container.Name))
 
 	if err != nil {
@@ -426,7 +429,7 @@ func (d *docker) startContainer(ctx context.Context, logger logr.Logger, contain
 		return nil, fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	logger.V(1).Info("container inspect", "container-id", containerID, "container-inspect", specs)
+	logger.V(3).Info("container inspect", "container-id", containerID, "container-inspect", specs)
 	return &specs, nil
 }
 

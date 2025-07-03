@@ -204,7 +204,7 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.loader = loader
 	cmds = append(cmds, cmd)
 
-	m.logger.V(1).Info("tui update msg", "msg", msg)
+	m.logger.V(7).Info("tui update msg", "msg", msg)
 
 	switch msg := msg.(type) {
 	case PipelineDoneMsg:

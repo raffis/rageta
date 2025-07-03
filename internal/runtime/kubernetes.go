@@ -111,7 +111,7 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 
 	created, err := d.client.Pods("default").Create(ctx, &spec, metav1.CreateOptions{})
 
-	logger.V(1).Info("create pod", "pod", created, "error", err)
+	logger.V(3).Info("create pod", "pod", created, "error", err)
 
 	if err != nil {
 		return nil, err

@@ -17,6 +17,7 @@ type bufferVars struct {
 	Buffer      *bytes.Buffer
 	Error       error
 	Symbol      string
+	Tags        []processor.Tag
 }
 
 func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
@@ -52,6 +53,7 @@ func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 				DisplayName: displayName,
 				Buffer:      buffer,
 				Error:       err,
+				Tags:        ctx.Tags(),
 				Symbol:      status.Render(),
 			})
 

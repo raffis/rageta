@@ -12,6 +12,8 @@ import (
 	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
+	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/spf13/pflag"
 )
 
@@ -64,6 +66,7 @@ type Options struct {
 	TLSOptions *tlsconfig.Options
 	Context    string
 	ConfigDir  string
+	Logger     logr.Logger
 }
 
 // InstallFlags adds flags for the common options on the FlagSet
@@ -166,8 +169,9 @@ func (o *Options) defaultDockerHTTPClient(hostURL *url.URL) (*http.Client, error
 	if err != nil {
 		return nil, err
 	}
+
 	return &http.Client{
-		Transport:     transport,
+		Transport:     middleware.NewLogger(o.Logger, transport),
 		CheckRedirect: dockerclient.CheckRedirect,
 	}, nil
 }

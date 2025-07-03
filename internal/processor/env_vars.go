@@ -28,7 +28,10 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
+		originEnvs := make(map[string]string, len(ctx.Envs))
+		maps.Copy(originEnvs, ctx.Envs)
 		maps.Copy(ctx.Envs, s.env)
+
 		envTmp, err := os.CreateTemp(ctx.Dir, "env")
 		if err != nil {
 			return ctx, err
@@ -46,7 +49,9 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		maps.Copy(ctx.Envs, envs)
+		maps.Copy(originEnvs, envs)
+		ctx.Envs = originEnvs
+
 		return ctx, nextErr
 
 	}, nil
