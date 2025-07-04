@@ -13,7 +13,7 @@ type ociPuller interface {
 	Pull(context.Context, string, string, ...oci.PullOption) (*oci.Metadata, error)
 }
 
-func WithOCI(ociClient ociPuller) LookupHandler {
+func WithOCI(ociClient ociPuller) Resolver {
 	return func(ctx context.Context, ref string) (io.Reader, error) {
 		tmp, err := os.MkdirTemp("", "rageta")
 		if err != nil {
