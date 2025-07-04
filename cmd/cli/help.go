@@ -3,17 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/pipeline"
+	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/styles"
-	kruntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	"github.com/raffis/rageta/internal/provider"
-	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -49,32 +45,13 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		defer cancel()
 	}
 
-	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-
 	var ref string
 	if len(args) > 0 {
 		ref = args[0]
 	}
 
-	store := provider.New(
-		decoder,
-		provider.WithFile(),
-		provider.WithRagetafile(),
-		func(ctx context.Context, ref string) (io.Reader, error) {
-			runArgs.ociOptions.URL = ref
-			ociClient, err := runArgs.ociOptions.Build(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return provider.WithOCI(ociClient)(ctx, ref)
-		},
-	)
-
-	command, err := store.Lookup(ctx, ref)
+	store := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
 	}

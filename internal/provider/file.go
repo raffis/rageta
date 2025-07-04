@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func WithFile() LookupHandler {
+func WithFile() Resolver {
 	return func(ctx context.Context, ref string) (io.Reader, error) {
 		return os.Open(ref)
 	}

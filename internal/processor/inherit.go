@@ -42,7 +42,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		pipe, err := s.provider.Lookup(ctx, inherit.Pipeline)
+		pipe, err := s.provider.Resolve(ctx, inherit.Pipeline)
 		if err != nil {
 			return ctx, fmt.Errorf("failed to open pipeline: %w", err)
 		}
