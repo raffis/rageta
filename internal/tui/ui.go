@@ -30,11 +30,11 @@ const (
 
 // UI dimensions and layout constants
 const (
-	ListWidthPercentage     = 30.0
-	MinBottomPanelHeight    = 3
-	FilterInputHeightOffset = 1
-	TagsHeightOffset        = 1
-	AlignHorizontal         = 130
+	ListWidthPercentage       = 30.0
+	LayoutAreaHeight          = 3
+	FilterInputHeightOffset   = 1
+	TagsHeightOffset          = 1
+	AlignHorizontalBreakpoint = 130
 )
 
 // Keyboard shortcuts
@@ -44,6 +44,7 @@ const (
 	KeyTab    = "tab"
 	KeyEnter  = "enter"
 	KeyQuit   = "ctrl+c"
+	KeyQ      = "q"
 )
 
 // UI represents the main Terminal User Interface model
@@ -306,6 +307,7 @@ func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 func (m UI) handleKeyMessage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case KeyQuit:
+	case KeyQ:
 		return m, tea.Quit
 	case KeyTab:
 		m.toggleActivePanel()
@@ -375,12 +377,12 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	m.height = msg.Height
 	m.width = msg.Width
 
-	if m.width < AlignHorizontal {
+	if m.width < AlignHorizontalBreakpoint {
 		listHeight := float64(m.height) * 50 / 100
-		m.list.SetSize(m.width, int(listHeight)-MinBottomPanelHeight)
+		m.list.SetSize(m.width, int(listHeight)-LayoutAreaHeight)
 	} else {
 		listWidth := float64(m.width) * ListWidthPercentage / 100
-		m.list.SetSize(int(listWidth), m.height-MinBottomPanelHeight)
+		m.list.SetSize(int(listWidth), m.height-LayoutAreaHeight)
 	}
 
 	items := slices.Clone(m.list.Items())
@@ -443,7 +445,7 @@ func (m UI) renderMainLayout() string {
 	bottomPanel := m.renderBottomPanel()
 
 	// Stack panels vertically if the terminal is too narrow
-	if m.width < AlignHorizontal {
+	if m.width < AlignHorizontalBreakpoint {
 		return lipgloss.JoinVertical(
 			lipgloss.Top,
 			listPanel,
@@ -477,7 +479,7 @@ func (m UI) renderHeaderPanel() string {
 		pagerStyle = listStyle.Foreground(activePanelColor)
 	}
 
-	if m.width < AlignHorizontal {
+	if m.width < AlignHorizontalBreakpoint {
 		tab := activeStyle.Render(" ⇅ ")
 		line := strings.Repeat("─", m.width/2-1)
 
@@ -565,15 +567,15 @@ func (m *UI) updatePanelStyles() {
 // updateViewportDimensions updates the viewport dimensions
 func (m *UI) updateViewportDimensions(step *StepMsg) {
 	// Set viewport width based on layout
-	if m.width < AlignHorizontal {
+	if m.width < AlignHorizontalBreakpoint {
 		// In vertical layout, viewport takes full width
 		step.viewport.Width = m.width
 		// Height is reduced by list height and bottom panel
-		step.viewport.Height = m.height - m.list.Height() - MinBottomPanelHeight
+		step.viewport.Height = m.height - m.list.Height() - LayoutAreaHeight
 	} else {
 		// In horizontal layout, viewport takes remaining width
 		step.viewport.Width = m.width - m.list.Width()
-		step.viewport.Height = m.height - MinBottomPanelHeight
+		step.viewport.Height = m.height - LayoutAreaHeight
 	}
 
 	if step.TagsAsString() != "" {

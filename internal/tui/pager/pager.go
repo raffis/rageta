@@ -167,35 +167,40 @@ func (m *Model) Write(b []byte) (int, error) {
 func (m Model) maxYOffset() int {
 	var offset int
 
-	for i := len(m.lines) - 1; i >= 0; i-- {
-		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width)))
+	lineNumberWidth := 0
+	if m.ShowLineNumbers {
+		lineNumberWidth = lipgloss.Width(fmt.Sprintf("%d", len(m.lines)-1))
+	}
 
-		if offset >= m.Height {
+	for i := len(m.lines) - 1; i >= 0; i-- {
+		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width-lineNumberWidth)))
+
+		if offset > m.Height {
+			i = i + 1
 			return i
 		}
 	}
 
-	return len(m.lines) - 1
+	return 0
 }
 
 // visibleLines returns the lines that should currently be visible in the
 // viewport.
-func (m Model) visibleLines() []string {
-	var lines []string
+func (m Model) visibleLines() []line {
+	var lines []line
 	if len(m.lines) == 0 {
 		return lines
 	}
 
-	top := max(0, m.YOffset)
 	var contentHeight int
+	for i, line := range m.lines[m.YOffset:] {
+		lineNumberWidth := 0
+		if m.ShowLineNumbers {
+			lineNumberWidth = lipgloss.Width(fmt.Sprintf("%d", i+1))
+		}
 
-	if top >= len(m.lines) {
-		top = len(m.lines)
-	}
-
-	for _, line := range m.lines[top:] {
-		contentHeight += int(math.Ceil(float64(line.width) / float64(m.Width)))
-		lines = append(lines, line.msg)
+		contentHeight += int(math.Ceil(float64(line.width) / float64(m.Width-lineNumberWidth)))
+		lines = append(lines, line)
 
 		if contentHeight >= m.Height {
 			break
@@ -227,11 +232,6 @@ func (m *Model) LineUp(n int) {
 	}
 
 	m.SetYOffset(m.YOffset - n)
-}
-
-// TotalLineCount returns the total number of lines (both hidden and visible) within the viewport.
-func (m Model) TotalLineCount() int {
-	return len(m.lines)
 }
 
 // GotoBottom sets the viewport to the bottom position.
@@ -412,30 +412,37 @@ func (m Model) View() string {
 	var lines []string
 	if m.ShowLineNumbers {
 		firstLine := m.YOffset
-		if firstLine == 0 {
-			firstLine = 1
-		}
-
 		lineNumber := max(0, firstLine)
+		lineNumber++
 		maxLines := len(m.lines)
 		if maxLines < h {
 			maxLines = h
 		}
 
 		width := lipgloss.Width(fmt.Sprintf("%d", clamp(firstLine+m.Height, lineNumber, maxLines)))
-
-		// If we have fewer lines than the visible area, start from line 1
-		if len(m.lines) < h {
-			lineNumber = 1
-			firstLine = 1
-		}
-
 		for _, line := range m.visibleLines() {
 			// Highlight all matches in the line
 			if m.scanString != "" {
-				line = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+				line.msg = strings.ReplaceAll(line.msg, m.scanString, m.Styles.MatchResult.Render(m.scanString))
 			}
-			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber))+line)
+
+			virtualLines := m.Width - width - 1
+
+			for i := 0; i <= line.width; i += virtualLines {
+				end := i + virtualLines
+
+				if end > line.width {
+					end = len(line.msg)
+				}
+				chunk := line.msg[i:end]
+
+				if i == 0 {
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(fmt.Sprintf("%d", lineNumber))+lipgloss.NewStyle().MarginLeft(1).Width(len(chunk)).Render(chunk))
+				} else {
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(" ")+lipgloss.NewStyle().Width(len(chunk)).MarginLeft(1).Render(chunk))
+				}
+			}
+
 			lineNumber++
 		}
 
@@ -444,11 +451,11 @@ func (m Model) View() string {
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
-		lines = m.visibleLines()
-		// Highlight all matches in the lines
-		if m.scanString != "" {
-			for i, line := range lines {
-				lines[i] = strings.ReplaceAll(line, m.scanString, m.Styles.MatchResult.Render(m.scanString))
+		for _, line := range m.visibleLines() {
+			if m.scanString == "" {
+				lines = append(lines, line.msg)
+			} else {
+				lines = append(lines, strings.ReplaceAll(line.msg, m.scanString, m.Styles.MatchResult.Render(m.scanString)))
 			}
 		}
 	}
