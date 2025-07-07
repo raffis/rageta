@@ -53,7 +53,7 @@ import (
 	"golang.org/x/term"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/runtime/serializer/protobuf"
+	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
@@ -752,8 +752,7 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 	v1beta1.AddToScheme(scheme)
 	factory := serializer.NewCodecFactory(scheme)
 	decoder := factory.UniversalDeserializer()
-	wire := protobuf.NewSerializer(scheme, scheme)
-
+	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 	var localDB *provider.Database
 
 	openDB := func() (*provider.Database, error) {
@@ -763,7 +762,7 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 				return nil, err
 			}
 
-			localDB, err = provider.OpenDatabase(dbFile, decoder, wire)
+			localDB, err = provider.OpenDatabase(dbFile, decoder, encoder)
 			if err != nil {
 				return nil, err
 			}
@@ -779,7 +778,6 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 		}
 
 		return provider.WithLocalDB(localDB)(ctx, ref)
-
 	}
 
 	ociProviderWrapper := func(ctx context.Context, ref string) (io.Reader, error) {
@@ -805,7 +803,6 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 		}
 
 		r = bytes.NewReader(manifest)
-
 		err = localDB.Add(ref, manifest)
 		if err != nil {
 			return r, err

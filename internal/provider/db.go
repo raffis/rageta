@@ -7,14 +7,14 @@ import (
 	"io"
 	"slices"
 
-	"github.com/raffis/rageta/pkg/apis/utils/v1beta1"
+	"github.com/raffis/rageta/pkg/apis/package/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 )
 
 type Database struct {
-	store v1beta1.Store
-	wire  kruntime.Serializer
+	store   v1beta1.Store
+	encoder kruntime.Serializer
 }
 
 type dbGetter interface {
@@ -28,21 +28,27 @@ func WithLocalDB(db dbGetter) Resolver {
 	}
 }
 
-func OpenDatabase(r io.Reader, decoder kruntime.Decoder, wire kruntime.Serializer) (*Database, error) {
+func OpenDatabase(r io.Reader, decoder kruntime.Decoder, encoder kruntime.Serializer) (*Database, error) {
 	manifest, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
-	store := v1beta1.Store{}
+	store := v1beta1.Store{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Store",
+			APIVersion: v1beta1.GroupVersion.String(),
+		},
+	}
+
 	_, _, err = decoder.Decode(
 		manifest,
 		nil,
 		&store)
 
 	database := &Database{
-		store: store,
-		wire:  wire,
+		store:   store,
+		encoder: encoder,
 	}
 
 	return database, err
@@ -87,7 +93,7 @@ func (d *Database) has(name string) bool {
 
 func (d *Database) Get(name string) ([]byte, error) {
 	for _, app := range d.store.Apps {
-		if app.Name == name {
+		if app.Name == name && app.Manifest != nil {
 			return app.Manifest, nil
 		}
 	}
@@ -96,5 +102,5 @@ func (d *Database) Get(name string) ([]byte, error) {
 }
 
 func (d *Database) Persist(w io.Writer) error {
-	return d.wire.Encode(&d.store, w)
+	return d.encoder.Encode(&d.store, w)
 }
