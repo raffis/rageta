@@ -32,13 +32,11 @@ func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 
 			var status tui.StepStatus
 			switch {
-			case err == nil:
-				status = tui.StepStatusWaiting
 			case err != nil && !processor.AbortOnError(err):
 				status = tui.StepStatusSkipped
 			case err != nil:
 				status = tui.StepStatusFailed
-			case err == nil:
+			default:
 				status = tui.StepStatusDone
 			}
 

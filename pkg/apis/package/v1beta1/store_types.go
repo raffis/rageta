@@ -31,7 +31,7 @@ type StoreSpec struct {
 type App struct {
 	Name        string      `json:"name,omitempty"`
 	InstalledAt metav1.Time `json:"installedAt,omitempty"`
-	Manifest    []byte      `json:"required,omitempty"`
+	Manifest    []byte      `json:"manifest,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -11,24 +11,24 @@ import (
 )
 
 type Interface interface {
-	Lookup(ctx context.Context, ref string) (v1beta1.Pipeline, error)
+	Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error)
 }
 
 type storage struct {
 	decoder  runtime.Decoder
-	handlers []LookupHandler
+	handlers []Resolver
 }
 
-type LookupHandler func(ctx context.Context, ref string) (io.Reader, error)
+type Resolver func(ctx context.Context, ref string) (io.Reader, error)
 
-func New(decoder runtime.Decoder, handlers ...LookupHandler) *storage {
+func New(decoder runtime.Decoder, handlers ...Resolver) *storage {
 	return &storage{
 		decoder:  decoder,
 		handlers: handlers,
 	}
 }
 
-func (s *storage) Lookup(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
+func (s *storage) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
 	to := v1beta1.Pipeline{}
 	var errs []error
 
@@ -54,5 +54,5 @@ func (s *storage) Lookup(ctx context.Context, ref string) (v1beta1.Pipeline, err
 		}
 	}
 
-	return to, fmt.Errorf("could not lookup ref: %s: %w", ref, errors.Join(errs...))
+	return to, fmt.Errorf("could not lookup ref: %q: %w", ref, errors.Join(errs...))
 }

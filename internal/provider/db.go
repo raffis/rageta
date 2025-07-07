@@ -1,48 +1,76 @@
 package provider
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"slices"
 
-	"github.com/raffis/rageta/pkg/apis/utils/v1beta1"
+	"github.com/raffis/rageta/pkg/apis/package/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
-var (
-	scheme  *kruntime.Scheme
-	decoder kruntime.Decoder
-	factory serializer.CodecFactory
-	wire    kruntime.Serializer
-)
-
-// wire = protobuf.NewSerializer(nil, kruntime.MultiObjectTyper{})
-
-type database struct {
-	store v1beta1.Store
+type Database struct {
+	store   v1beta1.Store
+	encoder kruntime.Serializer
 }
 
-func Open(r io.Reader) (*database, error) {
+type dbGetter interface {
+	Get(name string) ([]byte, error)
+}
+
+func WithLocalDB(db dbGetter) Resolver {
+	return func(ctx context.Context, ref string) (io.Reader, error) {
+		b, err := db.Get(ref)
+		return bytes.NewReader(b), err
+	}
+}
+
+func OpenDatabase(r io.Reader, decoder kruntime.Decoder, encoder kruntime.Serializer) (*Database, error) {
 	manifest, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
-	store := v1beta1.Store{}
+	store := v1beta1.Store{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Store",
+			APIVersion: v1beta1.GroupVersion.String(),
+		},
+	}
+
 	_, _, err = decoder.Decode(
 		manifest,
 		nil,
 		&store)
 
-	database := &database{
-		store: store,
+	database := &Database{
+		store:   store,
+		encoder: encoder,
 	}
 
 	return database, err
 }
 
-func (d *database) Add(name string, manifest []byte) error {
+func (d *Database) Remove(name string) error {
+	if !d.has(name) {
+		return fmt.Errorf("no such pipeline found in local db store: %q", name)
+	}
+
+	d.store.Apps = slices.DeleteFunc(d.store.Apps, func(cmp v1beta1.App) bool {
+		return cmp.Name == name
+	})
+
+	return nil
+}
+
+func (d *Database) Add(name string, manifest []byte) error {
+	d.store.Apps = slices.DeleteFunc(d.store.Apps, func(cmp v1beta1.App) bool {
+		return cmp.Name == name
+	})
+
 	app := v1beta1.App{
 		Name:        name,
 		InstalledAt: metav1.Now(),
@@ -53,7 +81,7 @@ func (d *database) Add(name string, manifest []byte) error {
 	return nil
 }
 
-func (d *database) has(name string) bool {
+func (d *Database) has(name string) bool {
 	for _, app := range d.store.Apps {
 		if app.Name == name {
 			return true
@@ -63,16 +91,16 @@ func (d *database) has(name string) bool {
 	return false
 }
 
-func (d *database) Get(name string, manifest []byte) ([]byte, error) {
+func (d *Database) Get(name string) ([]byte, error) {
 	for _, app := range d.store.Apps {
-		if app.Name == name {
+		if app.Name == name && app.Manifest != nil {
 			return app.Manifest, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no such pipeline found: %s", name)
+	return nil, fmt.Errorf("no such pipeline found in local db store: %q", name)
 }
 
-func (d *database) Persist(w io.Writer) error {
-	return wire.Encode(&d.store, w)
+func (d *Database) Persist(w io.Writer) error {
+	return d.encoder.Encode(&d.store, w)
 }

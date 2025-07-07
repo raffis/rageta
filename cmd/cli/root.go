@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -20,6 +22,7 @@ var (
 type rootFlags struct {
 	timeout    time.Duration `env:"TIMEOUT"`
 	noColor    bool          `env:"NO_COLOR"`
+	dbPath     string        `env:"DB_PATH"`
 	logOptions logsetup.Options
 }
 
@@ -41,6 +44,13 @@ func main() {
 }
 
 func init() {
+	dbPath := "/rageta.db"
+	home, err := os.UserHomeDir()
+	if err == nil {
+		dbPath = filepath.Join(home, "rageta.db")
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
 	rootCmd.PersistentFlags().BoolVarP(&rootArgs.noColor, "no-color", "", false, "Disable all color output to the terminal.")
 	rootArgs.logOptions.BindFlags(rootCmd.PersistentFlags())

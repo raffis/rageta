@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -53,6 +53,7 @@ import (
 	"golang.org/x/term"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
@@ -64,7 +65,6 @@ var runCmd = &cobra.Command{
 }
 
 type runFlags struct {
-	dbPath              string        `env:"DB_PATH"`
 	output              string        `env:"OUTPUT"`
 	noGC                bool          `env:"NO_GC"`
 	tee                 bool          `env:"TEE"`
@@ -114,14 +114,7 @@ var (
 const otelName = "github.com/raffis/rageta"
 
 func init() {
-	dbPath := "/rageta.db"
-	home, err := os.UserHomeDir()
-	if err == nil {
-		dbPath = filepath.Join(home, "rageta.db")
-	}
-
 	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
-	executionFlags.StringVarP(&runArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
 	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, ui, json, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
@@ -284,7 +277,7 @@ func electDefaultOutput() string {
 			{{- end }}
 
 			{{- if .Error }}
-				{{- printf "%s %s\n%s\n" .Symbol $stepName .Buffer }}
+				{{- printf "%s %s\n%s" .Symbol $stepName .Buffer }}
 			{{- else }}
 				{{- printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol $stepName .Buffer }}
 			{{- end }}`
@@ -566,33 +559,14 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fork(ctx, driver, template, envs, imagePullPolicy)
 	}
 
-	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-
 	var ref string
 	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
 		ref = args[0]
 	}
 
-	store := provider.New(
-		decoder,
-		provider.WithFile(),
-		provider.WithRagetafile(),
-		func(ctx context.Context, ref string) (io.Reader, error) {
-			runArgs.ociOptions.URL = ref
-			ociClient, err := runArgs.ociOptions.Build(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			return provider.WithOCI(ociClient)(ctx, ref)
-		},
-	)
-
+	store := createProvider(imagePullPolicy, rootArgs.dbPath, runArgs.ociOptions)
 	logger.V(3).Info("resolve pipeline reference", "source", ref)
-	command, err := store.Lookup(ctx, ref)
+	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -771,6 +745,101 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
+	scheme := kruntime.NewScheme()
+	v1beta1.AddToScheme(scheme)
+	factory := serializer.NewCodecFactory(scheme)
+	decoder := factory.UniversalDeserializer()
+	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
+	var localDB *provider.Database
+
+	openDB := func() (*provider.Database, error) {
+		if localDB == nil {
+			dbFile, err := os.OpenFile(dbPath, os.O_RDONLY|os.O_CREATE, 0644)
+			if err != nil {
+				return nil, err
+			}
+
+			localDB, err = provider.OpenDatabase(dbFile, decoder, encoder)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return localDB, nil
+	}
+
+	localDBProviderWrapper := func(ctx context.Context, ref string) (io.Reader, error) {
+		localDB, err := openDB()
+		if err != nil {
+			return nil, err
+		}
+
+		return provider.WithLocalDB(localDB)(ctx, ref)
+	}
+
+	ociProviderWrapper := func(ctx context.Context, ref string) (io.Reader, error) {
+		ociOptions.URL = ref
+		ociClient, err := ociOptions.Build(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		r, err := provider.WithOCI(ociClient)(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+
+		localDB, err := openDB()
+		if err != nil {
+			return r, err
+		}
+
+		manifest, err := io.ReadAll(r)
+		if err != nil {
+			return r, err
+		}
+
+		r = bytes.NewReader(manifest)
+		err = localDB.Add(ref, manifest)
+		if err != nil {
+			return r, err
+		}
+
+		dbFile, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			return nil, err
+		}
+
+		err = localDB.Persist(dbFile)
+		if err != nil {
+			return r, err
+		}
+
+		return r, nil
+	}
+
+	providers := []provider.Resolver{
+		provider.WithFile(),
+		provider.WithRagetafile(),
+	}
+
+	// If pull policy is always, the oci provider has priority over the local cache
+	if imagePullPolicy == cruntime.PullImagePolicyAlways {
+		providers = append(providers,
+			ociProviderWrapper,
+			localDBProviderWrapper,
+		)
+	} else {
+		providers = append(providers,
+			localDBProviderWrapper,
+			ociProviderWrapper,
+		)
+	}
+
+	return provider.New(decoder, providers...)
 }
 
 func retryRun(ctx context.Context, pipeline processor.Executable) error {

@@ -93,8 +93,6 @@ spec:
             type: string
           metadata:
             type: object
-          name:
-            type: string
           outputs:
             items:
               properties:
@@ -145,8 +143,6 @@ spec:
                         type: object
                       type: array
                   type: object
-                description:
-                  type: string
                 env:
                   items:
                     properties:
@@ -387,6 +383,8 @@ spec:
                         type: string
                     type: object
                   type: array
+                short:
+                  type: string
                 sources:
                   items:
                     properties:
