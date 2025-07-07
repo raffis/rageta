@@ -44,13 +44,13 @@ func main() {
 }
 
 func init() {
-	dbPath := "/rageta.db"
+	dbPath := "/.rageta.db"
 	home, err := os.UserHomeDir()
 	if err == nil {
-		dbPath = filepath.Join(home, "rageta.db")
+		dbPath = filepath.Join(home, ".rageta.db")
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local rageta pipeline store.")
+	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local pipeline store.")
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
 	rootCmd.PersistentFlags().BoolVarP(&rootArgs.noColor, "no-color", "", false, "Disable all color output to the terminal.")
 	rootArgs.logOptions.BindFlags(rootCmd.PersistentFlags())
