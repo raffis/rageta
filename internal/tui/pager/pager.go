@@ -94,12 +94,6 @@ func (m Model) AtBottom() bool {
 	return m.YOffset >= m.maxYOffset()
 }
 
-// PastBottom returns whether or not the viewport is scrolled beyond the last
-// line. This can happen when adjusting the viewport height.
-func (m Model) PastBottom() bool {
-	return m.YOffset > m.maxYOffset()
-}
-
 // ScrollPercent returns the amount scrolled as a float between 0 and 1.
 func (m Model) ScrollPercent() float64 {
 	if m.Height >= len(m.lines) {
@@ -177,11 +171,11 @@ func (m Model) maxYOffset() int {
 		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width)))
 
 		if offset >= m.Height {
-			return i - 1
+			return i
 		}
 	}
 
-	return m.YOffset
+	return len(m.lines) - 1
 }
 
 // visibleLines returns the lines that should currently be visible in the
