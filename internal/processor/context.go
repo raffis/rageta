@@ -7,10 +7,17 @@ import (
 	"maps"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+)
+
+var (
+	tagColors = make(map[Tag]string)
+	tagMutex  = sync.Mutex{}
 )
 
 type StepContext struct {
@@ -115,6 +122,17 @@ func (t StepContext) HasTag(key string) bool {
 }
 
 func (t StepContext) WithTag(tag Tag) StepContext {
+	tagMutex.Lock()
+	defer tagMutex.Unlock()
+
+	if v, ok := tagColors[tag]; ok {
+		tag.Color = v
+	} else {
+		color := styles.RandHEXColor(0, 255)
+		tagColors[tag] = color
+		tag.Color = color
+	}
+
 	for i, v := range t.tags {
 		if v.Key == tag.Key {
 			t.tags[i] = tag

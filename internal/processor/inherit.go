@@ -5,7 +5,6 @@ import (
 	"maps"
 
 	"github.com/raffis/rageta/internal/provider"
-	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -52,7 +51,6 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		inheritCtx = inheritCtx.WithTag(Tag{
 			Key:   "pipeline",
 			Value: pipe.Name,
-			Color: styles.RandHEXColor(0, 255),
 		})
 
 		cmd, err := s.builder.Build(pipe, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
