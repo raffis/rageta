@@ -458,17 +458,7 @@ func stepBuilder(
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	contextDir := runArgs.contextDir
-	if contextDir == "" {
-		tmpDir, err := os.MkdirTemp(os.TempDir(), "rageta")
-		if err != nil {
-			return fmt.Errorf("failed to create tmp dir: %w", err)
-		}
-
-		contextDir = tmpDir
-	}
-
-	logFile, err := os.CreateTemp(contextDir, "log")
+	logFile, err := os.CreateTemp(os.TempDir(), "rageta-log")
 	if err != nil {
 		return err
 	}
@@ -524,7 +514,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		secretWriter.AddSecrets([]byte(secretValue))
 	}
 
-	logger.V(1).Info("use context directory", "path", contextDir)
 	logger.V(5).Info("run flags", "args", runArgs)
 	logger.V(1).Info("log file at", "path", logFile.Name())
 
@@ -543,6 +532,18 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	contextDir := runArgs.contextDir
+	if contextDir == "" {
+		tmpDir, err := os.MkdirTemp(os.TempDir(), "rageta")
+		if err != nil {
+			return fmt.Errorf("failed to create tmp dir: %w", err)
+		}
+
+		contextDir = tmpDir
+	}
+
+	logger.V(1).Info("use context directory", "path", contextDir)
 
 	template, err := buildTemplate(contextDir)
 	if err != nil {
