@@ -47,7 +47,11 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}()
 
 		progress := func() {
-			duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
+			var duration time.Duration
+			if !ctx.StartedAt.IsZero() {
+				duration = time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
+			}
+
 			dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("=> Waiting for %q to finish [%s]", s.stepName, duration))))
 			dev.Write([]byte("\n"))
 		}
@@ -68,7 +72,10 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		dev.Write([]byte("\n"))
 
 		ctx, err := next(ctx)
-		duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
+		var duration time.Duration
+		if !ctx.StartedAt.IsZero() {
+			duration = time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
+		}
 
 		switch {
 		case err == nil:

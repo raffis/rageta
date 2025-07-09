@@ -86,8 +86,8 @@ type runFlags struct {
 	logDetached         bool          `env:"LOG_DETACHED"`
 	fork                bool          `env:"FORK"`
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
-	expand              bool          `env:"DECOUPLE"`
-	noUpdate            bool          `env:"NO_UPDATE"`
+	expand              bool          `env:"EXPAND"`
+	noStatus            bool          `env:"NO_STATUS"`
 	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
@@ -120,7 +120,7 @@ func init() {
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
 	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
-	executionFlags.BoolVarP(&runArgs.noUpdate, "no-update", "", false, "Do not print task status messages")
+	executionFlags.BoolVarP(&runArgs.noStatus, "no-status", "", false, "Do not print task status messages")
 	executionFlags.DurationVarP(&runArgs.waitUpdateInterval, "wait-update-interval", "", time.Second*5, "Print waiting for task status updates every n interval")
 	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
 	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
@@ -432,7 +432,7 @@ func stepBuilder(
 			processor.WithOutputVars(),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
-			processor.WithMonitor(!runArgs.noUpdate, runArgs.waitUpdateInterval, monitorDev),
+			processor.WithMonitor(!runArgs.noStatus, runArgs.waitUpdateInterval, monitorDev),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, logBuilder, runArgs.logDetached),
 			processor.WithOtelMetrics(meter),
@@ -655,7 +655,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	go func() {
 		sig := <-signals
-		logger.Info("received signal", "signal", sig)
+		logger.V(1).Info("received signal", "signal", sig)
 		cancel()
 	}()
 
@@ -687,7 +687,29 @@ func runRun(cmd *cobra.Command, args []string) error {
 		result = retryRun(ctx, pipelineCmd)
 	}
 
-	logger.Info("pipeline completed", "result", result)
+	logger.V(1).Info("pipeline completed", "result", result)
+
+	tearDown := func() {
+		cancel()
+		close(teardown)
+
+		teardownCtx, cancel := context.WithTimeout(context.Background(), runArgs.gracefulTermination)
+		defer cancel()
+		var wg sync.WaitGroup
+
+		for _, teardownFunc := range teardownFuncs {
+			wg.Add(1)
+			go func(teardownFunc processor.Teardown) {
+				defer wg.Done()
+				logger.V(5).Info("execute teardown")
+				if err := teardownFunc(teardownCtx); err != nil {
+					logger.Error(err, "failed execute teardown")
+				}
+			}(teardownFunc)
+		}
+
+		wg.Wait()
+	}
 
 	if tuiDone != nil {
 		/*if errors.Is(result, pipeline.ErrInvalidInput) {
@@ -700,7 +722,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusDone, Error: result})
 		}
 
+		tearDown()
 		<-tuiDone
+	} else {
+		tearDown()
 	}
 
 	if prefixOutputDone != nil {
@@ -708,31 +733,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 		<-prefixOutputDone
 	}
 
-	cancel()
-	close(teardown)
-
-	if runArgs.contextDir == "" {
+	if runArgs.contextDir == "" && !runArgs.noGC {
 		defer func() {
 			_ = os.RemoveAll(contextDir)
 		}()
 	}
-
-	teardownCtx, cancel := context.WithTimeout(context.Background(), runArgs.gracefulTermination)
-	defer cancel()
-	var wg sync.WaitGroup
-
-	for _, teardownFunc := range teardownFuncs {
-		wg.Add(1)
-		go func(teardownFunc processor.Teardown) {
-			defer wg.Done()
-			logger.V(-5).Info("execute teardown")
-			if err := teardownFunc(teardownCtx); err != nil {
-				logger.Error(err, "failed execute teardown")
-			}
-		}(teardownFunc)
-	}
-
-	wg.Wait()
 
 	if reportFactory != nil {
 		if err := reportFactory.Finalize(); err != nil {
