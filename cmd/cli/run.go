@@ -79,6 +79,7 @@ type runFlags struct {
 	inputs              []string      `env:"INPUTS"`
 	envs                []string      `env:"ENVS"`
 	secretEnvs          []string      `env:"SECRET_ENVS"`
+	tags                []string      `env:"TAGS"`
 	volumes             []string      `env:"VOLUMES"`
 	retry               uint64        `env:"RETRY"`
 	skipDone            bool          `env:"SKIP_DONE"`
@@ -125,6 +126,7 @@ func init() {
 	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
 	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
+	executionFlags.StringSliceVarP(&runArgs.tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
 	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
@@ -343,7 +345,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 
 		return driver, err
 	case d == containerRuntimeKubernetes:
-		clientset, err := getRestClient(runArgs.kubeOptions.ConfigFlags)
+		clientset, err := kubeRestClient(runArgs.kubeOptions.ConfigFlags)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
@@ -355,7 +357,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 	return nil, errors.New("unknown container runtime")
 }
 
-func getRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
+func kubeRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
 	config, err := kubeconfigArgs.ToRESTConfig()
 	if err != nil {
 		return nil, err
@@ -399,6 +401,29 @@ func logBuilder(defaultLog zapcore.Core, zapConfig zap.Config) processor.LogBuil
 	}
 }
 
+func tags() []processor.Tag {
+	var tags []processor.Tag
+	for _, tag := range runArgs.tags {
+		v := strings.SplitN(tag, "=", 2)
+		if len(v) == 2 {
+			t := processor.Tag{
+				Key: v[0],
+			}
+
+			value := strings.SplitN(v[1], ":", 2)
+			if len(value) == 2 {
+				t.Value = value[0]
+				t.Color = value[1]
+			} else {
+				t.Value = v[1]
+			}
+
+			tags = append(tags, t)
+		}
+	}
+	return tags
+}
+
 func stepBuilder(
 	logBuilder processor.LogBuilder,
 	logger logr.Logger,
@@ -419,6 +444,7 @@ func stepBuilder(
 	pool pond.Pool,
 	template v1beta1.Template,
 	monitorDev io.Writer,
+	tags []processor.Tag,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
@@ -430,6 +456,7 @@ func stepBuilder(
 			processor.WithEnvVars(osEnv, envs),
 			processor.WithSecretVars(osEnv, secrets, secretStore),
 			processor.WithOutputVars(),
+			processor.WithTags(tags),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
 			processor.WithMonitor(!runArgs.noStatus, runArgs.waitUpdateInterval, monitorDev),
@@ -648,6 +675,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			pool,
 			template,
 			monitorDev,
+			tags(),
 		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),

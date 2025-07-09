@@ -264,6 +264,15 @@ spec:
                               - value
                               type: object
                             type: array
+                          tag:
+                            properties:
+                              color:
+                                type: string
+                              value:
+                                type: string
+                            type: object
+                        required:
+                        - tag
                         type: object
                       type: array
                     maxConcurrent:
@@ -327,6 +336,9 @@ spec:
                       type: string
                     maxRetries:
                       type: integer
+                  required:
+                  - constant
+                  - exponential
                   type: object
                 run:
                   properties:
@@ -416,6 +428,17 @@ spec:
                           type: string
                       type: object
                   type: object
+                tags:
+                  items:
+                    properties:
+                      color:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
                 template:
                   properties:
                     args:
@@ -462,6 +485,8 @@ spec:
                   type: object
                 timeout:
                   type: string
+              required:
+              - timeout
               type: object
             type: array
         type: object

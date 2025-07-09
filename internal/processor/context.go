@@ -128,9 +128,13 @@ func (t StepContext) WithTag(tag Tag) StepContext {
 	if v, ok := tagColors[tag]; ok {
 		tag.Color = v
 	} else {
-		color := styles.RandHEXColor(0, 255)
-		tagColors[tag] = color
-		tag.Color = color
+		if tag.Color == "" {
+			color := styles.RandHEXColor(0, 255)
+			tagColors[tag] = color
+			tag.Color = color
+		} else {
+			tagColors[tag] = tag.Color
+		}
 	}
 
 	for i, v := range t.tags {
