@@ -45,7 +45,7 @@ func (p Pipeline) SetDefaults() {
 type StepOptions struct {
 	If           []IfCondition     `json:"if,omitempty"`
 	Inputs       []InputParam      `json:"inputs,omitempty"`
-	Timeout      metav1.Duration   `json:"timeout,omitempty"`
+	Timeout      metav1.Duration   `json:"timeout"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Template     *Template         `json:"template,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
@@ -57,6 +57,13 @@ type StepOptions struct {
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
+	Tags         []Tag             `json:"tags,omitempty"`
+}
+
+type Tag struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 type SecretVar struct {
@@ -81,13 +88,19 @@ type Matrix struct {
 }
 
 type IncludeParam struct {
-	Name   string  `json:"name,omitempty"`
-	Params []Param `json:"params,omitempty"`
+	Name   string    `json:"name,omitempty"`
+	Params []Param   `json:"params,omitempty"`
+	Tag    MatrixTag `json:"tag"`
+}
+
+type MatrixTag struct {
+	Value string `json:"value,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 type Retry struct {
-	Exponential metav1.Duration `json:"exponential,omitempty"`
-	Constant    metav1.Duration `json:"constant,omitempty"`
+	Exponential metav1.Duration `json:"exponential"`
+	Constant    metav1.Duration `json:"constant"`
 	MaxRetries  int             `json:"maxRetries,omitempty"`
 }
 
@@ -190,7 +203,7 @@ type Stream struct {
 // +kubebuilder:object:root=true
 type PipelineList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata"`
 	Items           []Pipeline `json:"items"`
 }
 

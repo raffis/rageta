@@ -80,15 +80,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for matrixKey, matrix := range matrixes {
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
-
-			for paramKey, paramValue := range matrix {
-				copyCtx = copyCtx.WithTag(Tag{
-					Key:   fmt.Sprintf("matrix/%s", paramKey),
-					Value: paramValue,
-				})
-			}
-
-			s.combineIncludes(matrix, s.include)
+			copyCtx = s.extendMatrix(copyCtx, matrix, s.include)
 			copyCtx.Matrix = matrix
 
 			hasher := sha1.New()
@@ -171,10 +163,15 @@ func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, er
 	return result, nil
 }
 
-func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1beta1.IncludeParam) {
+func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, include []v1beta1.IncludeParam) StepContext {
 	includeParams := make(map[string]string)
 
 	for currentMatrixKey, currentMatrixValue := range matrixParams {
+		tag := Tag{
+			Key:   fmt.Sprintf("matrix/%s", currentMatrixKey),
+			Value: currentMatrixValue,
+		}
+
 		for _, includeGroup := range include {
 			combine := false
 			for _, includeParam := range includeGroup.Params {
@@ -184,14 +181,23 @@ func (s *Matrix) combineIncludes(matrixParams map[string]string, include []v1bet
 			}
 
 			if combine {
+				tag.Color = includeGroup.Tag.Color
+
+				if includeGroup.Tag.Value != "" {
+					tag.Value = includeGroup.Tag.Value
+				}
+
 				for _, includeParam := range includeGroup.Params {
 					includeParams[includeParam.Name] = includeParam.Value.StringVal
 				}
 			}
 		}
+
+		ctx = ctx.WithTag(tag)
 	}
 
 	maps.Copy(matrixParams, includeParams)
+	return ctx
 }
 
 func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, keys []string, index int, currentCombination map[string]string, result *map[string]map[string]string) {
