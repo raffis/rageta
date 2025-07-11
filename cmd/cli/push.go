@@ -201,7 +201,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if pushArgs.output == "" {
-		fmt.Println("pushing artifact to %s", ociURL)
+		fmt.Printf("pushing artifact to %s\n", ociURL)
 	}
 
 	digestURL, err := ociClient.Push(ctx, ociURL, path,
@@ -255,7 +255,7 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 		}
 		rootCmd.Print(string(marshalled))
 	default:
-		fmt.Println("Successfully pushed to %s", digestURL)
+		fmt.Printf("Successfully pushed to %s\n", digestURL)
 	}
 
 	return nil

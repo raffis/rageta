@@ -731,7 +731,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 				defer wg.Done()
 				logger.V(5).Info("execute teardown")
 				if err := teardownFunc(teardownCtx); err != nil {
-					logger.Error(err, "failed execute teardown")
+					logger.V(1).Error(err, "failed execute teardown")
 				}
 			}(teardownFunc)
 		}

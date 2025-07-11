@@ -1,6 +1,8 @@
 package processor
 
 import (
+	"slices"
+
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -26,7 +28,7 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	var tags []Tag
 	for _, tag := range s.tags {
 		tags = append(tags, Tag{
-			Key:  tag.Name,
+			Key:   tag.Name,
 			Value: tag.Value,
 			Color: tag.Color,
 		})
@@ -35,10 +37,14 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	tags = append(tags, s.globalTags...)
 
 	return func(ctx StepContext) (StepContext, error) {
+		originTags := slices.Clone(ctx.tags)
+
 		for _, tag := range tags {
 			ctx = ctx.WithTag(tag)
 		}
 
-		return next(ctx)
+		ctx, err := next(ctx)
+		ctx.tags = originTags
+		return ctx, err
 	}, nil
 }
