@@ -901,7 +901,6 @@ func retryRun(ctx context.Context, pipeline processor.Executable) error {
 		_, _, err := pipeline()
 
 		if err != nil {
-			logger.V(0).Error(err, "pipeline failed, retry backoff")
 			return retry.RetryableError(err)
 		}
 
