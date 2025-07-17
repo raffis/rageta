@@ -89,6 +89,7 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"EXPAND"`
 	noStatus            bool          `env:"NO_STATUS"`
+	statusOutput        string        `env:"STATUS_OUTPUT"`
 	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
@@ -130,6 +131,7 @@ func init() {
 	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
+	executionFlags.StringVarP(&runArgs.statusOutput, "status-output", "", "", "Destination for the status output. By default this depends on the output (-o) set.")
 	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
@@ -648,9 +650,27 @@ func runRun(cmd *cobra.Command, args []string) error {
 	logger.V(3).Info("worker pool", "max-concurrency", runArgs.maxConcurrent)
 	pool := pond.NewPool(runArgs.maxConcurrent)
 
-	monitorDev := io.Discard
-	if runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String() {
+	var monitorDev io.Writer
+	switch {
+	case runArgs.statusOutput == "/dev/stdout" || runArgs.statusOutput == "-":
+		monitorDev = stdout
+	case runArgs.statusOutput == "/dev/stderr":
 		monitorDev = stderr
+	case runArgs.statusOutput != "":
+		f, err := os.OpenFile(runArgs.statusOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+		if err != nil {
+			return err
+		}
+
+		defer func() {
+			_ = f.Close()
+		}()
+
+		monitorDev = f
+	case runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String():
+		monitorDev = stderr
+	default:
+		monitorDev = io.Discard
 	}
 
 	var builder processor.PipelineBuilder

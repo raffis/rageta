@@ -53,7 +53,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			})
 		}
 
-		results := make(chan concurrentResult)
+		results := make(chan result)
 		var stdout *io.PipeReader
 		var errs []error
 
@@ -94,7 +94,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				if step.r != nil {
 					step.r.Close()
 				}
-				results <- concurrentResult{resultCtx, err}
+				results <- result{resultCtx, err}
 			}()
 		}
 

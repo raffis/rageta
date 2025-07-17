@@ -10,7 +10,7 @@ import (
 
 func WithRetry() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Retry == nil {
+		if spec.Retry == nil || (spec.Retry.Constant.Duration == 0 && spec.Retry.Exponential.Duration == 0) {
 			return nil
 		}
 

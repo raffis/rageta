@@ -66,7 +66,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, ErrEmptyMatrix
 		}
 
-		results := make(chan concurrentResult)
+		results := make(chan result)
 		var errs []error
 
 		cancelCtx, cancel := context.WithCancel(ctx)
@@ -95,7 +95,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			pool.Go(func() {
 				t, err := next(copyCtx)
-				results <- concurrentResult{t, err}
+				results <- result{t, err}
 			})
 		}
 

@@ -32,12 +32,14 @@ type Monitor struct {
 
 func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		dev := s.dev
-		if ctx.Stderr != nil && ctx.Stderr != io.Discard {
-			dev = ctx.Stderr
-		}
+		var dev io.Writer
 
-		if dev == nil {
+		switch {
+		case s.dev != nil:
+			dev = s.dev
+		case ctx.Stderr != nil && ctx.Stderr != io.Discard:
+			dev = ctx.Stderr
+		default:
 			return next(ctx)
 		}
 
