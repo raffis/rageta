@@ -668,7 +668,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	case runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String():
 		monitorDev = stderr
 	default:
-		monitorDev = io.Discard
+		monitorDev = nil
 	}
 
 	var builder processor.PipelineBuilder
