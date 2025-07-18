@@ -158,7 +158,11 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		defer os.Remove(path)
+		defer func() {
+			if err := os.Remove(path); err != nil {
+				logger.V(3).Error(err, "error removing temp manifest")
+			}
+		}()
 	}
 
 	if fstat, err := os.Stat(path); err != nil {
@@ -169,14 +173,22 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		defer f.Close()
+		defer func() {
+			if closeErr := f.Close(); closeErr != nil {
+				logger.V(3).Error(err, "error closing temp manifest")
+			}
+		}()
 
 		path, err = saveReaderToFile(f)
 		if err != nil {
 			return err
 		}
 
-		defer os.Remove(path)
+		defer func() {
+			if err := os.Remove(path); err != nil {
+				logger.V(3).Error(err, "error removing temp manifest")
+			}
+		}()
 	}
 
 	annotations := map[string]string{}
@@ -277,7 +289,11 @@ func saveReaderToFile(reader io.Reader) (string, error) {
 		return "", err
 	}
 
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			logger.V(3).Error(err, "error closing temp manifest")
+		}
+	}()
 
 	if _, err := f.Write(b); err != nil {
 		return "", fmt.Errorf("error writing stdin to file: %w", err)

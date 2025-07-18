@@ -57,10 +57,12 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
-			pool.Go(func() {
+			if err := pool.Go(func() {
 				t, err := next(copyCtx)
 				results <- result{t, err}
-			})
+			}); err != nil {
+				return ctx, err
+			}
 		}
 
 		var done int

@@ -29,7 +29,11 @@ type Report struct {
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx, err := next(ctx)
-		s.report.Report(ctx, SuffixName(s.stepName, ctx.NamePrefix))
+		if reportErr := s.report.Report(ctx, SuffixName(s.stepName, ctx.NamePrefix)); reportErr != nil {
+			if err == nil {
+				err = reportErr
+			}
+		}
 		return ctx, err
 	}, nil
 }

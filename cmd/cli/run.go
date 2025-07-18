@@ -227,7 +227,6 @@ type reportType string
 var (
 	reportTypeNone     reportType = "none"
 	reportTypeTable    reportType = "table"
-	reportTypeJSON     reportType = "json"
 	reportTypeMarkdown reportType = "markdown"
 )
 
@@ -323,16 +322,11 @@ func isPossiblyInsideDocker() (bool, error) {
 	}
 }
 
-func isPossiblyInsideKube() bool {
-	_, set := os.LookupEnv("KUBERNETES_SERVICE_HOST")
-	return set
-}
-
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
 	logger.V(3).Info("create container runtime client", "container-runtime", d)
 
-	switch {
-	case d == containerRuntimeDocker:
+	switch d {
+	case containerRuntimeDocker:
 		runArgs.dockerOptions.Logger = logger
 		c, err := runArgs.dockerOptions.Build()
 		if err != nil {
@@ -346,7 +340,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		)
 
 		return driver, err
-	case d == containerRuntimeKubernetes:
+	case containerRuntimeKubernetes:
 		clientset, err := kubeRestClient(runArgs.kubeOptions.ConfigFlags)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
@@ -625,7 +619,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	defer tp.Shutdown(context.Background())
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			logger.V(3).Error(err, "failed to shutdown tracer provider")
+		}
+	}()
 	meter := otel.Meter(otelName)
 
 	outputFactory, err := outputFactory(logger, cancel)
@@ -802,7 +800,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
 	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+
 	factory := serializer.NewCodecFactory(scheme)
 	decoder := factory.UniversalDeserializer()
 	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
@@ -1148,7 +1147,6 @@ func envMap(from []string) map[string]string {
 }
 
 var (
-	tuiManager       *tui.Manager
 	tuiModel         tea.Model
 	tuiDone          chan struct{}
 	tuiApp           *tea.Program
@@ -1167,7 +1165,6 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 
 	tuiDone = make(chan struct{})
 	tuiModel = tui.NewUI(logger.WithValues("component", "tui"))
-	tuiManager = tui.NewManager(tuiModel)
 
 	tuiApp = tea.NewProgram(
 		tuiModel,
@@ -1186,7 +1183,9 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 		_, err := tuiApp.Run()
 
 		if err == nil {
-			tuiApp.ReleaseTerminal()
+			if err := tuiApp.ReleaseTerminal(); err != nil {
+				logger.V(3).Error(err, "failed to release terminal")
+			}
 		}
 
 		cancel()

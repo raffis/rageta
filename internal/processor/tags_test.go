@@ -70,7 +70,7 @@ func TestTagsBuilder(t *testing.T) {
 				assert.True(t, ok)
 				assert.Equal(t, tt.globalTags, tags.globalTags)
 				if tt.spec != nil {
-					assert.Equal(t, tt.spec.StepOptions.Tags, tags.tags)
+					assert.Equal(t, tt.spec.Tags, tags.tags)
 				}
 			}
 		})

@@ -68,7 +68,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 	longDescription += "\n"
 
 	fmt.Fprintf(os.Stderr, "%s\n%s\n%s\n%s",
-		styles.Bold.Render(command.ObjectMeta.Name),
+		styles.Bold.Render(command.Name),
 		shortDescription,
 		styles.Bold.Render("Description:"),
 		longDescription,
@@ -81,7 +81,9 @@ func runHelp(cmd *cobra.Command, args []string) error {
 	flagSet.PrintDefaults()
 
 	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Rageta flags:"))
-	runCmd.Usage()
+	if err := runCmd.Usage(); err != nil {
+		return err
+	}
 
 	return nil
 }

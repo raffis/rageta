@@ -175,7 +175,9 @@ func storeContext(stepCtx processor.StepContext, contextDir string) error {
 		return err
 	}
 
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	b, err := json.Marshal(stepCtx.ToV1Beta1())
 	if err != nil {
@@ -194,7 +196,9 @@ func recoverContext(stepCtx processor.StepContext, contextDir string) error {
 			return err
 		}
 
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 
 		vars := &v1beta1.Context{}
 
@@ -218,7 +222,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
 		name:       command.Name,
 		id:         utils.RandString(5),
-		entrypoint: command.PipelineSpec.Entrypoint,
+		entrypoint: command.Entrypoint,
 	}
 
 	for _, spec := range command.Steps {

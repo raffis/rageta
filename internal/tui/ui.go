@@ -290,10 +290,11 @@ func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 	var cmd tea.Cmd
 
 	if m.activePanel == PanelList {
-		switch msg.Type {
-		case tea.MouseWheelUp:
+		// Handle mouse wheel events using the new API
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
 			m.list.CursorUp()
-		case tea.MouseWheelDown:
+		case tea.MouseButtonWheelDown:
 			m.list.CursorDown()
 		}
 	} else {

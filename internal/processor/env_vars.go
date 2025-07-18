@@ -37,12 +37,17 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		defer envTmp.Close()
-		defer os.Remove(envTmp.Name())
+		var nextErr error
+		defer func() {
+			_ = envTmp.Close()
+			_ = os.Remove(envTmp.Name())
+		}()
 
 		ctx.Env = envTmp.Name()
-		ctx, nextErr := next(ctx)
-		envTmp.Sync()
+		ctx, nextErr = next(ctx)
+		if syncErr := envTmp.Sync(); syncErr != nil {
+			nextErr = syncErr
+		}
 
 		envs, err := parseVars(envTmp)
 		if err != nil {

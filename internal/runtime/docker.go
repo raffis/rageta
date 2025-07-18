@@ -337,8 +337,12 @@ func (d *docker) pullImage(ctx context.Context, image string, w io.Writer) error
 	}
 
 	termFd, isTerm := term.GetFdInfo(w)
-	defer r.Close()
-	jsonmessage.DisplayJSONMessagesStream(r, w, termFd, isTerm, nil)
+	defer func() {
+		_ = r.Close()
+	}()
+	if displayErr := jsonmessage.DisplayJSONMessagesStream(r, w, termFd, isTerm, nil); displayErr != nil {
+		err = displayErr
+	}
 	return err
 }
 

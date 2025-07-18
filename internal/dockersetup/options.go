@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 
 	"github.com/docker/cli/cli/config"
-	"github.com/docker/docker/client"
 	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/go-logr/logr"
+	"github.com/moby/moby/client"
 	"github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/spf13/pflag"
 )
@@ -143,7 +143,7 @@ func (o *Options) Build() (*dockerclient.Client, error) {
 		return nil, err
 	}
 
-	var opts []dockerclient.Opt = []dockerclient.Opt{
+	opts := []dockerclient.Opt{
 		dockerclient.WithHTTPClient(client),
 		dockerclient.WithUserAgent("rageta"),
 		dockerclient.WithAPIVersionNegotiation(),
