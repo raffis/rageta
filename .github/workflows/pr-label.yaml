@@ -3,8 +3,6 @@ name: pr-label
 on:
   pull_request:
 
-permissions: {}
-
 jobs:
   size-label:
     runs-on: ubuntu-latest
@@ -21,3 +19,4 @@ jobs:
         uses: "pascalgn/size-label-action@b1f4946f381d38d3b5960f76b514afdfef39b609"
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
