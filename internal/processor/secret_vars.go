@@ -38,12 +38,17 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		defer secretTmp.Close()
-		defer os.Remove(secretTmp.Name())
+		var nextErr error
+		defer func() {
+			_ = secretTmp.Close()
+			_ = os.Remove(secretTmp.Name())
+		}()
 
 		ctx.Secret = secretTmp.Name()
-		ctx, nextErr := next(ctx)
-		secretTmp.Sync()
+		ctx, nextErr = next(ctx)
+		if syncErr := secretTmp.Sync(); syncErr != nil {
+			nextErr = syncErr
+		}
 
 		secrets, err := parseVars(secretTmp)
 		if err != nil {

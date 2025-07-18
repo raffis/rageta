@@ -6,7 +6,7 @@ import (
 
 func WithNeeds() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Needs == nil {
+		if len(spec.Needs) == 0 {
 			return nil
 		}
 

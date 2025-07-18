@@ -23,7 +23,7 @@ func (p *log) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := p.next.RoundTrip(req)
 
 	if err != nil {
-		p.logger.Error(err, "http request failed", "method", req.Method, "uri", req.URL.String())
+		p.logger.V(1).Error(err, "http request failed", "method", req.Method, "uri", req.URL.String())
 	} else {
 		p.logger.V(7).Info("http response received", "method", req.Method, "uri", req.URL.String(), "status", res.StatusCode)
 	}

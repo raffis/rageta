@@ -32,7 +32,7 @@ func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface
 }
 
 const (
-	defaultScriptHeader = "#!/bin/sh\nset -e\n"
+	defaultScriptHeader = "#!/bin/sh\nset -euo pipefail\n"
 )
 
 type Run struct {

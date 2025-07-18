@@ -32,3 +32,8 @@ type Step interface {
 }
 
 type Teardown func(ctx context.Context) error
+
+type result struct {
+	ctx StepContext
+	err error
+}

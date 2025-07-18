@@ -38,7 +38,7 @@ func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 		}, nil
 	}
 
-	next, err := Chain(pipeline, s[1:len(s)]...)
+	next, err := Chain(pipeline, s[1:]...)
 	if err != nil {
 		return nil, err
 	}

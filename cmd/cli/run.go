@@ -89,6 +89,7 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"EXPAND"`
 	noStatus            bool          `env:"NO_STATUS"`
+	statusOutput        string        `env:"STATUS_OUTPUT"`
 	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
@@ -130,6 +131,7 @@ func init() {
 	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
 	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
+	executionFlags.StringVarP(&runArgs.statusOutput, "status-output", "", "", "Destination for the status output. By default this depends on the output (-o) set.")
 	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
 	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
 	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
@@ -225,7 +227,6 @@ type reportType string
 var (
 	reportTypeNone     reportType = "none"
 	reportTypeTable    reportType = "table"
-	reportTypeJSON     reportType = "json"
 	reportTypeMarkdown reportType = "markdown"
 )
 
@@ -321,16 +322,11 @@ func isPossiblyInsideDocker() (bool, error) {
 	}
 }
 
-func isPossiblyInsideKube() bool {
-	_, set := os.LookupEnv("KUBERNETES_SERVICE_HOST")
-	return set
-}
-
 func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr.Logger, hideOutput bool) (cruntime.Interface, error) {
 	logger.V(3).Info("create container runtime client", "container-runtime", d)
 
-	switch {
-	case d == containerRuntimeDocker:
+	switch d {
+	case containerRuntimeDocker:
 		runArgs.dockerOptions.Logger = logger
 		c, err := runArgs.dockerOptions.Build()
 		if err != nil {
@@ -344,7 +340,7 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 		)
 
 		return driver, err
-	case d == containerRuntimeKubernetes:
+	case containerRuntimeKubernetes:
 		clientset, err := kubeRestClient(runArgs.kubeOptions.ConfigFlags)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
@@ -623,7 +619,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	defer tp.Shutdown(context.Background())
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			logger.V(3).Error(err, "failed to shutdown tracer provider")
+		}
+	}()
 	meter := otel.Meter(otelName)
 
 	outputFactory, err := outputFactory(logger, cancel)
@@ -648,9 +648,27 @@ func runRun(cmd *cobra.Command, args []string) error {
 	logger.V(3).Info("worker pool", "max-concurrency", runArgs.maxConcurrent)
 	pool := pond.NewPool(runArgs.maxConcurrent)
 
-	monitorDev := io.Discard
-	if runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String() {
+	var monitorDev io.Writer
+	switch {
+	case runArgs.statusOutput == "/dev/stdout" || runArgs.statusOutput == "-":
+		monitorDev = stdout
+	case runArgs.statusOutput == "/dev/stderr":
 		monitorDev = stderr
+	case runArgs.statusOutput != "":
+		f, err := os.OpenFile(runArgs.statusOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+		if err != nil {
+			return err
+		}
+
+		defer func() {
+			_ = f.Close()
+		}()
+
+		monitorDev = f
+	case runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String():
+		monitorDev = stderr
+	default:
+		monitorDev = io.Discard
 	}
 
 	var builder processor.PipelineBuilder
@@ -731,7 +749,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 				defer wg.Done()
 				logger.V(5).Info("execute teardown")
 				if err := teardownFunc(teardownCtx); err != nil {
-					logger.Error(err, "failed execute teardown")
+					logger.V(1).Error(err, "failed execute teardown")
 				}
 			}(teardownFunc)
 		}
@@ -782,7 +800,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
 	scheme := kruntime.NewScheme()
-	v1beta1.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+
 	factory := serializer.NewCodecFactory(scheme)
 	decoder := factory.UniversalDeserializer()
 	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
@@ -881,7 +900,6 @@ func retryRun(ctx context.Context, pipeline processor.Executable) error {
 		_, _, err := pipeline()
 
 		if err != nil {
-			logger.V(0).Error(err, "pipeline failed, retry backoff")
 			return retry.RetryableError(err)
 		}
 
@@ -1129,7 +1147,6 @@ func envMap(from []string) map[string]string {
 }
 
 var (
-	tuiManager       *tui.Manager
 	tuiModel         tea.Model
 	tuiDone          chan struct{}
 	tuiApp           *tea.Program
@@ -1148,7 +1165,6 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 
 	tuiDone = make(chan struct{})
 	tuiModel = tui.NewUI(logger.WithValues("component", "tui"))
-	tuiManager = tui.NewManager(tuiModel)
 
 	tuiApp = tea.NewProgram(
 		tuiModel,
@@ -1167,7 +1183,9 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 		_, err := tuiApp.Run()
 
 		if err == nil {
-			tuiApp.ReleaseTerminal()
+			if err := tuiApp.ReleaseTerminal(); err != nil {
+				logger.V(3).Error(err, "failed to release terminal")
+			}
 		}
 
 		cancel()

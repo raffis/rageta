@@ -80,7 +80,7 @@ docker_manifests:
   - ghcr.io/raffis/{{ .ProjectName }}:v{{ .Version }}-amd64
   - ghcr.io/raffis/{{ .ProjectName }}:v{{ .Version }}-arm64v8
 
-brews:
+homebrew_casks:
 - ids:
   - rageta
   repository:
@@ -90,8 +90,6 @@ brews:
   description: Cloud native pipelines
   homepage: https://github.com/raffis/rageta
   directory: Formula
-  test: |
-    system "#{bin}/rageta -h" 
 
 signs:
 - cmd: cosign

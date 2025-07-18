@@ -187,19 +187,6 @@ func (ps InputParams) validateParamEnums(ctx context.Context) *apis.FieldError {
 	return errs
 }*/
 
-// findDups returns the duplicate element in the given slice
-func findDups(vals []string) sets.String {
-	seen := sets.String{}
-	dups := sets.String{}
-	for _, val := range vals {
-		if seen.Has(val) {
-			dups.Insert(val)
-		}
-		seen.Insert(val)
-	}
-	return dups
-}
-
 // Param declares an ParamValues to use for the parameter called name.
 type Param struct {
 	Name string `json:"name"`
@@ -232,34 +219,12 @@ type Param struct {
 }*/
 
 // ExtractNames returns a set of unique names
-func (ps Params) ExtractNames() sets.String {
-	names := sets.String{}
+func (ps Params) ExtractNames() sets.Set[string] {
+	names := sets.New[string]()
 	for _, p := range ps {
 		names.Insert(p.Name)
 	}
 	return names
-}
-
-func (ps Params) extractValues() []string {
-	pvs := []string{}
-	for i := range ps {
-		pvs = append(pvs, ps[i].Value.StringVal)
-		pvs = append(pvs, ps[i].Value.ArrayVal...)
-		for _, v := range ps[i].Value.ObjectVal {
-			pvs = append(pvs, v)
-		}
-	}
-	return pvs
-}
-
-// extractParamMapArrVals creates a param map with the key: param.Name and
-// val: param.Value.ArrayVal
-func (ps Params) extractParamMapArrVals() map[string][]string {
-	paramsMap := make(map[string][]string)
-	for _, p := range ps {
-		paramsMap[p.Name] = p.Value.ArrayVal
-	}
-	return paramsMap
 }
 
 // ParseTaskandResultName parses "task name", "result name" from a Matrix Context Variable

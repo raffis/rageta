@@ -49,7 +49,7 @@ func (m *Modal) handleWindowResize(msg tea.WindowSizeMsg) {
 func (m *Modal) View() string {
 	modalStyle := m.createModalStyle()
 	titleStyle := m.createTitleStyle()
-	
+
 	title := titleStyle.Render(ModalTitle)
 	layout := lipgloss.JoinVertical(lipgloss.Left, title, ModalContent)
 

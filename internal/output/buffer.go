@@ -20,7 +20,7 @@ type bufferVars struct {
 	Tags        []processor.Tag
 }
 
-func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
+func Buffer(tmpl *template.Template, dev io.Writer) processor.OutputFactory {
 	mu := sync.RWMutex{}
 
 	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
@@ -45,7 +45,7 @@ func Buffer(tmpl *template.Template, stdout io.Writer) processor.OutputFactory {
 				displayName = short
 			}
 
-			err = tmpl.Execute(stdout, bufferVars{
+			err = tmpl.Execute(dev, bufferVars{
 				StepName:    stepName,
 				UniqueName:  processor.SuffixName(stepName, ctx.NamePrefix),
 				DisplayName: displayName,

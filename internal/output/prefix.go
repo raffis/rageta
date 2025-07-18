@@ -19,28 +19,28 @@ func TerminalWriter(ch chan PrefixMessage) {
 		lines := strings.Split(strings.ReplaceAll(strings.TrimSuffix(string(msg.b), "\n"), "\r", ""), "\n")
 
 		if lastProducer != "" && msg.producer != lastProducer && !newLine {
-			msg.w.Write([]byte{'\n'})
+			_, _ = msg.w.Write([]byte{'\n'})
 		}
 
 		for i, line := range lines {
 			if i == 0 {
 				if (msg.producer == lastProducer && newLine) || msg.producer != lastProducer {
-					msg.w.Write([]byte(msg.style.Render(msg.producer)))
+					_, _ = msg.w.Write([]byte(msg.style.Render(msg.producer)))
 				}
 			} else {
-				msg.w.Write([]byte(msg.style.Render(msg.producer)))
+				_, _ = msg.w.Write([]byte(msg.style.Render(msg.producer)))
 			}
 
-			msg.w.Write([]byte(line))
+			_, _ = msg.w.Write([]byte(line))
 
 			if i < len(lines)-1 {
-				msg.w.Write([]byte{'\n'})
+				_, _ = msg.w.Write([]byte{'\n'})
 			}
 		}
 
 		newLine = strings.HasSuffix(string(msg.b), "\n")
 		if newLine {
-			msg.w.Write([]byte{'\n'})
+			_, _ = msg.w.Write([]byte{'\n'})
 		}
 
 		lastProducer = msg.producer

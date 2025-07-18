@@ -30,11 +30,6 @@ type Concurrent struct {
 	maxConcurrent int
 }
 
-type concurrentResult struct {
-	ctx StepContext
-	err error
-}
-
 func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	steps, err := filterSteps(s.refs, pipeline)
 	if err != nil {
@@ -42,7 +37,7 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}
 
 	return func(ctx StepContext) (StepContext, error) {
-		results := make(chan concurrentResult)
+		results := make(chan result)
 		var errs []error
 
 		cancelCtx, cancel := context.WithCancel(ctx.Context)
@@ -62,10 +57,12 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
-			pool.Go(func() {
+			if err := pool.Go(func() {
 				t, err := next(copyCtx)
-				results <- concurrentResult{t, err}
-			})
+				results <- result{t, err}
+			}); err != nil {
+				return ctx, err
+			}
 		}
 
 		var done int

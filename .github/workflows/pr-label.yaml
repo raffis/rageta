@@ -6,9 +6,17 @@ on:
 jobs:
   size-label:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.head.repo.fork && github.actor != 'dependabot[bot]' }}
+    permissions: 
+      pull-requests: write
+    if: '!github.event.pull_request.head.repo.fork'
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c439dc8bdf85cadbbce9ed30d1c7b959517bc49 # v2.12.2
+        with:
+          egress-policy: audit
+
       - name: size-label
         uses: "pascalgn/size-label-action@b1f4946f381d38d3b5960f76b514afdfef39b609"
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+

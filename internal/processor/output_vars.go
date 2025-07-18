@@ -36,8 +36,10 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return ctx, err
 			}
 
-			defer outputTmp.Close()
-			defer os.Remove(outputTmp.Name())
+			defer func(f *os.File) {
+				_ = f.Close()
+				_ = os.Remove(f.Name())
+			}(outputTmp)
 
 			ctx.Outputs = append(ctx.Outputs, OutputParam{
 				Name: output.Name,

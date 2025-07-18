@@ -63,7 +63,9 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 				return ctx, fmt.Errorf("failed to redirect stdout: %w", err)
 			}
 
-			defer outFile.Close()
+			defer func() {
+				_ = outFile.Close()
+			}()
 			ctx.AdditionalStdout = append(ctx.AdditionalStdout, outFile)
 			stdoutRedirect = outFile
 		}
@@ -78,7 +80,9 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 				return ctx, fmt.Errorf("failed to redirect stderr: %w", err)
 			}
 
-			defer outFile.Close()
+			defer func() {
+				_ = outFile.Close()
+			}()
 			ctx.AdditionalStderr = append(ctx.AdditionalStderr, outFile)
 			stderrRedirect = outFile
 		}

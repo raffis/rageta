@@ -53,7 +53,7 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			})
 		}
 
-		results := make(chan concurrentResult)
+		results := make(chan result)
 		var stdout *io.PipeReader
 		var errs []error
 
@@ -92,9 +92,11 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			go func() {
 				resultCtx, err := step.next(step.ctx)
 				if step.r != nil {
-					step.r.Close()
+					if closeErr := step.r.Close(); closeErr != nil {
+						err = closeErr
+					}
 				}
-				results <- concurrentResult{resultCtx, err}
+				results <- result{resultCtx, err}
 			}()
 		}
 
@@ -109,8 +111,12 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 				//close any open io pipe to make any std stream copy routines stop
 				for _, step := range stepEntrypoints[0 : len(steps)-1] {
-					step.r.Close()
-					step.w.Close()
+					if step.r != nil {
+						_ = step.r.Close()
+					}
+					if step.w != nil {
+						_ = step.w.Close()
+					}
 				}
 			}
 
