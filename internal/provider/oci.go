@@ -20,7 +20,7 @@ func WithOCI(ociClient ociPuller) Resolver {
 			return nil, err
 		}
 		defer func() {
-      _ = os.RemoveAll(tmp)
+			_ = os.RemoveAll(tmp)
 		}()
 
 		_, err = ociClient.Pull(ctx, ref, tmp)
