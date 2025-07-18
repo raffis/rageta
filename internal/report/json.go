@@ -1,9 +1,9 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
-	"encoding/json"
 
 	"github.com/raffis/rageta/internal/processor"
 )
