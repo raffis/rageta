@@ -3,7 +3,6 @@ package processor
 import (
 	"context"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -15,7 +14,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown, handlerBinaryPath string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
 			return nil
@@ -27,6 +26,7 @@ func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface
 			driver:            driver,
 			defaultPullPolicy: defaultPullPolicy,
 			teardown:          teardown,
+			handlerBinaryPath: handlerBinaryPath,
 		}
 	}
 }
@@ -41,6 +41,7 @@ type Run struct {
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
+	handlerBinaryPath string
 }
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -59,7 +60,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		maps.Copy(envs, ctx.Envs)
 		maps.Copy(envs, ctx.Secrets)
 
-		command, args := s.commandArgs(run)
+		command := s.commandArgs(run, ctx)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
 			Stdin:           ctx.Stdin != nil || run.Stdin,
@@ -67,7 +68,6 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
-			Args:            args,
 			Env:             envs,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
@@ -184,12 +184,35 @@ func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template)
 	}
 }
 
-func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
+func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) []string {
 	script := strings.TrimSpace(run.Script)
 	args := run.Args
+	useHandler := len(ctx.AdditionalStdoutPaths) > 0 || len(ctx.AdditionalStderrPaths) > 0 || ctx.StdinPath != ""
+	var cmd []string
+
+	if useHandler {
+		cmd = []string{s.handlerBinaryPath}
+
+		if ctx.StdinPath != "" {
+			cmd = append(cmd, "--stdin", ctx.StdinPath)
+		}
+
+		for _, path := range ctx.AdditionalStdoutPaths {
+			cmd = append(cmd, "--stdout", path)
+		}
+
+		for _, path := range ctx.AdditionalStderrPaths {
+			cmd = append(cmd, "--stderr", path)
+		}
+
+		cmd = append(cmd, "--")
+	}
 
 	if script == "" {
-		return run.Command, run.Args
+		cmd = append(cmd, run.Command...)
+		cmd = append(cmd, args...)
+
+		return cmd
 	}
 
 	hasShebang := strings.HasPrefix(script, "#!")
@@ -200,16 +223,15 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
 
 	header := strings.Split(script, "\n")[0]
 	shebang := strings.Split(header, "#!")
-	command := []string{shebang[1]}
 
-	return command, append(args, "-c", script)
+	cmd = append(cmd, shebang[1])
+	cmd = append(cmd, "-c", script)
+
+	return cmd
 }
 
 func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin,
-		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
-		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
-	)
+	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin, ctx.Stdout, ctx.Stderr)
 
 	if err != nil {
 		return ctx, err
