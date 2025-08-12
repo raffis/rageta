@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/alitto/pond/v2 v2.2.0
 	github.com/charmbracelet/bubbles v0.21.0
-	github.com/charmbracelet/bubbletea v1.3.5
+	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/distribution/reference v0.6.0
@@ -21,10 +21,12 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/moby/moby v27.4.1+incompatible
 	github.com/moby/term v0.5.0
+	github.com/muesli/termenv v0.16.0
 	github.com/rmhubbert/bubbletea-overlay v0.3.2
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.6
+	github.com/stretchr/testify v1.10.0
 	github.com/tj/assert v0.0.3
 	go.opentelemetry.io/otel v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.32.0
@@ -33,7 +35,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.33.0
 	go.opentelemetry.io/otel/trace v1.33.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/sync v0.14.0
+	golang.org/x/sync v0.15.0
 	golang.org/x/term v0.31.0
 	google.golang.org/grpc v1.68.1
 	k8s.io/api v0.33.0
@@ -77,7 +79,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
-	github.com/charmbracelet/x/ansi v0.9.2 // indirect
+	github.com/charmbracelet/x/ansi v0.9.3 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
@@ -135,7 +137,6 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -151,7 +152,6 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/vbatts/tar-split v0.11.6 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
