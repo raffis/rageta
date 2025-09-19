@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -23,6 +24,7 @@ type rootFlags struct {
 	timeout    time.Duration `env:"TIMEOUT"`
 	noColor    bool          `env:"NO_COLOR"`
 	dbPath     string        `env:"DB_PATH"`
+	workDir    string        `env:"WORKDIR"`
 	logOptions logsetup.Options
 }
 
@@ -50,6 +52,7 @@ func init() {
 		dbPath = filepath.Join(home, ".rageta.db")
 	}
 
+	rootCmd.PersistentFlags().StringVarP(&rootArgs.workDir, "workdir", "w", dbPath, "Execute in the given directory.")
 	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local pipeline store.")
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
 	rootCmd.PersistentFlags().BoolVarP(&rootArgs.noColor, "no-color", "", false, "Disable all color output to the terminal.")
@@ -65,6 +68,12 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	if rootArgs.noColor {
 		lipgloss.SetColorProfile(termenv.Ascii)
+	}
+
+	if rootArgs.workDir != "" {
+		if err := os.Chdir(rootArgs.workDir); err != nil {
+			return fmt.Errorf("failed to change working directory: %w", err)
+		}
 	}
 
 	return err
