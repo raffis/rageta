@@ -45,7 +45,7 @@ func TestFDWrapper(t *testing.T) {
 			fd:       123,
 		}
 		copy(fdCapable.readData, readData)
-		
+
 		writer := &bytes.Buffer{}
 		wrapper := NewFDWrapper(writer, fdCapable)
 
