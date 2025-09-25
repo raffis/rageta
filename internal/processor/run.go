@@ -114,13 +114,13 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		for _, vol := range container.Volumes {
+		for i, vol := range container.Volumes {
 			srcPath, err := filepath.Abs(vol.HostPath)
 			if err != nil {
 				return ctx, fmt.Errorf("failed to get absolute path: %w", err)
 			}
 
-			vol.HostPath = srcPath
+			container.Volumes[i].HostPath = srcPath
 		}
 
 		if run.Stdin && ctx.Stdin == nil {

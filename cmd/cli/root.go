@@ -52,7 +52,7 @@ func init() {
 		dbPath = filepath.Join(home, ".rageta.db")
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&rootArgs.workDir, "workdir", "w", dbPath, "Execute in the given directory.")
+	rootCmd.PersistentFlags().StringVarP(&rootArgs.workDir, "workdir", "w", "", "Execute in the given directory.")
 	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local pipeline store.")
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
 	rootCmd.PersistentFlags().BoolVarP(&rootArgs.noColor, "no-color", "", false, "Disable all color output to the terminal.")

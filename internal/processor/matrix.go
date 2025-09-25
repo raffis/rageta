@@ -11,6 +11,8 @@ import (
 
 	"maps"
 
+	"slices"
+
 	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -46,7 +48,10 @@ var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		subst := []any{s.matrix}
+		subst := []any{
+			slices.Clone(s.matrix),
+		}
+
 		for _, group := range s.include {
 			subst = append(subst, group.Params)
 		}

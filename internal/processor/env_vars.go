@@ -22,15 +22,14 @@ type EnvVars struct {
 
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		if err := substitute.Substitute(ctx.ToV1Beta1(),
-			s.env,
-		); err != nil {
-			return ctx, err
-		}
-
 		originEnvs := make(map[string]string, len(ctx.Envs))
 		maps.Copy(originEnvs, ctx.Envs)
 		maps.Copy(ctx.Envs, s.env)
+		if err := substitute.Substitute(ctx.ToV1Beta1(),
+			ctx.Envs,
+		); err != nil {
+			return ctx, err
+		}
 
 		envTmp, err := os.CreateTemp(ctx.Dir, "env")
 		if err != nil {
