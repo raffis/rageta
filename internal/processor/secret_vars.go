@@ -4,11 +4,14 @@ import (
 	"maps"
 	"os"
 
-	"github.com/raffis/rageta/internal/mask"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithSecretVars(osEnv, defaultSecret map[string]string, secretWriter mask.SecretStore) ProcessorBuilder {
+type secretWriter interface {
+	AddSecrets(secrets ...[]byte)
+}
+
+func WithSecretVars(osEnv, defaultSecret map[string]string, secretWriter secretWriter) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		secrets := secretMap(spec.Secrets, osEnv, defaultSecret)
 		for _, v := range secrets {
@@ -24,7 +27,7 @@ func WithSecretVars(osEnv, defaultSecret map[string]string, secretWriter mask.Se
 
 type SecretVars struct {
 	secret       map[string]string
-	secretWriter mask.SecretStore
+	secretWriter secretWriter
 }
 
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {

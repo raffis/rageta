@@ -33,6 +33,7 @@ import (
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/utils"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/sethvargo/go-retry"
 
@@ -89,14 +90,15 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"EXPAND"`
 	noStatus            bool          `env:"NO_STATUS"`
-	statusOutput        string        `env:"STATUS_OUTPUT"`
-	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
-	withInternals       bool          `env:"WITH_INTERNALS"`
-	user                string        `env:"USER"`
-	otelOptions         otelsetup.Options
-	dockerOptions       dockersetup.Options
-	ociOptions          *ocisetup.Options
-	kubeOptions         *kubesetup.Options
+
+	statusOutput       string        `env:"STATUS_OUTPUT"`
+	waitUpdateInterval time.Duration `env:"WAIT_UPDATE_INTERVAL"`
+	withInternals      bool          `env:"WITH_INTERNALS"`
+	user               string        `env:"USER"`
+	otelOptions        otelsetup.Options
+	dockerOptions      dockersetup.Options
+	ociOptions         *ocisetup.Options
+	kubeOptions        *kubesetup.Options
 }
 
 var runArgs = newRunFlags()
@@ -109,8 +111,10 @@ func newRunFlags() runFlags {
 }
 
 var (
-	stdout io.Writer = os.Stdout
-	stderr io.Writer = os.Stderr
+	secretStore = mask.NewSecretStore(mask.DefaultMask)
+	stdout      io.Writer
+	stderr      io.Writer
+	isTerm      = term.IsTerminal(int(os.Stdout.Fd()))
 )
 
 const otelName = "github.com/raffis/rageta"
@@ -286,7 +290,7 @@ func electDefaultOutput() string {
 			{{- end }}`
 
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
-	case term.IsTerminal(int(os.Stdout.Fd())):
+	case isTerm:
 		return renderOutputUI.String()
 	default:
 		return renderOutputPrefix.String()
@@ -426,7 +430,7 @@ func stepBuilder(
 	osEnv,
 	envs,
 	secrets map[string]string,
-	secretStore mask.SecretStore,
+	secretStore *mask.SecretStore,
 	celEnv *cel.Env,
 	driver cruntime.Interface,
 	imagePullPolicy cruntime.PullImagePolicy,
@@ -486,11 +490,21 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	maskedStdout := mask.Writer(os.Stdout, mask.DefaultMask)
-	maskedStderr := mask.Writer(os.Stderr, mask.DefaultMask)
-	maskedLog := mask.Writer(logFile, mask.DefaultMask)
-	stdout = maskedStdout
-	stderr = maskedStderr
+	maskedLog := secretStore.Writer(logFile)
+	stdout = xio.NewSafeWriter(secretStore.Writer(os.Stdout))
+
+	go func() {
+		_ = stdout.(*xio.SafeWriter).SafeWrite()
+	}()
+
+	if isTerm {
+		stderr = stdout
+	} else {
+		stderr = xio.NewSafeWriter(secretStore.Writer(os.Stderr))
+		go func() {
+			_ = stderr.(*xio.SafeWriter).SafeWrite()
+		}()
+	}
 
 	logCoreFile, err := buildZapCore(zapConfig, maskedLog)
 	if err != nil {
@@ -502,39 +516,31 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if runArgs.output == renderOutputUI.String() {
 		logger = zapr.NewLogger(zap.New(logCoreFile))
 	} else {
-		logger, err = logBuilder(maskedStderr)
+		logger, err = logBuilder(stderr)
 		if err != nil {
 			return err
 		}
-	}
-
-	secretWriters := []mask.SecretStore{
-		maskedStdout,
-		maskedStderr,
-		maskedLog,
 	}
 
 	reportOutput := runArgs.reportOutput
 	var reportDev io.Writer
 
 	if reportOutput == "/dev/stdout" || reportOutput == "" {
-		reportDev = maskedStdout
+		reportDev = stdout
 	} else {
 		output, err := os.OpenFile(reportOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 		if err != nil {
 			return err
 		}
 
-		reportDev = mask.Writer(output, mask.DefaultMask)
-		secretWriters = append(secretWriters, reportDev.(mask.SecretStore))
+		reportDev = secretStore.Writer(output)
 	}
 
-	secretWriter := mask.SecretWriter(secretWriters...)
 	envs := envMap(runArgs.envs)
 	secrets := envMap(runArgs.secretEnvs)
 
 	for _, secretValue := range secrets {
-		secretWriter.AddSecrets([]byte(secretValue))
+		secretStore.AddSecrets([]byte(secretValue))
 	}
 
 	logger.V(5).Info("run flags", "args", runArgs)
@@ -666,7 +672,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 		monitorDev = f
 	case runArgs.output == renderOutputDiscard.String() || runArgs.output == renderOutputPassthrough.String():
-		monitorDev = stderr
+		monitorDev = stdout
 	default:
 		monitorDev = nil
 	}
@@ -679,7 +685,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			osEnvMap(),
 			envs,
 			secrets,
-			secretWriter,
+			secretStore,
 			celEnv,
 			driver,
 			imagePullPolicy,
@@ -758,9 +764,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if tuiDone != nil {
-		/*if errors.Is(result, pipeline.ErrInvalidInput) {
+		if errors.Is(result, pipeline.ErrInvalidInput) {
 			tuiApp.Quit()
-		}*/
+		}
 
 		if result != nil {
 			tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusFailed, Error: result})
@@ -772,11 +778,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		<-tuiDone
 	} else {
 		tearDown()
-	}
-
-	if prefixOutputDone != nil {
-		close(prefixOutputCH)
-		<-prefixOutputDone
 	}
 
 	if runArgs.contextDir == "" && !runArgs.noGC {
@@ -935,7 +936,7 @@ func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Templ
 		Image:           "ghcr.io/rageta/rageta:latest",
 		Args:            forkFlags,
 		Stdin:           true,
-		TTY:             term.IsTerminal(int(os.Stdout.Fd())),
+		TTY:             isTerm,
 		Env:             env,
 		ImagePullPolicy: imagePullPolicy,
 	}
@@ -1147,11 +1148,9 @@ func envMap(from []string) map[string]string {
 }
 
 var (
-	tuiModel         tea.Model
-	tuiDone          chan struct{}
-	tuiApp           *tea.Program
-	prefixOutputDone chan struct{}
-	prefixOutputCH   chan output.PrefixMessage
+	tuiModel tea.Model
+	tuiDone  chan struct{}
+	tuiApp   *tea.Program
 )
 
 func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
@@ -1165,12 +1164,11 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 
 	tuiDone = make(chan struct{})
 	tuiModel = tui.NewUI(logger.WithValues("component", "tui"))
-
 	tuiApp = tea.NewProgram(
 		tuiModel,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
-		tea.WithOutput(stdout),
+		tea.WithOutput(xio.NewFDWrapper(stdout, os.Stdout)),
 	)
 
 	go func() {
@@ -1195,22 +1193,6 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	return tuiApp
 }
 
-func prefixOutput() chan output.PrefixMessage {
-	if runArgs.output != "prefix" {
-		return nil
-	}
-
-	prefixOutputDone = make(chan struct{})
-	prefixOutputCH = make(chan output.PrefixMessage)
-
-	go func() {
-		output.TerminalWriter(prefixOutputCH)
-		prefixOutputDone <- struct{}{}
-	}()
-
-	return prefixOutputCH
-}
-
 func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.OutputFactory, error) {
 	var outputHandler processor.OutputFactory
 
@@ -1227,7 +1209,7 @@ func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.Out
 	case renderOutputUI.String():
 		outputHandler = output.UI(uiOutput(logger, cancel))
 	case renderOutputPrefix.String():
-		outputHandler = output.Prefix(stdout, stderr, prefixOutput())
+		outputHandler = output.Prefix(stdout, stderr)
 	case renderOutputPassthrough.String():
 		outputHandler = output.Passthrough(stdout, stderr)
 	case renderOutputJSON.String():

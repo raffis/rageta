@@ -107,11 +107,11 @@ func (m Model) ScrollPercent() float64 {
 }
 
 // SetContent replaces the pager's text content.
-func (m *Model) SetContent(s string) {
-	s = strings.ReplaceAll(s, "\r\n", "\n") // normalize line endings
-	s = strings.ReplaceAll(s, "\r", "")     // remove carriage returns (avoid breaking the ui)
+func (m *Model) SetContent(str string) {
+	str = strings.ReplaceAll(str, "\r\n", "\n") // normalize line endings
+	str = strings.ReplaceAll(str, "\r", "")     // remove carriage returns (avoid breaking the ui)s
 
-	lines := strings.Split(s, "\n")
+	lines := strings.Split(str, "\n")
 	m.lines = make([]line, 0, len(lines))
 
 	for _, l := range lines {
@@ -427,19 +427,20 @@ func (m Model) View() string {
 			}
 
 			virtualLines := m.Width - width - 1
+			runes := []rune(line.msg)
 
 			for i := 0; i <= line.width; i += virtualLines {
 				end := i + virtualLines
 
 				if end > line.width {
-					end = len(line.msg)
+					end = len(runes)
 				}
-				chunk := line.msg[i:end]
+				chunk := runes[i:end]
 
 				if i == 0 {
-					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(fmt.Sprintf("%d", lineNumber))+lipgloss.NewStyle().MarginLeft(1).Width(len(chunk)).Render(chunk))
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(fmt.Sprintf("%d", lineNumber))+lipgloss.NewStyle().MarginLeft(1).Render(string(chunk)))
 				} else {
-					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(" ")+lipgloss.NewStyle().Width(len(chunk)).MarginLeft(1).Render(chunk))
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(" ")+lipgloss.NewStyle().MarginLeft(1).Render(string(chunk)))
 				}
 			}
 
@@ -447,7 +448,7 @@ func (m Model) View() string {
 		}
 
 		// Fill remaining height with empty line numbers
-		for ; lineNumber <= firstLine+h-1; lineNumber++ {
+		for ; lineNumber <= firstLine+h; lineNumber++ {
 			lines = append(lines, m.Styles.LineNumber.Width(width).Render(fmt.Sprintf("%d", lineNumber)))
 		}
 	} else {
