@@ -83,15 +83,20 @@ The command can read the credentials from '~/.docker/config.json' but they can a
 	RunE: pushCmdRun,
 }
 
-type pushFlags struct {
+type imgFlags struct {
 	path        string
 	source      string
 	revision    string
 	annotations []string
 	tags        []string
 	output      string
-	debug       bool
-	ociOptions  *ocisetup.Options
+}
+
+type pushFlags struct {
+	imgFlags
+	output     string
+	debug      bool
+	ociOptions *ocisetup.Options
 }
 
 var pushArgs = newpushFlags()
@@ -120,23 +125,70 @@ func init() {
 	oci.CanonicalConfigMediaType = "application/rageta"
 }
 
-func pushCmdRun(cmd *cobra.Command, args []string) error {
+func prepareOCIFile(imgFlags imgFlags, args []string) (string, error) {
 	if len(args) < 1 {
-		return fmt.Errorf("artifact URL is required")
+		return "", fmt.Errorf("artifact URL is required")
 	}
-	ociURL := args[0]
 
-	if pushArgs.source == "" {
+	if imgFlags.path == "" {
+		return "", fmt.Errorf("invalid path %q", imgFlags.path)
+	}
+
+	var err error
+	path := imgFlags.path
+
+	// Handle stdin input
+	if imgFlags.path == "-" || imgFlags.path == "/dev/stdin" {
+		path, err = saveReaderToFile(os.Stdin)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Validate path exists
+	if fstat, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("invalid path '%s', must point to an existing directory or file: %w", path, err)
+	} else if !fstat.IsDir() {
+		// Handle single file input
+		f, err := os.Open(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+
+		path, err = saveReaderToFile(f)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return path, nil
+}
+
+func pushCmdRun(cmd *cobra.Command, args []string) error {
+	if pushArgs.imgFlags.source == "" {
 		return fmt.Errorf("--source is required")
 	}
 
-	if pushArgs.revision == "" {
+	if pushArgs.imgFlags.revision == "" {
 		return fmt.Errorf("--revision is required")
 	}
 
-	if pushArgs.path == "" {
-		return fmt.Errorf("invalid path %q", pushArgs.path)
+	path, err := prepareOCIFile(pushArgs.imgFlags, args)
+	if err != nil {
+		return err
 	}
+
+	// Clean up temporary files after OCI operations complete
+	defer func() {
+		if path != pushArgs.path && path != "" {
+			if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+				logger.V(3).Error(err, "error removing temp manifest directory")
+			}
+		}
+	}()
+
+	ociURL := args[0]
 
 	ctx := cmd.Context()
 	if rootArgs.timeout > 0 {
@@ -149,46 +201,6 @@ func pushCmdRun(cmd *cobra.Command, args []string) error {
 	ociClient, err := pushArgs.ociOptions.Build(ctx)
 	if err != nil {
 		return err
-	}
-
-	path := pushArgs.path
-	if pushArgs.path == "-" || pushArgs.path == "/dev/stdin" {
-		path, err = saveReaderToFile(os.Stdin)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			if err := os.Remove(path); err != nil {
-				logger.V(3).Error(err, "error removing temp manifest")
-			}
-		}()
-	}
-
-	if fstat, err := os.Stat(path); err != nil {
-		return fmt.Errorf("invalid path '%s', must point to an existing directory or file: %w", path, err)
-	} else if !fstat.IsDir() {
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			if closeErr := f.Close(); closeErr != nil {
-				logger.V(3).Error(err, "error closing temp manifest")
-			}
-		}()
-
-		path, err = saveReaderToFile(f)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			if err := os.Remove(path); err != nil {
-				logger.V(3).Error(err, "error removing temp manifest")
-			}
-		}()
 	}
 
 	annotations := map[string]string{}
