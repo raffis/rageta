@@ -14,21 +14,21 @@ type Interface interface {
 	Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error)
 }
 
-type storage struct {
+type provider struct {
 	decoder  runtime.Decoder
 	handlers []Resolver
 }
 
 type Resolver func(ctx context.Context, ref string) (io.Reader, error)
 
-func New(decoder runtime.Decoder, handlers ...Resolver) *storage {
-	return &storage{
+func New(decoder runtime.Decoder, handlers ...Resolver) *provider {
+	return &provider{
 		decoder:  decoder,
 		handlers: handlers,
 	}
 }
 
-func (s *storage) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
+func (s *provider) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
 	to := v1beta1.Pipeline{}
 	var errs []error
 
