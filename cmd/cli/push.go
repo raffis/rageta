@@ -89,7 +89,6 @@ type imgFlags struct {
 	revision    string
 	annotations []string
 	tags        []string
-	output      string
 }
 
 type pushFlags struct {
@@ -99,9 +98,9 @@ type pushFlags struct {
 	ociOptions *ocisetup.Options
 }
 
-var pushArgs = newpushFlags()
+var pushArgs = newPushFlags()
 
-func newpushFlags() pushFlags {
+func newPushFlags() pushFlags {
 	opts := ocisetup.DefaultOptions()
 	opts.Timeout = rootArgs.timeout
 	return pushFlags{
@@ -154,7 +153,10 @@ func prepareOCIFile(imgFlags imgFlags, args []string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		defer f.Close()
+
+		defer func() {
+			_ = f.Close()
+		}()
 
 		path, err = saveReaderToFile(f)
 		if err != nil {
@@ -166,11 +168,11 @@ func prepareOCIFile(imgFlags imgFlags, args []string) (string, error) {
 }
 
 func pushCmdRun(cmd *cobra.Command, args []string) error {
-	if pushArgs.imgFlags.source == "" {
+	if pushArgs.source == "" {
 		return fmt.Errorf("--source is required")
 	}
 
-	if pushArgs.imgFlags.revision == "" {
+	if pushArgs.revision == "" {
 		return fmt.Errorf("--revision is required")
 	}
 

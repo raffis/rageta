@@ -59,16 +59,12 @@ The command can read the credentials from '~/.docker/config.json' but they can a
 }
 
 type tagFlags struct {
-	path        string
-	source      string
-	revision    string
-	annotations []string
-	tags        []string
+	imgFlags
 }
 
-var tagArgs = newtagFlags()
+var tagArgs = newTagFlags()
 
-func newtagFlags() tagFlags {
+func newTagFlags() tagFlags {
 	return tagFlags{}
 }
 
@@ -118,7 +114,9 @@ func tagCmdRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer dbFile.Close()
+	defer func() {
+		_ = dbFile.Close()
+	}()
 
 	localDB, err := provider.OpenDatabase(dbFile, decoder, encoder)
 	if err != nil {
