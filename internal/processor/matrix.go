@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"maps"
-
-	"slices"
 
 	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/internal/substitute"
@@ -48,21 +47,31 @@ var ErrEmptyMatrix = errors.New("empty matrix")
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		subst := []any{
-			slices.Clone(s.matrix),
+		matrixParams := slices.Clone(s.matrix)
+		matrixWrap := []any{
+			matrixParams,
+		}
+		if err := substitute.Substitute(ctx.ToV1Beta1(),
+			matrixWrap...,
+		); err != nil {
+			return ctx, fmt.Errorf("substitution failed for matrix parameters: %w", err)
 		}
 
-		for _, group := range s.include {
-			subst = append(subst, group.Params)
+		additionalParams := slices.Clone(s.include)
+		additionalParamsWrap := []any{}
+
+		for k, v := range additionalParams {
+			additionalParams[k].Params = slices.Clone(v.Params)
+			additionalParamsWrap = append(additionalParamsWrap, additionalParams[k].Params)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(),
-			subst...,
+			additionalParamsWrap...,
 		); err != nil {
-			return ctx, fmt.Errorf("substitution failed: %w", err)
+			return ctx, fmt.Errorf("substitution failed for include matrix parameters: %w", err)
 		}
 
-		matrixes, err := s.build(s.matrix)
+		matrixes, err := s.build(matrixParams)
 		if err != nil {
 			return ctx, err
 		}
@@ -85,7 +94,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for matrixKey, matrix := range matrixes {
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
-			copyCtx = s.extendMatrix(copyCtx, matrix, s.include)
+			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
 			copyCtx.Matrix = matrix
 
 			hasher := sha1.New()
