@@ -47,7 +47,6 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		logger = logger.WithValues("step", s.stepName)
 		ctx.Context = logr.NewContext(ctx, logger)
 		logger.V(2).Info("step context input", "context", ctx)
 		ctx, err := next(ctx)

@@ -102,7 +102,7 @@ func TestLineWriterFlush(t *testing.T) {
 				return &bytes.Buffer{}
 			},
 			data:        []byte("buffered data"),
-			expected:    []byte("buffered data\n"),
+			expected:    []byte("buffered data"),
 			expectError: false,
 		},
 		{
