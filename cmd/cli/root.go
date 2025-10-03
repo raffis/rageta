@@ -25,17 +25,23 @@ type rootFlags struct {
 	noColor    bool          `env:"NO_COLOR"`
 	dbPath     string        `env:"DB_PATH"`
 	workDir    string        `env:"WORKDIR"`
-	logOptions logsetup.Options
+	logOptions *logsetup.Options
 }
 
-var rootArgs rootFlags
 var logger logr.Logger
 var zapConfig zap.Config
+var rootArgs = newRootFlags()
 
 var rootCmd = &cobra.Command{
 	Use:               "rageta",
 	Short:             "Cloud native pipeline engine",
 	PersistentPreRunE: runRoot,
+}
+
+func newRootFlags() rootFlags {
+	return rootFlags{
+		logOptions: logsetup.DefaultOptions(),
+	}
 }
 
 func main() {

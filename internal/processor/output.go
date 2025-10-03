@@ -54,7 +54,6 @@ func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 		}
 
 		ctx, err := next(ctx)
-
 		if err := close(err); err != nil {
 			return ctx, err
 		}

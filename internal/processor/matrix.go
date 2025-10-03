@@ -45,8 +45,14 @@ type Matrix struct {
 
 var ErrEmptyMatrix = errors.New("empty matrix")
 
+type matrixContext struct{}
+
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		if ctx.Value(matrixContext{}) == s {
+			return next(ctx)
+		}
+
 		matrixParams := slices.Clone(s.matrix)
 		matrixWrap := []any{
 			matrixParams,
@@ -70,6 +76,15 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		); err != nil {
 			return ctx, fmt.Errorf("substitution failed for include matrix parameters: %w", err)
 		}
+
+		//If a matrix combination needs to be processed the step needs to start from beginning in order to through all step
+		//processors
+		next, err := pipeline.Entrypoint(s.stepName)
+		if err != nil {
+			return ctx, err
+		}
+
+		ctx.Context = context.WithValue(ctx, matrixContext{}, s)
 
 		matrixes, err := s.build(matrixParams)
 		if err != nil {
@@ -109,6 +124,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			if err := pool.Go(func() {
 				t, err := next(copyCtx)
+
 				results <- result{t, err}
 			}); err != nil {
 				return ctx, err
@@ -119,10 +135,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	WAIT:
 		for res := range results {
 			done++
-
-			for stepName, step := range res.ctx.Steps {
-				ctx.Steps[SuffixName(stepName, res.ctx.NamePrefix)] = step
-			}
+			maps.Copy(ctx.Steps, res.ctx.Steps)
 
 			//Unify matrix outputs into an array output for the current step
 			for paramKey, paramValue := range res.ctx.OutputVars {

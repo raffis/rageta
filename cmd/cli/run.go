@@ -111,10 +111,10 @@ func newRunFlags() runFlags {
 }
 
 var (
-	secretStore = mask.NewSecretStore(mask.DefaultMask)
-	stdout      io.Writer
-	stderr      io.Writer
-	isTerm      = term.IsTerminal(int(os.Stdout.Fd()))
+	secretStore           = mask.NewSecretStore(mask.DefaultMask)
+	stdout      io.Writer = os.Stdout
+	stderr      io.Writer = os.Stderr
+	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
 )
 
 const otelName = "github.com/raffis/rageta"
@@ -122,7 +122,7 @@ const otelName = "github.com/raffis/rageta"
 func init() {
 	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
 	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, ui, json, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
+	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
 	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
 	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
@@ -244,7 +244,6 @@ var (
 	renderOutputPrefix                renderOutput = "prefix"
 	renderOutputUI                    renderOutput = "ui"
 	renderOutputPassthrough           renderOutput = "passthrough"
-	renderOutputJSON                  renderOutput = "json"
 	renderOutputDiscard               renderOutput = "discard"
 	renderOutputBuffer                renderOutput = "buffer"
 	renderOutputBufferDefaultTemplate string       = "{{ .Buffer }}"
@@ -491,19 +490,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	maskedLog := secretStore.Writer(logFile)
-	stdout = xio.NewSafeWriter(secretStore.Writer(os.Stdout))
-
-	go func() {
-		_ = stdout.(*xio.SafeWriter).SafeWrite()
-	}()
+	stdout = secretStore.Writer(os.Stdout)
 
 	if isTerm {
 		stderr = stdout
 	} else {
-		stderr = xio.NewSafeWriter(secretStore.Writer(os.Stderr))
-		go func() {
-			_ = stderr.(*xio.SafeWriter).SafeWrite()
-		}()
+		stderr = secretStore.Writer(os.Stderr)
 	}
 
 	logCoreFile, err := buildZapCore(zapConfig, maskedLog)
@@ -713,17 +705,18 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
 	pipeline.Flags(flagSet, command.Inputs)
-
 	if flagStart := slices.Index(os.Args, "--"); flagStart != -1 {
 		err = flagSet.Parse(os.Args[flagStart+1:])
 		if err != nil {
+			cleanup()
 			helpAndExit(flagSet, err)
 		}
 	}
 
 	inputs, err := parseInputs(command.Inputs, runArgs.inputs, flagSet)
 	if err != nil {
-		return err
+		cleanup()
+		helpAndExit(flagSet, err)
 	}
 
 	var result error
@@ -797,6 +790,15 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func cleanup() {
+	if tuiDone == nil {
+		return
+	}
+
+	tuiApp.Quit()
+	<-tuiDone
 }
 
 func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
@@ -1178,12 +1180,9 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	}()
 
 	go func() {
-		_, err := tuiApp.Run()
-
-		if err == nil {
-			if err := tuiApp.ReleaseTerminal(); err != nil {
-				logger.V(3).Error(err, "failed to release terminal")
-			}
+		_, _ = tuiApp.Run()
+		if err := tuiApp.ReleaseTerminal(); err != nil {
+			logger.V(3).Error(err, "failed to release terminal")
 		}
 
 		cancel()
@@ -1212,8 +1211,6 @@ func outputFactory(logger logr.Logger, cancel context.CancelFunc) (processor.Out
 		outputHandler = output.Prefix(stdout, stderr)
 	case renderOutputPassthrough.String():
 		outputHandler = output.Passthrough(stdout, stderr)
-	case renderOutputJSON.String():
-		outputHandler = output.JSON(stdout, stderr)
 	case renderOutputDiscard.String():
 		outputHandler = output.Discard()
 	case renderOutputBuffer.String():

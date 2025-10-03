@@ -22,15 +22,6 @@ type store struct {
 func (s *store) Add(stepName string, ctx processor.StepContext) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	for k, v := range s.steps {
-		if v.stepName == stepName {
-			s.steps[k].result = ctx
-
-			return
-		}
-	}
-
 	s.steps = append(s.steps, stepResult{
 		stepName: stepName,
 		result:   ctx,

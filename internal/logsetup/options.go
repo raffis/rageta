@@ -1,6 +1,7 @@
 package logsetup
 
 import (
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -19,7 +20,15 @@ type Options struct {
 }
 
 func DefaultOptions() *Options {
-	return &Options{}
+	var level int8
+
+	if os.Getenv("RUNNER_DEBUG") != "" {
+		level = 10
+	}
+
+	return &Options{
+		Verbose: level,
+	}
 }
 
 func (o *Options) BindFlags(fs *pflag.FlagSet) {
