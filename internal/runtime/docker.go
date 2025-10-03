@@ -238,22 +238,9 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg.Go(func() error {
 		select {
 		case <-ctx.Done():
-<<<<<<< HEAD
 			return nil
 		case await := <-waitC:
 			if await.StatusCode > 0 {
-				streams.Close()
-			return nil
-		case await := <-waitC:
-			if await.StatusCode > 0 {
-=======
-			//streams.Close()
-			//return ctx.Err()
-			return nil
-		case await := <-waitC:
-			if await.StatusCode > 0 {
-				//streams.Close()
->>>>>>> 20ee380 (fix: various stability improvements (#49))
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}
