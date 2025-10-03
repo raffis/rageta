@@ -742,17 +742,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 	logger.V(1).Info("pipeline completed", "result", result)
 
 	tearDown := func() {
-		logger.V(1).Info("pipeline completed 1", "result", runArgs.gracefulTermination)
 		cancel()
-		logger.V(1).Info("pipeline completed 2")
 		close(teardown)
-		logger.V(1).Info("pipeline completed 3")
 
 		teardownCtx, cancel := context.WithTimeout(context.Background(), runArgs.gracefulTermination)
 		defer cancel()
 		var wg sync.WaitGroup
 
-		logger.V(1).Info("pipeline completed 4")
 		for _, teardownFunc := range teardownFuncs {
 			wg.Add(1)
 			go func(teardownFunc processor.Teardown) {
@@ -764,9 +760,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			}(teardownFunc)
 		}
 
-		logger.V(1).Info("pipeline completed 5")
 		wg.Wait()
-		logger.V(1).Info("pipeline completed 6")
 	}
 
 	if tuiDone != nil {
@@ -785,7 +779,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 	} else {
 		tearDown()
 	}
-	logger.V(1).Info("pipeline completed 7")
 
 	if runArgs.contextDir == "" && !runArgs.noGC {
 		defer func() {

@@ -235,11 +235,13 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg.Go(func() error {
 		select {
 		case <-ctx.Done():
-			streams.Close()
-			return ctx.Err()
+			return nil
 		case await := <-waitC:
 			if await.StatusCode > 0 {
 				streams.Close()
+			return nil
+		case await := <-waitC:
+			if await.StatusCode > 0 {
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}
