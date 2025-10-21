@@ -365,6 +365,30 @@ spec:
                       type: string
                     stdin:
                       type: boolean
+                    streams:
+                      properties:
+                        stderr:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                        stdin:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                        stdout:
+                          properties:
+                            append:
+                              type: boolean
+                            path:
+                              type: string
+                          type: object
+                      type: object
                     tty:
                       type: boolean
                     uid:
@@ -404,30 +428,6 @@ spec:
                         type: string
                     type: object
                   type: array
-                streams:
-                  properties:
-                    stderr:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdin:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdout:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                  type: object
                 tags:
                   items:
                     properties:

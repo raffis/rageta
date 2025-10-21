@@ -2,3 +2,4 @@
 rageta
 coverage.out
 /test*.yaml
+cmd/cli/handler

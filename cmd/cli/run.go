@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -53,14 +54,12 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 var (
@@ -109,7 +108,6 @@ type runFlags struct {
 	withInternals       bool          `env:"WITH_INTERNALS"`
 	user                string        `env:"USER"`
 	kubePodTemplate     string        `env:"KUBE_POD_TEMPLATE"`
-	kubeTemplateFromPod string        `env:"KUBE_TEMPLATE_FROM_POD"`
 	otelOptions         otelsetup.Options
 	dockerOptions       dockersetup.Options
 	ociOptions          *ocisetup.Options
@@ -175,7 +173,6 @@ func init() {
 	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
 	runArgs.kubeOptions.BindFlags(kubeFlags)
 	kubeFlags.StringVarP(&runArgs.kubePodTemplate, "kube-pod-template", "", "", "YAML core.v1.Pod template")
-	kubeFlags.StringVarP(&runArgs.kubeTemplateFromPod, "kube-from-pod-template", "", "", "Use existing Pod as template")
 
 	runCmd.Flags().AddFlagSet(kubeFlags)
 
@@ -368,44 +365,39 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
 
-		podTemplate, err := podTemplate(ctx, clientset.CoreV1())
+		restConfig, err := runArgs.kubeOptions.ConfigFlags.ToRESTConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kube rest config: %w", err)
+		}
+
+		podTemplate, err := podTemplate()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pod template: %w", err)
 		}
 
 		logger.V(3).Info("kubernetes pod template", "template", podTemplate)
 
-		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate)
+		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate, restConfig)
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
 }
 
-func podTemplate(ctx context.Context, client v1.CoreV1Interface) (corev1.Pod, error) {
+func copyHandlerBinary(contextDir string) error {
+	handlerPath := filepath.Join(contextDir, "handler")
+	return os.WriteFile(handlerPath, handlerBinary, 0755)
+}
+
+func podTemplate() (corev1.Pod, error) {
 	template := corev1.Pod{}
-
-	if runArgs.kubeTemplateFromPod != "" {
-		pod, err := client.Pods("default").Get(ctx, runArgs.kubeTemplateFromPod, metav1.GetOptions{})
-		if err != nil {
-			return template, err
-		}
-
-		meta := metav1.ObjectMeta{
-			Annotations: pod.Annotations,
-			Labels:      pod.Labels,
-		}
-
-		pod.ObjectMeta = meta
-
-		template = *pod
+	if runArgs.kubePodTemplate == "" {
+		return template, nil
 	}
 
-	if runArgs.kubePodTemplate != "" {
-		_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
-		if err != nil {
-			return template, err
-		}
+	_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
+	if err != nil {
+		return template, err
 	}
 
 	return template, nil
@@ -499,6 +491,7 @@ func stepBuilder(
 	template v1beta1.Template,
 	monitorDev io.Writer,
 	tags []processor.Tag,
+	handlerBinaryPath string,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
@@ -527,7 +520,7 @@ func stepBuilder(
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithStdioRedirect(runArgs.tee),
-			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
+			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown, handlerBinaryPath),
 			processor.WithInherit(*builder, provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
@@ -620,6 +613,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.V(1).Info("use context directory", "path", contextDir)
+
+	if err := copyHandlerBinary(contextDir); err != nil {
+		return fmt.Errorf("failed to copy handler binary: %w", err)
+	}
 
 	template, err := buildTemplate(contextDir)
 	if err != nil {
@@ -747,6 +744,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			template,
 			monitorDev,
 			tags(),
+			filepath.Join(contextDir, "handler"),
 		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
