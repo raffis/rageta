@@ -3,7 +3,7 @@ cask "rageta" do
   name "rageta"
   desc "Cloud native pipelines"
   homepage "https://github.com/raffis/rageta"
-  version "0.0.41"
+  version "0.0.42"
 
   livecheck do
     skip "Auto-generated on release."
@@ -14,22 +14,22 @@ cask "rageta" do
   on_macos do
     on_intel do
       url "https://github.com/raffis/rageta/releases/download/v#{version}/rageta_#{version}_darwin_amd64.tar.gz"
-      sha256 "872ed9f7601161e677fee30e4e556fb1487e251f8d95d1f1c0b9d35c081a6c5b"
+      sha256 "567580d231a8ce0fcdc078f5b9a53715d1ac209133b6bd27b9a39cb3b05ebd37"
     end
     on_arm do
       url "https://github.com/raffis/rageta/releases/download/v#{version}/rageta_#{version}_darwin_arm64.tar.gz"
-      sha256 "9742e5a029c8e8df04cc9e473ac313cea3be2d9b4fc07bcb6eb6301da094a723"
+      sha256 "478ce6ff7247ef11a5e7162977b57216c4ad8eefb388d6ba8706dc5325824a74"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/raffis/rageta/releases/download/v#{version}/rageta_#{version}_linux_amd64.tar.gz"
-      sha256 "db905a6046a2cda0c6d5fd620d3221722058471fb0a8359ee5a67423ae815758"
+      sha256 "5e7fc1cf679317f1dab1b67b44eb24d357e8459b17244206e3ca8e9c9b92eede"
     end
     on_arm do
       url "https://github.com/raffis/rageta/releases/download/v#{version}/rageta_#{version}_linux_arm64.tar.gz"
-      sha256 "fd024becf26230a07d95b4dd144fd3a1e510bb2e4fa339fcefdf1b2fd62a7e0f"
+      sha256 "65bdee11f7f7ea871ac56b96c320c0305483fb628314719cc07223003d004e58"
     end
   end
 
