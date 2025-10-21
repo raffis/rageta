@@ -1,6 +1,7 @@
 package logsetup
 
 import (
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"

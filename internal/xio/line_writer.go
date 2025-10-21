@@ -44,7 +44,7 @@ func (w *LineWriter) Flush() error {
 		return nil
 	}
 
-	_, err := w.w.Write(w.buf.Bytes())
+	_, err := w.w.Write(append(w.buf.Bytes(), []byte("\n")...))
 	if err != nil {
 		return err
 	}

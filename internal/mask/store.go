@@ -25,7 +25,7 @@ func (s *SecretStore) AddSecrets(secrets ...[]byte) {
 	s.secrets = append(secrets, secrets...)
 }
 
-func (s *SecretStore) Writer(w io.Writer) io.Writer {
+func (s *SecretStore) Writer(w io.Writer) *maskedWriter {
 	return &maskedWriter{
 		w:     w,
 		store: s,

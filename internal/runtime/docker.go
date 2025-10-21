@@ -157,9 +157,14 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	}
 
 	if pullImage {
+		logger.V(1).Info("pulling image", "image", container.Image)
+
+		startedAt := time.Now()
 		if err := d.pullImage(ctx, container.Image, stderr); err != nil {
 			return nil, fmt.Errorf("failed to pull image `%s`: %w", container.Image, err)
 		}
+
+		logger.V(1).Info("image pulled", "image", container.Image, "duration", time.Since(startedAt))
 	}
 
 	createResponse, err := d.createContainer(ctx, logger, pod, container, logConfig)
@@ -168,7 +173,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	}
 
 	waitC, _ := d.client.ContainerWait(ctx, createResponse.ID, "next-exit")
-
 	streams, err := d.client.ContainerAttach(ctx, createResponse.ID, dockercontainer.AttachOptions{
 		Stdout: stdout != nil,
 		Stderr: stderr != nil,
@@ -202,7 +206,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		_, err := stdcopy.StdCopy(stdout, stderr, streams.Reader)
-
 		if err != nil {
 			return fmt.Errorf("demux container streams failed: %w", err)
 		}
@@ -235,11 +238,9 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg.Go(func() error {
 		select {
 		case <-ctx.Done():
-			streams.Close()
-			return ctx.Err()
+			return nil
 		case await := <-waitC:
 			if await.StatusCode > 0 {
-				streams.Close()
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}
