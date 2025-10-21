@@ -52,18 +52,32 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-var runCmd = &cobra.Command{
-	Use:  "run",
-	RunE: runRun,
-}
+var (
+	runCmd = &cobra.Command{
+		Use:  "run",
+		RunE: runRun,
+	}
+	runArgs               = newRunFlags()
+	stdout      io.Writer = os.Stdout
+	stderr      io.Writer = os.Stderr
+	scheme                = kruntime.NewScheme()
+	secretStore           = mask.NewSecretStore(mask.DefaultMask)
+	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
+
+	decoder kruntime.Decoder
+	encoder kruntime.Serializer
+)
 
 type runFlags struct {
 	output              string        `env:"OUTPUT"`
@@ -90,18 +104,17 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"EXPAND"`
 	noStatus            bool          `env:"NO_STATUS"`
-
-	statusOutput       string        `env:"STATUS_OUTPUT"`
-	waitUpdateInterval time.Duration `env:"WAIT_UPDATE_INTERVAL"`
-	withInternals      bool          `env:"WITH_INTERNALS"`
-	user               string        `env:"USER"`
-	otelOptions        otelsetup.Options
-	dockerOptions      dockersetup.Options
-	ociOptions         *ocisetup.Options
-	kubeOptions        *kubesetup.Options
+	statusOutput        string        `env:"STATUS_OUTPUT"`
+	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
+	withInternals       bool          `env:"WITH_INTERNALS"`
+	user                string        `env:"USER"`
+	kubePodTemplate     string        `env:"KUBE_POD_TEMPLATE"`
+	kubeTemplateFromPod string        `env:"KUBE_TEMPLATE_FROM_POD"`
+	otelOptions         otelsetup.Options
+	dockerOptions       dockersetup.Options
+	ociOptions          *ocisetup.Options
+	kubeOptions         *kubesetup.Options
 }
-
-var runArgs = newRunFlags()
 
 func newRunFlags() runFlags {
 	return runFlags{
@@ -109,13 +122,6 @@ func newRunFlags() runFlags {
 		ociOptions:  ocisetup.DefaultOptions(),
 	}
 }
-
-var (
-	secretStore           = mask.NewSecretStore(mask.DefaultMask)
-	stdout      io.Writer = os.Stdout
-	stderr      io.Writer = os.Stderr
-	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
-)
 
 const otelName = "github.com/raffis/rageta"
 
@@ -168,6 +174,9 @@ func init() {
 
 	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
 	runArgs.kubeOptions.BindFlags(kubeFlags)
+	kubeFlags.StringVarP(&runArgs.kubePodTemplate, "kube-pod-template", "", "", "YAML core.v1.Pod template")
+	kubeFlags.StringVarP(&runArgs.kubeTemplateFromPod, "kube-from-pod-template", "", "", "Use existing Pod as template")
+
 	runCmd.Flags().AddFlagSet(kubeFlags)
 
 	sets := []struct {
@@ -212,7 +221,17 @@ func init() {
 	})
 
 	rootCmd.AddCommand(runCmd)
+
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	factory := serializer.NewCodecFactory(scheme)
+	decoder = factory.UniversalDeserializer()
+	encoder = json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
+
 }
+
+var ()
 
 type pullImage string
 
@@ -349,11 +368,47 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
 
-		driver := cruntime.NewKubernetes(clientset.CoreV1())
+		podTemplate, err := podTemplate(ctx, clientset.CoreV1())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create pod template: %w", err)
+		}
+
+		logger.V(3).Info("kubernetes pod template", "template", podTemplate)
+
+		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate)
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
+}
+
+func podTemplate(ctx context.Context, client v1.CoreV1Interface) (corev1.Pod, error) {
+	template := corev1.Pod{}
+
+	if runArgs.kubeTemplateFromPod != "" {
+		pod, err := client.Pods("default").Get(ctx, runArgs.kubeTemplateFromPod, metav1.GetOptions{})
+		if err != nil {
+			return template, err
+		}
+
+		meta := metav1.ObjectMeta{
+			Annotations: pod.Annotations,
+			Labels:      pod.Labels,
+		}
+
+		pod.ObjectMeta = meta
+
+		template = *pod
+	}
+
+	if runArgs.kubePodTemplate != "" {
+		_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
+		if err != nil {
+			return template, err
+		}
+	}
+
+	return template, nil
 }
 
 func kubeRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
@@ -742,6 +797,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		defer cancel()
 		var wg sync.WaitGroup
 
+		logger.V(4).Info("execute teardown chain", "count", len(teardownFuncs))
 		for _, teardownFunc := range teardownFuncs {
 			wg.Add(1)
 			go func(teardownFunc processor.Teardown) {
@@ -802,12 +858,6 @@ func cleanup() {
 }
 
 func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
-	scheme := kruntime.NewScheme()
-	_ = v1beta1.AddToScheme(scheme)
-
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 	var localDB *provider.Database
 
 	openDB := func() (*provider.Database, error) {

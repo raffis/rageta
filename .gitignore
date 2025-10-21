@@ -1,3 +1,4 @@
 .vscode
 rageta
 coverage.out
+/test*.yaml
