@@ -20,15 +20,7 @@ type Options struct {
 }
 
 func DefaultOptions() *Options {
-	var level int8
-
-	if os.Getenv("RUNNER_DEBUG") != "" {
-		level = 10
-	}
-
-	return &Options{
-		Verbose: level,
-	}
+	return &Options{}
 }
 
 func (o *Options) BindFlags(fs *pflag.FlagSet) {
