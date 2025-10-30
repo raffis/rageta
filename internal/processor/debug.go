@@ -11,9 +11,9 @@ func WithDebug(logger logr.Logger, debug bool, spec *v1beta1.Step, processors ..
 	if !debug {
 		return processors
 	}
+	logger.V(5).Info("step", "spec", spec)
 
 	for k, v := range processors {
-		logger.V(5).Info("step", "spec", spec)
 
 		processors[k] = &Debug{
 			spec:    spec,

@@ -173,6 +173,8 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, errors.Join(errs...)
 		}
 
+		//TODO: this is at the wrong place
+		ctx.StdinPath = ""
 		return ctx, nil
 	}, nil
 }

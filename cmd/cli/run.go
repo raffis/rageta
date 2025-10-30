@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -52,6 +53,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
+	corev1 "k8s.io/api/core/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
@@ -60,10 +62,21 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var runCmd = &cobra.Command{
-	Use:  "run",
-	RunE: runRun,
-}
+var (
+	runCmd = &cobra.Command{
+		Use:  "run",
+		RunE: runRun,
+	}
+	runArgs               = newRunFlags()
+	stdout      io.Writer = os.Stdout
+	stderr      io.Writer = os.Stderr
+	scheme                = kruntime.NewScheme()
+	secretStore           = mask.NewSecretStore(mask.DefaultMask)
+	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
+
+	decoder kruntime.Decoder
+	encoder kruntime.Serializer
+)
 
 type runFlags struct {
 	output              string        `env:"OUTPUT"`
@@ -90,18 +103,16 @@ type runFlags struct {
 	maxConcurrent       int           `env:"MAX_CONCURRENT"`
 	expand              bool          `env:"EXPAND"`
 	noStatus            bool          `env:"NO_STATUS"`
-
-	statusOutput       string        `env:"STATUS_OUTPUT"`
-	waitUpdateInterval time.Duration `env:"WAIT_UPDATE_INTERVAL"`
-	withInternals      bool          `env:"WITH_INTERNALS"`
-	user               string        `env:"USER"`
-	otelOptions        otelsetup.Options
-	dockerOptions      dockersetup.Options
-	ociOptions         *ocisetup.Options
-	kubeOptions        *kubesetup.Options
+	statusOutput        string        `env:"STATUS_OUTPUT"`
+	waitUpdateInterval  time.Duration `env:"WAIT_UPDATE_INTERVAL"`
+	withInternals       bool          `env:"WITH_INTERNALS"`
+	user                string        `env:"USER"`
+	kubePodTemplate     string        `env:"KUBE_POD_TEMPLATE"`
+	otelOptions         otelsetup.Options
+	dockerOptions       dockersetup.Options
+	ociOptions          *ocisetup.Options
+	kubeOptions         *kubesetup.Options
 }
-
-var runArgs = newRunFlags()
 
 func newRunFlags() runFlags {
 	return runFlags{
@@ -109,13 +120,6 @@ func newRunFlags() runFlags {
 		ociOptions:  ocisetup.DefaultOptions(),
 	}
 }
-
-var (
-	secretStore           = mask.NewSecretStore(mask.DefaultMask)
-	stdout      io.Writer = os.Stdout
-	stderr      io.Writer = os.Stderr
-	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
-)
 
 const otelName = "github.com/raffis/rageta"
 
@@ -168,6 +172,8 @@ func init() {
 
 	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
 	runArgs.kubeOptions.BindFlags(kubeFlags)
+	kubeFlags.StringVarP(&runArgs.kubePodTemplate, "kube-pod-template", "", "", "YAML core.v1.Pod template")
+
 	runCmd.Flags().AddFlagSet(kubeFlags)
 
 	sets := []struct {
@@ -212,7 +218,17 @@ func init() {
 	})
 
 	rootCmd.AddCommand(runCmd)
+
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	factory := serializer.NewCodecFactory(scheme)
+	decoder = factory.UniversalDeserializer()
+	encoder = json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
+
 }
+
+var ()
 
 type pullImage string
 
@@ -349,11 +365,42 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
 
-		driver := cruntime.NewKubernetes(clientset.CoreV1())
+		restConfig, err := runArgs.kubeOptions.ConfigFlags.ToRESTConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kube rest config: %w", err)
+		}
+
+		podTemplate, err := podTemplate()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create pod template: %w", err)
+		}
+
+		logger.V(3).Info("kubernetes pod template", "template", podTemplate)
+
+		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate, restConfig)
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
+}
+
+func copyHandlerBinary(contextDir string) error {
+	handlerPath := filepath.Join(contextDir, "handler")
+	return os.WriteFile(handlerPath, handlerBinary, 0755)
+}
+
+func podTemplate() (corev1.Pod, error) {
+	template := corev1.Pod{}
+	if runArgs.kubePodTemplate == "" {
+		return template, nil
+	}
+
+	_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
+	if err != nil {
+		return template, err
+	}
+
+	return template, nil
 }
 
 func kubeRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
@@ -444,6 +491,7 @@ func stepBuilder(
 	template v1beta1.Template,
 	monitorDev io.Writer,
 	tags []processor.Tag,
+	handlerBinaryPath string,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
@@ -472,7 +520,7 @@ func stepBuilder(
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithStdioRedirect(runArgs.tee),
-			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
+			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown, handlerBinaryPath),
 			processor.WithInherit(*builder, provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
@@ -565,6 +613,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.V(1).Info("use context directory", "path", contextDir)
+
+	if err := copyHandlerBinary(contextDir); err != nil {
+		return fmt.Errorf("failed to copy handler binary: %w", err)
+	}
 
 	template, err := buildTemplate(contextDir)
 	if err != nil {
@@ -692,6 +744,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			template,
 			monitorDev,
 			tags(),
+			filepath.Join(contextDir, "handler"),
 		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
@@ -742,6 +795,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		defer cancel()
 		var wg sync.WaitGroup
 
+		logger.V(4).Info("execute teardown chain", "count", len(teardownFuncs))
 		for _, teardownFunc := range teardownFuncs {
 			wg.Add(1)
 			go func(teardownFunc processor.Teardown) {
@@ -802,12 +856,6 @@ func cleanup() {
 }
 
 func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
-	scheme := kruntime.NewScheme()
-	_ = v1beta1.AddToScheme(scheme)
-
-	factory := serializer.NewCodecFactory(scheme)
-	decoder := factory.UniversalDeserializer()
-	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 	var localDB *provider.Database
 
 	openDB := func() (*provider.Database, error) {
