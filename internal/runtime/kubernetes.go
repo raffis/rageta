@@ -113,7 +113,7 @@ VOLUMES:
 		//If there is a pod template which already covers the same volume mount we will skip it here
 		if len(d.podTemplate.Spec.Containers) > 0 {
 			for _, mount := range d.podTemplate.Spec.Containers[0].VolumeMounts {
-				if strings.HasPrefix(mount.MountPath, volume.Path) {
+				if volume.Path == mount.MountPath || strings.HasPrefix(volume.Path, mount.MountPath+"/") {
 					continue VOLUMES
 				}
 			}
@@ -142,6 +142,9 @@ VOLUMES:
 
 	created, err := d.client.Pods("default").Create(ctx, kubePod, metav1.CreateOptions{})
 	logger.V(3).Info("create pod", "pod", created, "error", err)
+	if err != nil {
+		return nil, err
+	}
 
 	watchStream, err := d.client.Pods("default").Watch(ctx, metav1.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(metav1.ObjectNameField, created.Name).String(),
