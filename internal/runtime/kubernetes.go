@@ -143,16 +143,6 @@ VOLUMES:
 	created, err := d.client.Pods("default").Create(ctx, kubePod, metav1.CreateOptions{})
 	logger.V(3).Info("create pod", "pod", created, "error", err)
 
-	pod.Status.Containers = append(pod.Status.Containers, ContainerStatus{
-		ContainerID: kubePod.Name,
-		ContainerIP: created.Status.PodIP,
-		Name:        pod.Spec.Containers[0].Name,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
 	watchStream, err := d.client.Pods("default").Watch(ctx, metav1.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(metav1.ObjectNameField, created.Name).String(),
 	})
@@ -161,17 +151,28 @@ VOLUMES:
 		return nil, err
 	}
 
-	return &kubeWait{
+	stream := &kubeWait{
 		ctx:         ctx,
 		logger:      logger,
 		watchStream: watchStream,
 		client:      d.client,
 		restConfig:  d.restConfig,
 		podName:     created.Name,
+		pod:         pod,
 		stdin:       stdin,
 		stdout:      stdout,
 		stderr:      stderr,
-	}, nil
+		Ready:       make(chan struct{}),
+		Done:        make(chan error),
+	}
+
+	go func() {
+		stream.watch()
+	}()
+
+	<-stream.Ready
+
+	return stream, nil
 }
 
 func (d *kubernetes) getRestartPolicy(policy RestartPolicy) corev1.RestartPolicy {
@@ -196,10 +197,18 @@ type kubeWait struct {
 	stdout      io.Writer
 	stderr      io.Writer
 	execGroup   *errgroup.Group
+	pod         *Pod
+	Ready       chan struct{}
+	Done        chan error
 }
 
 func (w *kubeWait) Wait() error {
+	return <-w.Done
+}
+
+func (w *kubeWait) watch() {
 	streamsAttached := false
+	ready := false
 
 	for event := range w.watchStream.ResultChan() {
 		w.logger.V(5).Info("kube watch stream event", "event", event)
@@ -208,19 +217,33 @@ func (w *kubeWait) Wait() error {
 		case watch.Added:
 			continue
 		case watch.Error:
-			return fmt.Errorf("watch stream error: %s", event.Object.(*metav1.Status).Message)
+			w.Done <- fmt.Errorf("watch stream error: %s", event.Object.(*metav1.Status).Message)
+			return
 		case watch.Deleted:
-			return fmt.Errorf("pod has been deleted")
+			w.Done <- fmt.Errorf("pod has been deleted")
+			return
 		case watch.Modified:
 			pod, ok := event.Object.(*corev1.Pod)
 			if !ok {
 				continue
 			}
 
+			if pod.Status.PodIP != "" && !ready {
+				ready = true
+				w.pod.Status.Containers = append(w.pod.Status.Containers, ContainerStatus{
+					ContainerID: pod.Name,
+					ContainerIP: pod.Status.PodIP,
+					Name:        w.pod.Spec.Containers[0].Name,
+				})
+
+				w.Ready <- struct{}{}
+			}
+
 			// Attach streams when pod becomes running
 			if !streamsAttached && pod.Status.Phase == corev1.PodRunning {
 				if err := w.attachStreams(); err != nil {
-					return fmt.Errorf("failed to attach streams: %w", err)
+					w.Done <- fmt.Errorf("failed to attach streams: %w", err)
+					return
 				}
 				streamsAttached = true
 				continue
@@ -236,20 +259,22 @@ func (w *kubeWait) Wait() error {
 					}
 
 					if status.State.Terminated.ExitCode == 0 {
-						return nil
+						w.Done <- nil
+						return
 					}
 
-					return &Result{
+					w.Done <- &Result{
 						ExitCode: int(status.State.Terminated.ExitCode),
 					}
+
+					return
 				}
 			}
 		default:
-			return fmt.Errorf("unknown event type: %s", event.Type)
+			w.Done <- fmt.Errorf("unknown event type: %s", event.Type)
+			return
 		}
 	}
-
-	return nil
 }
 
 func (w *kubeWait) attachStreams() error {

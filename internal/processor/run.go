@@ -202,7 +202,12 @@ func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) ([]string, erro
 	entrypoint := run.Command
 
 	if len(entrypoint) == 0 && script == "" {
-		ref, err := name.ParseReference(run.Image)
+		image := run.Image
+		if err := substitute.Substitute(ctx.ToV1Beta1(), &image); err != nil {
+			return cmd, err
+		}
+
+		ref, err := name.ParseReference(image)
 		if err != nil {
 			return cmd, err
 		}

@@ -41,7 +41,7 @@ func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func mergeTemplate(to *v1beta1.Template, from *v1beta1.Template) error {
+func mergeTemplate(to, from *v1beta1.Template) error {
 	if len(to.Args) == 0 {
 		to.Args = from.Args
 	}
