@@ -67,6 +67,8 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		s.mergeContext(outputContext, ctx)
 		maps.Copy(ctx.OutputVars, outputs)
 
+		//TODO right place?
+		ctx.StdinPath = ""
 		return next(ctx)
 	}, nil
 }

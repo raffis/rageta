@@ -3,19 +3,19 @@ package processor
 import (
 	"context"
 	"fmt"
-	"io"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown, handlerBinaryPath string) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil {
 			return nil
@@ -27,6 +27,7 @@ func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface
 			driver:            driver,
 			defaultPullPolicy: defaultPullPolicy,
 			teardown:          teardown,
+			handlerBinaryPath: handlerBinaryPath,
 		}
 	}
 }
@@ -41,6 +42,7 @@ type Run struct {
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
+	handlerBinaryPath string
 }
 
 func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -55,11 +57,11 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		envs := make(map[string]string)
-		maps.Copy(envs, ctx.Envs)
-		maps.Copy(envs, ctx.Secrets)
+		command, err := s.commandArgs(run, ctx)
+		if err != nil {
+			return ctx, err
+		}
 
-		command, args := s.commandArgs(run)
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
 			Stdin:           ctx.Stdin != nil || run.Stdin,
@@ -67,8 +69,8 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
-			Args:            args,
-			Env:             envs,
+			Env:             ctx.Envs,
+			Secrets:         ctx.Secrets,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
@@ -128,11 +130,14 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		ctx, err := s.exec(ctx, pod)
+		ctx, err = s.exec(ctx, pod)
 
 		if err != nil {
 			return ctx, fmt.Errorf("container %s failed: %w", pod.Name, err)
 		}
+
+		//TODO: is this at the right place?
+		ctx.StdinPath = ""
 
 		return next(ctx)
 	}, nil
@@ -184,12 +189,60 @@ func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template)
 	}
 }
 
-func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
+func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) ([]string, error) {
 	script := strings.TrimSpace(run.Script)
 	args := run.Args
+	useHandler := len(ctx.AdditionalStdoutPaths) > 0 || len(ctx.AdditionalStderrPaths) > 0 || ctx.StdinPath != ""
+	var cmd []string
+	entrypoint := run.Command
+
+	if len(entrypoint) == 0 && script == "" {
+		image := run.Image
+		if err := substitute.Substitute(ctx.ToV1Beta1(), &image); err != nil {
+			return cmd, err
+		}
+
+		ref, err := name.ParseReference(image)
+		if err != nil {
+			return cmd, err
+		}
+
+		img, err := remote.Image(ref)
+		if err != nil {
+			return cmd, err
+		}
+
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			return cmd, err
+		}
+
+		entrypoint = cfg.Config.Entrypoint
+	}
+
+	if useHandler {
+		cmd = []string{s.handlerBinaryPath}
+
+		if ctx.StdinPath != "" {
+			cmd = append(cmd, "--stdin", ctx.StdinPath)
+		}
+
+		for _, path := range ctx.AdditionalStdoutPaths {
+			cmd = append(cmd, "--stdout", path)
+		}
+
+		for _, path := range ctx.AdditionalStderrPaths {
+			cmd = append(cmd, "--stderr", path)
+		}
+
+		cmd = append(cmd, "--")
+	}
 
 	if script == "" {
-		return run.Command, run.Args
+		cmd = append(cmd, entrypoint...)
+		cmd = append(cmd, args...)
+
+		return cmd, nil
 	}
 
 	hasShebang := strings.HasPrefix(script, "#!")
@@ -200,16 +253,15 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
 
 	header := strings.Split(script, "\n")[0]
 	shebang := strings.Split(header, "#!")
-	command := []string{shebang[1]}
 
-	return command, append(args, "-c", script)
+	cmd = append(cmd, shebang[1])
+	cmd = append(cmd, "-c", script)
+
+	return cmd, nil
 }
 
 func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin,
-		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
-		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
-	)
+	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin, ctx.Stdout, ctx.Stderr)
 
 	if err != nil {
 		return ctx, err
@@ -232,8 +284,8 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 		s.teardown <- func(teardownCtx context.Context) error {
 			//In case of Await == v1beta1.AwaitStatusReady we need to delete the container here
 			//otherwise we end up with orphaned running containers
-			//And in addition if the container here is not deleted the done channel will never be fullfilled as there is nothing which will stop
-			//the containers otheriwse if the app was started with --no-gc (skip pod deletion)
+			//And in addition if the container here is not deleted the done channel will never be fulfilled as there is nothing which will stop
+			//the containers otherwise if the app was started with --no-gc (skip pod deletion)
 			if containerStatus, ok := ctx.Containers[s.stepName]; ok {
 				err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
 					Status: runtime.PodStatus{
