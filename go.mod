@@ -15,6 +15,7 @@ require (
 	github.com/fluxcd/pkg/oci v0.49.0
 	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/zapr v1.3.0
+	github.com/gofrs/flock v0.13.0
 	github.com/google/cel-go v0.24.1
 	github.com/google/go-containerregistry v0.20.3
 	github.com/joho/godotenv v1.5.1
@@ -25,7 +26,7 @@ require (
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.6
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/tj/assert v0.0.3
 	go.opentelemetry.io/otel v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.32.0
@@ -165,7 +166,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect

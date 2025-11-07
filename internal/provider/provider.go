@@ -38,7 +38,6 @@ func (s *provider) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, e
 			if err != nil {
 				return to, err
 			}
-
 			_, _, err = s.decoder.Decode(
 				manifest,
 				nil,
