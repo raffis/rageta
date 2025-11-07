@@ -20,24 +20,24 @@ type Database struct {
 }
 
 type dbGetter interface {
-	Get(name string) ([]byte, error)
+	Get(name string) (v1beta1.App, error)
 }
 
 func WithLocalDB(db dbGetter) Resolver {
 	return func(ctx context.Context, ref string) (io.Reader, error) {
-		b, err := db.Get(ref)
+		app, err := db.Get(ref)
 		if err != nil {
 			return nil, fmt.Errorf("db: failed to get manifest: %w", err)
 		}
 
-		return bytes.NewReader(b), nil
+		return bytes.NewReader(app.Manifest), nil
 	}
 }
 
 func OpenDatabase(r io.Reader, decoder kruntime.Decoder, encoder kruntime.Serializer) (*Database, error) {
 	manifest, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read database: %w", err)
 	}
 
 	store := v1beta1.Store{
@@ -52,12 +52,16 @@ func OpenDatabase(r io.Reader, decoder kruntime.Decoder, encoder kruntime.Serial
 		nil,
 		&store)
 
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode database: %w", err)
+	}
+
 	database := &Database{
 		store:   store,
 		encoder: encoder,
 	}
 
-	return database, err
+	return database, nil
 }
 
 func (d *Database) Remove(name string) error {
@@ -103,17 +107,17 @@ func (d *Database) has(name string) bool {
 	return false
 }
 
-func (d *Database) Get(name string) ([]byte, error) {
+func (d *Database) Get(name string) (v1beta1.App, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	for _, app := range d.store.Apps {
 		if app.Name == name && app.Manifest != nil {
-			return app.Manifest, nil
+			return app, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no such pipeline found in local db store: %q", name)
+	return v1beta1.App{}, fmt.Errorf("no such pipeline found in local db store: %q", name)
 }
 
 func (d *Database) Persist(w io.Writer) error {
@@ -121,4 +125,28 @@ func (d *Database) Persist(w io.Writer) error {
 	defer d.mu.Unlock()
 
 	return d.encoder.Encode(&d.store, w)
+}
+
+func (d *Database) Merge(from *Database) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, fromApp := range from.store.Apps {
+		has := false
+		for i, app := range d.store.Apps {
+			if app.Name == fromApp.Name {
+				d.store.Apps[i] = fromApp
+				has = true
+				break
+			}
+		}
+
+		if !has {
+			d.store.Apps = append(d.store.Apps, fromApp)
+			continue
+		}
+
+	}
+
+	return nil
 }

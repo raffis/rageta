@@ -47,16 +47,29 @@ func newRootFlags() rootFlags {
 func main() {
 	err := rootCmd.Execute()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
+    os.Exit(1)
 	}
 }
 
 func init() {
-	dbPath := "/.rageta.db"
+	homePath := "/.rageta"
 	home, err := os.UserHomeDir()
+
 	if err == nil {
-		dbPath = filepath.Join(home, ".rageta.db")
+		homePath = filepath.Join(home, homePath)
+	} else {
+		homePath = filepath.Join(os.TempDir(), homePath)
 	}
+
+	if _, err := os.Stat(homePath); os.IsNotExist(err) {
+		err := os.Mkdir(homePath, 0750)
+		if err != nil {
+			homePath = os.TempDir()
+		}
+	}
+
+	dbPath := filepath.Join(homePath, "db.yaml")
 
 	rootCmd.PersistentFlags().StringVarP(&rootArgs.workDir, "workdir", "w", "", "Execute in the given directory.")
 	rootCmd.PersistentFlags().StringVarP(&rootArgs.dbPath, "db-path", "", dbPath, "Path to the local pipeline store.")

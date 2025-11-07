@@ -19,6 +19,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/raffis/rageta/internal/dockersetup"
 	"github.com/raffis/rageta/internal/kubesetup"
 	"github.com/raffis/rageta/internal/mask"
@@ -585,7 +586,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		ref = args[0]
 	}
 
-	store := createProvider(imagePullPolicy, rootArgs.dbPath, runArgs.ociOptions)
+	store, persistDB := createProvider(imagePullPolicy, rootArgs.dbPath, runArgs.ociOptions)
 	logger.V(3).Info("resolve pipeline reference", "source", ref)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
@@ -715,6 +716,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	inputs, err := parseInputs(command.Inputs, runArgs.inputs, flagSet)
 	if err != nil {
+		if err := persistDB(); err != nil {
+			logger.V(1).Error(err, "failed to persist database")
+		}
+
 		cleanup()
 		helpAndExit(flagSet, err)
 	}
@@ -733,6 +738,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.V(1).Info("pipeline completed", "result", result)
+	if err := persistDB(); err != nil {
+		logger.V(1).Error(err, "failed to persist database")
+	}
 
 	tearDown := func() {
 		cancel()
@@ -801,7 +809,7 @@ func cleanup() {
 	<-tuiDone
 }
 
-func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) provider.Interface {
+func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, ociOptions *ocisetup.Options) (provider.Interface, func() error) {
 	scheme := kruntime.NewScheme()
 	_ = v1beta1.AddToScheme(scheme)
 
@@ -809,8 +817,12 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 	decoder := factory.UniversalDeserializer()
 	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 	var localDB *provider.Database
+	var mu sync.Mutex
 
 	openDB := func() (*provider.Database, error) {
+		mu.Lock()
+		defer mu.Unlock()
+
 		if localDB == nil {
 			dbFile, err := os.OpenFile(dbPath, os.O_RDONLY|os.O_CREATE, 0644)
 			if err != nil {
@@ -859,21 +871,8 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 
 		r = bytes.NewReader(manifest)
 		err = localDB.Add(ref, manifest)
-		if err != nil {
-			return r, err
-		}
 
-		dbFile, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0644)
-		if err != nil {
-			return nil, err
-		}
-
-		err = localDB.Persist(dbFile)
-		if err != nil {
-			return r, err
-		}
-
-		return r, nil
+		return r, err
 	}
 
 	providers := []provider.Resolver{
@@ -894,7 +893,48 @@ func createProvider(imagePullPolicy cruntime.PullImagePolicy, dbPath string, oci
 		)
 	}
 
-	return provider.New(decoder, providers...)
+	return provider.New(decoder, providers...), func() error {
+		if localDB == nil {
+			return nil
+		}
+
+		return persistDatabase(dbPath, localDB)
+	}
+}
+
+func persistDatabase(dbPath string, db *provider.Database) error {
+	scheme := kruntime.NewScheme()
+	_ = v1beta1.AddToScheme(scheme)
+	factory := serializer.NewCodecFactory(scheme)
+	decoder := factory.UniversalDeserializer()
+	encoder := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
+
+	fileLock := flock.New(fmt.Sprintf("%s.lock", dbPath))
+	locked, err := fileLock.TryLock()
+
+	if !locked || err != nil {
+		return fmt.Errorf("failed to lock database: %w", err)
+	}
+
+	defer fileLock.Unlock()
+
+	dbFile, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	localDB, err := provider.OpenDatabase(dbFile, decoder, encoder)
+	if err != nil {
+		return err
+	}
+
+	err = localDB.Merge(db)
+	if err != nil {
+		return err
+	}
+
+	err = localDB.Persist(dbFile)
+	return err
 }
 
 func retryRun(ctx context.Context, pipeline processor.Executable) error {

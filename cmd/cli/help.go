@@ -50,7 +50,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		ref = args[0]
 	}
 
-	store := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	store, persistDB := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
@@ -83,6 +83,10 @@ func runHelp(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Rageta flags:"))
 	if err := runCmd.Usage(); err != nil {
 		return err
+	}
+
+	if err := persistDB(); err != nil {
+		logger.V(1).Error(err, "failed to persist database")
 	}
 
 	return nil

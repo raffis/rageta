@@ -145,11 +145,6 @@ func tagCmdRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tagging artifact failed: %w", err)
 	}
 
-	err = localDB.Persist(dbFile)
-	if err != nil {
-		return fmt.Errorf("failed to persist database: %w", err)
-	}
-
 	// Handle additional tags
 	for _, tag := range tagArgs.tags {
 		taggedURL := strings.Replace(artifactURL, ":", ":"+tag+":", 1)
@@ -157,6 +152,11 @@ func tagCmdRun(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("tagging artifact failed: %w", err)
 		}
+	}
+
+	err = persistDatabase(rootArgs.dbPath, localDB)
+	if err != nil {
+		return fmt.Errorf("failed to persist database: %w", err)
 	}
 
 	fmt.Printf("Successfully tagged %s in local database\n", artifactURL)
