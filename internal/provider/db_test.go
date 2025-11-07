@@ -51,14 +51,14 @@ func (m *mockWriter) Write(p []byte) (n int, err error) {
 
 // mockDBGetter is a mock implementation of dbGetter
 type mockDBGetter struct {
-	getFunc func(name string) ([]byte, error)
+	getFunc func(name string) (v1beta1.App, error)
 }
 
-func (m *mockDBGetter) Get(name string) ([]byte, error) {
+func (m *mockDBGetter) Get(name string) (v1beta1.App, error) {
 	if m.getFunc != nil {
 		return m.getFunc(name)
 	}
-	return nil, errors.New("not found")
+	return v1beta1.App{}, errors.New("not found")
 }
 
 func TestOpenDatabase(t *testing.T) {
@@ -292,7 +292,7 @@ func TestDatabase_Get(t *testing.T) {
 		getName     string
 		expectError bool
 		errorMsg    string
-		expected    []byte
+		expected    v1beta1.App
 	}{
 		{
 			name: "get existing app",
@@ -302,7 +302,7 @@ func TestDatabase_Get(t *testing.T) {
 			},
 			getName:     "app1",
 			expectError: false,
-			expected:    []byte("manifest1"),
+			expected:    v1beta1.App{Name: "app1", Manifest: []byte("manifest1")},
 		},
 		{
 			name: "get non-existent app",
@@ -350,10 +350,11 @@ func TestDatabase_Get(t *testing.T) {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 					assert.Contains(t, err.Error(), tt.getName)
 				}
-				assert.Nil(t, result)
+				assert.Equal(t, v1beta1.App{}, result)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				assert.Equal(t, tt.expected.Name, result.Name)
+				assert.Equal(t, tt.expected.Manifest, result.Manifest)
 			}
 		})
 	}
@@ -432,8 +433,11 @@ func TestWithLocalDB(t *testing.T) {
 		{
 			name: "successful get",
 			dbGetter: &mockDBGetter{
-				getFunc: func(name string) ([]byte, error) {
-					return []byte("test data"), nil
+				getFunc: func(name string) (v1beta1.App, error) {
+					return v1beta1.App{
+						Name:     name,
+						Manifest: []byte("test data"),
+					}, nil
 				},
 			},
 			ref:         "test-ref",
@@ -443,8 +447,8 @@ func TestWithLocalDB(t *testing.T) {
 		{
 			name: "get error",
 			dbGetter: &mockDBGetter{
-				getFunc: func(name string) ([]byte, error) {
-					return nil, errors.New("not found")
+				getFunc: func(name string) (v1beta1.App, error) {
+					return v1beta1.App{}, errors.New("not found")
 				},
 			},
 			ref:         "test-ref",
