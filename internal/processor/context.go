@@ -81,17 +81,7 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Stdin = c.Stdin
 	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
 	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
-
-	/*for k, v := range c.Steps {
-		copy.Steps[k] = &StepResult{
-			StartedAt: v.StartedAt,
-			EndedAt:   v.EndedAt,
-			Outputs:   maps.Clone(v.Outputs),
-			Error:     v.Error,
-			DataDir:   v.DataDir,
-		}
-	}*/
-
+	copy.Outputs = append(copy.Outputs, c.Outputs...)
 	copy.OutputVars = maps.Clone(c.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
 	copy.tags = append(copy.tags, c.tags...)
