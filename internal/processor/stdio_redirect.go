@@ -33,16 +33,18 @@ type StdioRedirect struct {
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		var stdoutRedirect, stderrRedirect io.Writer
+		streams := s.streams.DeepCopy()
 
 		vars := []any{}
-		if s.streams.Stdout != nil {
-			vars = append(vars, &s.streams.Stdout.Path)
+		if streams.Stdout != nil {
+			vars = append(vars, &streams.Stdout.Path)
 		}
-		if s.streams.Stderr != nil {
-			vars = append(vars, &s.streams.Stderr.Path)
+
+		if streams.Stderr != nil {
+			vars = append(vars, &streams.Stderr.Path)
 		}
-		if s.streams.Stdin != nil {
-			vars = append(vars, &s.streams.Stdin.Path)
+		if streams.Stdin != nil {
+			vars = append(vars, &streams.Stdin.Path)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), vars...,
@@ -53,12 +55,12 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 		stdout := ctx.Stdout
 		stderr := ctx.Stderr
 
-		if s.streams.Stdout != nil {
+		if streams.Stdout != nil {
 			if !s.tee {
 				ctx.Stdout = io.Discard
 			}
 
-			outFile, err := os.OpenFile(s.streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+			outFile, err := os.OpenFile(streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
 				return ctx, fmt.Errorf("failed to redirect stdout: %w", err)
 			}
@@ -70,12 +72,12 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			stdoutRedirect = outFile
 		}
 
-		if s.streams.Stderr != nil {
+		if streams.Stderr != nil {
 			if !s.tee {
 				ctx.Stdout = io.Discard
 			}
 
-			outFile, err := os.OpenFile(s.streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+			outFile, err := os.OpenFile(streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 			if err != nil {
 				return ctx, fmt.Errorf("failed to redirect stderr: %w", err)
 			}
