@@ -7,7 +7,6 @@ import (
 	"text/template"
 
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/tui"
 )
 
 type bufferVars struct {
@@ -16,7 +15,7 @@ type bufferVars struct {
 	UniqueName  string
 	Buffer      *bytes.Buffer
 	Error       error
-	Symbol      string
+	Skipped     bool
 	Tags        []processor.Tag
 }
 
@@ -30,16 +29,6 @@ func Buffer(tmpl *template.Template, dev io.Writer) processor.OutputFactory {
 			mu.Lock()
 			defer mu.Unlock()
 
-			var status tui.StepStatus
-			switch {
-			case err != nil && !processor.AbortOnError(err):
-				status = tui.StepStatusSkipped
-			case err != nil:
-				status = tui.StepStatusFailed
-			default:
-				status = tui.StepStatusDone
-			}
-
 			displayName := stepName
 			if short != "" {
 				displayName = short
@@ -51,15 +40,11 @@ func Buffer(tmpl *template.Template, dev io.Writer) processor.OutputFactory {
 				DisplayName: displayName,
 				Buffer:      buffer,
 				Error:       err,
+				Skipped:     err != nil && !processor.AbortOnError(err),
 				Tags:        ctx.Tags(),
-				Symbol:      status.Render(),
 			})
 
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return err
 		}
 	}
 }

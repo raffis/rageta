@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
+	"github.com/raffis/rageta/internal/tui"
 )
 
 type table struct {
@@ -31,7 +33,7 @@ func (r *table) Finalize() error {
 	var rows [][]string
 	rows = append(rows, []string{"#", "STEP", "STATUS", "DURATION", "TAGS", "ERROR"})
 	for i, step := range r.store.Ordered() {
-		errMsg, status, duration := stringify(step.result)
+		errMsg, status, duration := r.stringify(step.result)
 
 		var tags []string
 		for _, tag := range step.result.Tags() {
@@ -80,4 +82,31 @@ func (r *table) Finalize() error {
 	}
 
 	return nil
+}
+
+func (r *table) stringify(step processor.StepContext) (string, string, string) {
+	var (
+		duration time.Duration
+		status   tui.StepStatus
+		errMsg   string
+	)
+
+	switch {
+	case step.StartedAt.IsZero():
+		status = tui.StepStatusWaiting
+	case step.Error != nil && !processor.AbortOnError(step.Error):
+		status = tui.StepStatusSkipped
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error != nil:
+		status = tui.StepStatusFailed
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error == nil:
+		status = tui.StepStatusDone
+	}
+
+	if !step.EndedAt.IsZero() {
+		duration = step.EndedAt.Sub(step.StartedAt).Round(time.Millisecond * 10)
+	}
+
+	return errMsg, status.Render(), duration.String()
 }
