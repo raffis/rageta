@@ -17,9 +17,9 @@ jobs:
             echo "::group::My title"
             echo "Inside group"
             echo "::endgroup::"
-            #echo "::group::My title 2"
-            #echo "Inside group::endgroup::"
-            #echo "test"
+            echo "::group::My title 2"
+            echo "Inside group::endgroup::"
+            echo "test2"
       #- name: Harden Runner
       #  uses: step-security/harden-runner@1b05615854632b887b69ae1be8cbefe72d3ae423 # v2.6.0
       #  with:
