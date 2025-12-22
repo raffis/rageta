@@ -133,7 +133,7 @@ func init() {
 	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
 	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
 	executionFlags.StringSliceVarP(&runArgs.tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
-	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
+	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*1, "Allow containers to exit gracefully.")
 	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
 	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
 	executionFlags.StringVarP(&runArgs.statusOutput, "status-output", "", "", "Destination for the status output. By default this depends on the output (-o) set.")
@@ -746,7 +746,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 		cancel()
 		close(teardown)
 
-		teardownCtx, cancel := context.WithTimeout(context.Background(), runArgs.gracefulTermination)
+		// The container engines handle timeouts on the server, to avoid canceling the context before the timeout
+		// on the remote is reached we add one second here.
+		teardownCtx, cancel := context.WithTimeout(context.Background(), runArgs.gracefulTermination+time.Second)
 		defer cancel()
 		var wg sync.WaitGroup
 
@@ -755,8 +757,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 			go func(teardownFunc processor.Teardown) {
 				defer wg.Done()
 				logger.V(5).Info("execute teardown")
-				if err := teardownFunc(teardownCtx); err != nil {
-					logger.V(1).Error(err, "failed execute teardown")
+				if err := teardownFunc(teardownCtx, runArgs.gracefulTermination); err != nil {
+					logger.V(5).Info("failed execute teardown", "err", err)
 				}
 			}(teardownFunc)
 		}
@@ -1008,7 +1010,7 @@ func fork(ctx context.Context, driver cruntime.Interface, template v1beta1.Templ
 
 	if !runArgs.noGC {
 		defer func() {
-			_ = driver.DeletePod(ctx, &pod)
+			_ = driver.DeletePod(ctx, &pod, runArgs.gracefulTermination)
 		}()
 	}
 

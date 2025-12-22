@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -27,8 +28,11 @@ func NewKubernetes(client clientcorev1.CoreV1Interface, opts ...kubernetesOption
 	return d
 }
 
-func (d *kubernetes) DeletePod(ctx context.Context, pod *Pod) error {
-	return d.client.Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
+func (d *kubernetes) DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error {
+	seconds := int64(timeout.Seconds())
+	return d.client.Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{
+		GracePeriodSeconds: &seconds,
+	})
 }
 
 func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {

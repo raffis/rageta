@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
@@ -229,17 +230,17 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 			done <- nil
 		}()
 
-		s.teardown <- func(teardownCtx context.Context) error {
+		s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
 			//In case of Await == v1beta1.AwaitStatusReady we need to delete the container here
 			//otherwise we end up with orphaned running containers
-			//And in addition if the container here is not deleted the done channel will never be fullfilled as there is nothing which will stop
-			//the containers otheriwse if the app was started with --no-gc (skip pod deletion)
+			//And in addition if the container here is not deleted the done channel will never be fulfilled as there is nothing which will stop
+			//the containers otherwise if the app was started with --no-gc (skip pod deletion)
 			if containerStatus, ok := ctx.Containers[s.stepName]; ok {
 				err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
 					Status: runtime.PodStatus{
 						Containers: []runtime.ContainerStatus{containerStatus},
 					},
-				})
+				}, timeout)
 
 				if err != nil {
 					return err

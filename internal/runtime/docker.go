@@ -80,22 +80,28 @@ func NewDocker(client *dockerclient.Client, opts ...dockerOption) *docker {
 	return d
 }
 
-func (d *docker) DeletePod(ctx context.Context, pod *Pod) error {
+func (d *docker) DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error {
 	wg := new(errgroup.Group)
 	for _, container := range pod.Status.Containers {
 		containerId := container.ContainerID
 
 		wg.Go(func() error {
-			return d.resetContainer(ctx, containerId)
+			return d.resetContainer(ctx, containerId, timeout)
 		})
 	}
 
 	return wg.Wait()
 }
 
-func (d *docker) resetContainer(ctx context.Context, containerID string) error {
-	_ = d.client.ContainerStop(ctx, containerID, dockercontainer.StopOptions{})
-	return d.client.ContainerRemove(ctx, containerID, dockercontainer.RemoveOptions{})
+func (d *docker) resetContainer(ctx context.Context, containerID string, timeout time.Duration) error {
+	seconds := int(timeout.Seconds())
+	_ = d.client.ContainerStop(ctx, containerID, dockercontainer.StopOptions{
+		Timeout: &seconds,
+	})
+
+	return d.client.ContainerRemove(ctx, containerID, dockercontainer.RemoveOptions{
+		Force: true,
+	})
 }
 
 func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
