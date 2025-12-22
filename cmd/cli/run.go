@@ -916,7 +916,9 @@ func persistDatabase(dbPath string, db *provider.Database) error {
 		return fmt.Errorf("failed to lock database: %w", err)
 	}
 
-	defer fileLock.Unlock()
+	defer func() {
+    _ = fileLock.Unlock()
+  }()
 
 	dbFile, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
