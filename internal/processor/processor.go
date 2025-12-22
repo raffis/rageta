@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"time"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -31,7 +32,7 @@ type Step interface {
 	Entrypoint() (Next, error)
 }
 
-type Teardown func(ctx context.Context) error
+type Teardown func(ctx context.Context, timeout time.Duration) error
 
 type result struct {
 	ctx StepContext

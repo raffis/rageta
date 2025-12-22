@@ -3,11 +3,12 @@ package runtime
 import (
 	"context"
 	"io"
+	"time"
 )
 
 type Interface interface {
 	CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error)
-	DeletePod(ctx context.Context, pod *Pod) error
+	DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error
 }
 
 type Await interface {
