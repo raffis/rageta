@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/raffis/rageta/internal/processor"
 )
@@ -35,7 +36,7 @@ func (r *markdown) Finalize() error {
 			tags = append(tags, fmt.Sprintf("`%s: %s`", tag.Key, tag.Value))
 		}
 
-		errMsg, status, duration := stringify(step.result)
+		errMsg, status, duration := r.stringify(step.result)
 		fmt.Fprintf(r.w, "| %d | %s | %s | %s | %s | %s |\n",
 			i,
 			step.stepName,
@@ -47,4 +48,31 @@ func (r *markdown) Finalize() error {
 	}
 
 	return nil
+}
+
+func (r *markdown) stringify(step processor.StepContext) (string, string, string) {
+	var (
+		duration time.Duration
+		status   string
+		errMsg   string
+	)
+
+	switch {
+	case step.StartedAt.IsZero():
+		status = `🕙`
+	case step.Error != nil && !processor.AbortOnError(step.Error):
+		status = `⚠️`
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error != nil:
+		status = `⛔`
+		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
+	case step.Error == nil:
+		status = `✅`
+	}
+
+	if !step.EndedAt.IsZero() {
+		duration = step.EndedAt.Sub(step.StartedAt).Round(time.Millisecond * 10)
+	}
+
+	return errMsg, status, duration.String()
 }

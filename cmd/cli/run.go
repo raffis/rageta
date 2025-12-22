@@ -283,10 +283,12 @@ func electDefaultOutput() string {
 				{{- $stepName = printf "%s[%s]" .StepName $tags }}
 			{{- end }}
 
-			{{- if .Error }}
-				{{- printf "%s %s\n%s" .Symbol $stepName .Buffer }}
+			{{- if .Error and .Skipped }}
+				{{- printf "%s %s\n%s" ⚠️ $stepName .Buffer }}
+			{{ else if .Error }}
+				{{- printf "%s %s\n%s" ⛔ $stepName .Buffer }}
 			{{- else }}
-				{{- printf "::group::%s %s\n%s\n::endgroup::\n" .Symbol $stepName .Buffer }}
+				{{- printf "::group::%s %s\n%s\n::endgroup::\n" ✅ $stepName .Buffer }}
 			{{- end }}`
 
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
