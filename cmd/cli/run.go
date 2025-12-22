@@ -283,12 +283,12 @@ func electDefaultOutput() string {
 				{{- $stepName = printf "%s[%s]" .StepName $tags }}
 			{{- end }}
 
-			{{- if .Error and .Skipped }}
-				{{- printf "%s %s\n%s" ⚠️ $stepName .Buffer }}
-			{{ else if .Error }}
-				{{- printf "%s %s\n%s" ⛔ $stepName .Buffer }}
+			{{- if and .Error .Skipped }}
+				{{- printf "⚠️ %s\n%s" $stepName .Buffer }}
+			{{- else if .Error }}
+				{{- printf "⛔ %s\n%s" $stepName .Buffer }}
 			{{- else }}
-				{{- printf "::group::%s %s\n%s\n::endgroup::\n" ✅ $stepName .Buffer }}
+				{{- printf "::group::✅ %s\n%s\n::endgroup::\n" $stepName .Buffer }}
 			{{- end }}`
 
 		return fmt.Sprintf("%s=%s", renderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
@@ -921,8 +921,8 @@ func persistDatabase(dbPath string, db *provider.Database) error {
 	}
 
 	defer func() {
-    _ = fileLock.Unlock()
-  }()
+		_ = fileLock.Unlock()
+	}()
 
 	dbFile, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {

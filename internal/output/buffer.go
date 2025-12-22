@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"io"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -13,7 +14,7 @@ type bufferVars struct {
 	StepName    string
 	DisplayName string
 	UniqueName  string
-	Buffer      *bytes.Buffer
+	Buffer      string
 	Error       error
 	Skipped     bool
 	Tags        []processor.Tag
@@ -38,7 +39,7 @@ func Buffer(tmpl *template.Template, dev io.Writer) processor.OutputFactory {
 				StepName:    stepName,
 				UniqueName:  processor.SuffixName(stepName, ctx.NamePrefix),
 				DisplayName: displayName,
-				Buffer:      buffer,
+				Buffer:      strings.TrimRight(buffer.String(), "\n"),
 				Error:       err,
 				Skipped:     err != nil && !processor.AbortOnError(err),
 				Tags:        ctx.Tags(),
