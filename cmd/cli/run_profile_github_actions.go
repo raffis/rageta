@@ -27,9 +27,9 @@ func (f *runFlags) githubActionsProfile() error {
 	{{- end }}
 
 	{{- if and .Error .Skipped }}
-		{{- printf "⚠️ %s\n%s" $stepName .Buffer }}
+		{{- printf "⚠️ %s\n%s\n" $stepName .Buffer }}
 	{{- else if .Error }}
-		{{- printf "⛔ %s\n%s" $stepName .Buffer }}
+		{{- printf "⛔ %s\n%s\n" $stepName .Buffer }}
 	{{- else }}
 		{{- printf "::group::✅ %s\n%s\n::endgroup::\n" $stepName .Buffer }}
 	{{- end }}`

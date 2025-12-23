@@ -93,7 +93,6 @@ homebrew_casks:
     token: "{{ .Env.GITHUB_TOKEN }}"
   description: Cloud native pipelines
   homepage: https://github.com/raffis/rageta
-  directory: Formula
 
 signs:
 - cmd: cosign
