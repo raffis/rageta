@@ -29,6 +29,7 @@ type StdioRedirect struct {
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		streams := s.streams.DeepCopy()
 		vars := []any{}
 		if streams.Stdout != nil {
 			vars = append(vars, &streams.Stdout.Path)

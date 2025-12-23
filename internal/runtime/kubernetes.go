@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/merge"
@@ -25,13 +25,15 @@ type kubernetes struct {
 	client      clientcorev1.CoreV1Interface
 	podTemplate corev1.Pod
 	restConfig  *rest.Config
+	logger      logr.Logger
 }
 
-func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod, restConfig *rest.Config) *kubernetes {
+func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod, restConfig *rest.Config, logger logr.Logger) *kubernetes {
 	d := &kubernetes{
 		client:      client,
 		podTemplate: podTemplate,
 		restConfig:  restConfig,
+		logger:      logger,
 	}
 
 	return d
@@ -39,15 +41,14 @@ func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod, 
 
 func (d *kubernetes) DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error {
 	seconds := int64(timeout.Seconds())
-	/*return d.client.Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{
-		GracePeriodSeconds: &seconds,
-	})*/
 	wg := new(errgroup.Group)
 	for _, container := range pod.Status.Containers {
 		containerId := container.ContainerID
 
 		wg.Go(func() error {
-			return d.client.Pods("default").Delete(ctx, containerId, metav1.DeleteOptions{})
+			return d.client.Pods("default").Delete(ctx, containerId, metav1.DeleteOptions{
+				GracePeriodSeconds: &seconds,
+			})
 		})
 	}
 
@@ -57,7 +58,7 @@ func (d *kubernetes) DeletePod(ctx context.Context, pod *Pod, timeout time.Durat
 func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
 	logger, err := logr.FromContext(ctx)
 	if err != nil {
-		return nil, err
+		logger = d.logger
 	}
 
 	meta := metav1.ObjectMeta{
@@ -176,6 +177,23 @@ VOLUMES:
 	logger.V(3).Info("create pod", "pod", created, "error", err)
 	if err != nil {
 		return nil, err
+	}
+
+	if secrets != nil {
+		secrets.OwnerReferences = []metav1.OwnerReference{
+			{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Name:       created.Name,
+				UID:        created.UID,
+			},
+		}
+
+		_, err = d.client.Secrets("default").Create(ctx, secrets, metav1.CreateOptions{})
+		logger.V(3).Info("create secret", "secret", secrets.Name, "pod", created, "error", err)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	watchStream, err := d.client.Pods("default").Watch(ctx, metav1.ListOptions{

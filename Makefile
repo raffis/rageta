@@ -1,5 +1,4 @@
 IMG=ghcr.io/rageta/rageta
-IMG_DATAPLANE=ghcr.io/rageta/data-plane
 
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
