@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"time"
+	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/internal/merge"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -14,15 +16,15 @@ import (
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-type kubernetesOption func(*kubernetes)
-
 type kubernetes struct {
-	client clientcorev1.CoreV1Interface
+	client      clientcorev1.CoreV1Interface
+	podTemplate corev1.Pod
 }
 
-func NewKubernetes(client clientcorev1.CoreV1Interface, opts ...kubernetesOption) *kubernetes {
+func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod) *kubernetes {
 	d := &kubernetes{
-		client: client,
+		client:      client,
+		podTemplate: podTemplate,
 	}
 
 	return d
@@ -68,37 +70,38 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 	}
 
 	restartPolicy := d.getRestartPolicy(pod.Spec.Containers[0].RestartPolicy)
-	spec := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: pod.Name,
-		},
-		Spec: corev1.PodSpec{
-			RestartPolicy: restartPolicy,
-			Containers: []corev1.Container{
-				{
-					Name:            pod.Spec.Containers[0].Name,
-					Image:           pod.Spec.Containers[0].Image,
-					ImagePullPolicy: pullPolicy,
-					Command:         pod.Spec.Containers[0].Command,
-					Args:            pod.Spec.Containers[0].Args,
-					StdinOnce:       pod.Spec.Containers[0].Stdin,
-					Stdin:           pod.Spec.Containers[0].Stdin,
-					WorkingDir:      pod.Spec.Containers[0].PWD,
-					SecurityContext: securityContext,
-				},
-			},
-		},
-	}
+	kubePod := &corev1.Pod{}
+	kubePod.Name = pod.Name
+	kubePod.Spec.RestartPolicy = restartPolicy
+	kubePod.Spec.Containers = append(kubePod.Spec.Containers, corev1.Container{
+		Name:            "step",
+		Image:           pod.Spec.Containers[0].Image,
+		ImagePullPolicy: pullPolicy,
+		Command:         pod.Spec.Containers[0].Command,
+		Args:            pod.Spec.Containers[0].Args,
+		StdinOnce:       pod.Spec.Containers[0].Stdin,
+		Stdin:           pod.Spec.Containers[0].Stdin,
+		WorkingDir:      pod.Spec.Containers[0].PWD,
+		SecurityContext: securityContext,
+	})
 
 	for name, value := range pod.Spec.Containers[0].Env {
-		spec.Spec.Containers[0].Env = append(spec.Spec.Containers[0].Env, corev1.EnvVar{
+		kubePod.Spec.Containers[0].Env = append(kubePod.Spec.Containers[0].Env, corev1.EnvVar{
 			Name:  name,
 			Value: value,
 		})
 	}
 
+VOLUMES:
 	for _, volume := range pod.Spec.Containers[0].Volumes {
-		spec.Spec.Volumes = append(spec.Spec.Volumes, corev1.Volume{
+		//If there is a pod template which already covers the same volume mount we will skip it here
+		for _, mount := range d.podTemplate.Spec.Containers[0].VolumeMounts {
+			if strings.HasPrefix(mount.MountPath, volume.Path) {
+				continue VOLUMES
+			}
+		}
+
+		kubePod.Spec.Volumes = append(kubePod.Spec.Volumes, corev1.Volume{
 			Name: volume.Name,
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
@@ -107,15 +110,26 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 			},
 		})
 
-		spec.Spec.Containers[0].VolumeMounts = append(spec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		kubePod.Spec.Containers[0].VolumeMounts = append(kubePod.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			Name:      volume.Name,
 			MountPath: volume.Path,
 		})
 	}
 
-	created, err := d.client.Pods("default").Create(ctx, &spec, metav1.CreateOptions{})
+	tmpl := d.podTemplate.DeepCopy()
+	kubePod, err = merge.Pod(*tmpl, *kubePod)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge pod template: %w", err)
+	}
 
+	created, err := d.client.Pods("default").Create(ctx, kubePod, metav1.CreateOptions{})
 	logger.V(3).Info("create pod", "pod", created, "error", err)
+
+	pod.Status.Containers = append(pod.Status.Containers, ContainerStatus{
+		ContainerID: kubePod.Name,
+		ContainerIP: created.Status.PodIP,
+		Name:        pod.Spec.Containers[0].Name,
+	})
 
 	if err != nil {
 		return nil, err

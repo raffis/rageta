@@ -31,9 +31,11 @@ type GarbageCollector struct {
 func (s *GarbageCollector) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx, err := next(ctx)
+
 		if containerStatus, ok := ctx.Containers[s.stepName]; ok {
 			s.teardown <- func(ctx context.Context, timeout time.Duration) error {
 				return s.driver.DeletePod(ctx, &runtime.Pod{
+					Name: containerStatus.ContainerID,
 					Status: runtime.PodStatus{
 						Containers: []runtime.ContainerStatus{containerStatus},
 					},

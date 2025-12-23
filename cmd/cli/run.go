@@ -53,18 +53,32 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-var runCmd = &cobra.Command{
-	Use:  "run",
-	RunE: runRun,
-}
+var (
+	runCmd = &cobra.Command{
+		Use:  "run",
+		RunE: runRun,
+	}
+	runArgs               = newRunFlags()
+	stdout      io.Writer = os.Stdout
+	stderr      io.Writer = os.Stderr
+	scheme                = kruntime.NewScheme()
+	secretStore           = mask.NewSecretStore(mask.DefaultMask)
+	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
+
+	decoder kruntime.Decoder
+	encoder kruntime.Serializer
+)
 
 func applyFlagProfile() error {
 	switch runArgs.profile {
@@ -114,156 +128,17 @@ type runFlags struct {
 	dockerOptions      dockersetup.Options
 	ociOptions         *ocisetup.Options
 	kubeOptions        *kubesetup.Options
+	kubePodTemplate     string        `env:"KUBE_POD_TEMPLATE"`
+	kubeTemplateFromPod string        `env:"KUBE_TEMPLATE_FROM_POD"`
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	factory := serializer.NewCodecFactory(scheme)
+	decoder = factory.UniversalDeserializer()
+	encoder = json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 }
 
-var runArgs = newRunFlags()
-
-func newRunFlags() runFlags {
-	return runFlags{
-		waitUpdateInterval:  time.Second * 5,
-		gracefulTermination: time.Second * 1,
-		report:              "none",
-		reportOutput:        os.Stdout.Name(),
-		maxConcurrent:       runtime.NumCPU(),
-		pull:                pullImageMissing.String(),
-		containerRuntime:    electDefaultDriver().String(),
-		output:              electDefaultOutput(),
-		kubeOptions:         kubesetup.DefaultOptions(),
-		ociOptions:          ocisetup.DefaultOptions(),
-		profile:             electDefaultProfile().String(),
-	}
-}
-
-var (
-	secretStore           = mask.NewSecretStore(mask.DefaultMask)
-	stdout      io.Writer = os.Stdout
-	stderr      io.Writer = os.Stderr
-	isTerm                = term.IsTerminal(int(os.Stdout.Fd()))
-)
-
-const otelName = "github.com/raffis/rageta"
-
-type flagProfile string
-
-var (
-	flagProfileGithubActions flagProfile = "github-actions"
-	flagProfileDebug         flagProfile = "debug"
-	flagProfileDefault         flagProfile = "default"
-)
-
-func (d flagProfile) String() string {
-	return string(d)
-}
-
-func electDefaultProfile() flagProfile {
-	if os.Getenv("GITHUB_ACTIONS") == "true" {
-		return flagProfileGithubActions
-	}
-
-	return flagProfileDefault
-}
-
-func init() {
-	applyFlagProfile()
-	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		return applyFlagProfile()
-	}
-
-	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
-	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
-	executionFlags.StringVarP(&runArgs.output, "output", "o", runArgs.output, "Output renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
-	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
-	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
-	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runArgs.maxConcurrent, "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
-	executionFlags.BoolVarP(&runArgs.noStatus, "no-status", "", false, "Do not print task status messages")
-	executionFlags.DurationVarP(&runArgs.waitUpdateInterval, "wait-update-interval", "", runArgs.waitUpdateInterval, "Print waiting for task status updates every n interval")
-	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
-	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
-	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
-	executionFlags.StringSliceVarP(&runArgs.tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
-	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", runArgs.gracefulTermination, "Allow containers to exit gracefully.")
-	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", runArgs.containerRuntime, "Container runtime. One of [docker].")
-	executionFlags.StringVarP(&runArgs.report, "report", "r", runArgs.report, "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
-	executionFlags.StringVarP(&runArgs.statusOutput, "status-output", "", "", "Destination for the status output. By default this depends on the output (-o) set.")
-	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", runArgs.reportOutput, "Destination for the report output.")
-	executionFlags.StringVarP(&runArgs.pull, "pull", "", runArgs.pull, "Pull image before running. one of [always, missing, never].")
-	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
-	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
-	executionFlags.Uint64VarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
-	executionFlags.StringVarP(&runArgs.profile, "profile", "", runArgs.profile, "Use a predefined flag profile. One of [github]. Profiles can be overridden with explicit flags.")
-	runCmd.Flags().AddFlagSet(executionFlags)
-
-	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
-	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
-	pipelineFlags.BoolVarP(&runArgs.fork, "fork", "", runArgs.fork, "Creates a controller container which handles this pipeline and exit.")
-	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "s", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
-	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
-	pipelineFlags.StringSliceVarP(&runArgs.volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
-	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
-	pipelineFlags.StringVarP(&runArgs.user, "user", "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
-	runCmd.Flags().AddFlagSet(pipelineFlags)
-
-	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
-	dockerFlags.BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
-	runArgs.dockerOptions.BindFlags(dockerFlags)
-	runCmd.Flags().AddFlagSet(dockerFlags)
-
-	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
-	runArgs.otelOptions.BindFlags(otelFlags)
-	runCmd.Flags().AddFlagSet(otelFlags)
-
-	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
-	runArgs.ociOptions.BindFlags(ociFlags)
-	runCmd.Flags().AddFlagSet(ociFlags)
-
-	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
-	runArgs.kubeOptions.BindFlags(kubeFlags)
-	runCmd.Flags().AddFlagSet(kubeFlags)
-
-	sets := []struct {
-		set         *pflag.FlagSet
-		displayName string
-	}{
-		{
-			set:         executionFlags,
-			displayName: "Execution",
-		},
-		{
-			set:         pipelineFlags,
-			displayName: "Pipeline",
-		},
-		{
-			set:         dockerFlags,
-			displayName: "Docker runtime",
-		},
-		{
-			set:         kubeFlags,
-			displayName: "Kubernetes runtime",
-		},
-		{
-			set:         otelFlags,
-			displayName: "Open Telemetry",
-		},
-		{
-			set:         ociFlags,
-			displayName: "OCI Registry",
-		},
-		{
-			set:         rootCmd.Flags(),
-			displayName: "Global",
-		},
-	}
-
-	runCmd.SetUsageFunc(func(c *cobra.Command) error {
-		for _, group := range sets {
-			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.displayName), group.set.FlagUsages())
-		}
-		return nil
-	})
-
-	rootCmd.AddCommand(runCmd)
-
-}
+var ()
 
 type pullImage string
 
@@ -368,11 +243,47 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
 
-		driver := cruntime.NewKubernetes(clientset.CoreV1())
+		podTemplate, err := podTemplate(ctx, clientset.CoreV1())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create pod template: %w", err)
+		}
+
+		logger.V(3).Info("kubernetes pod template", "template", podTemplate)
+
+		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate)
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
+}
+
+func podTemplate(ctx context.Context, client v1.CoreV1Interface) (corev1.Pod, error) {
+	template := corev1.Pod{}
+
+	if runArgs.kubeTemplateFromPod != "" {
+		pod, err := client.Pods("default").Get(ctx, runArgs.kubeTemplateFromPod, metav1.GetOptions{})
+		if err != nil {
+			return template, err
+		}
+
+		meta := metav1.ObjectMeta{
+			Annotations: pod.Annotations,
+			Labels:      pod.Labels,
+		}
+
+		pod.ObjectMeta = meta
+
+		template = *pod
+	}
+
+	if runArgs.kubePodTemplate != "" {
+		_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
+		if err != nil {
+			return template, err
+		}
+	}
+
+	return template, nil
 }
 
 func kubeRestClient(kubeconfigArgs *genericclioptions.ConfigFlags) (*kubernetes.Clientset, error) {
@@ -770,6 +681,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 		defer cancel()
 		var wg sync.WaitGroup
 
+		logger.V(4).Info("execute teardown chain", "count", len(teardownFuncs))
 		for _, teardownFunc := range teardownFuncs {
 			wg.Add(1)
 			go func(teardownFunc processor.Teardown) {
