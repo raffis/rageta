@@ -38,9 +38,19 @@ func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod, 
 
 func (d *kubernetes) DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error {
 	seconds := int64(timeout.Seconds())
-	return d.client.Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{
+	/*return d.client.Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{
 		GracePeriodSeconds: &seconds,
-	})
+	})*/
+	wg := new(errgroup.Group)
+	for _, container := range pod.Status.Containers {
+		containerId := container.ContainerID
+
+		wg.Go(func() error {
+			return d.client.Pods("default").Delete(ctx, containerId, metav1.DeleteOptions{})
+		})
+	}
+
+	return wg.Wait()
 }
 
 func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error) {
@@ -195,8 +205,10 @@ func (w *kubeWait) Wait() error {
 		w.logger.V(5).Info("kube watch stream event", "event", event)
 
 		switch event.Type {
+		case watch.Added:
+			continue
 		case watch.Error:
-			return fmt.Errorf("watch stream error occurred: %#v", event.Object)
+			return fmt.Errorf("watch stream error: %s", event.Object.(*metav1.Status).Message)
 		case watch.Deleted:
 			return fmt.Errorf("pod has been deleted")
 		case watch.Modified:
@@ -222,11 +234,18 @@ func (w *kubeWait) Wait() error {
 							w.logger.V(1).Error(err, "remote stream executor failed")
 						}
 					}
+
+					if status.State.Terminated.ExitCode == 0 {
+						return nil
+					}
+
 					return &Result{
 						ExitCode: int(status.State.Terminated.ExitCode),
 					}
 				}
 			}
+		default:
+			return fmt.Errorf("unknown event type: %s", event.Type)
 		}
 	}
 

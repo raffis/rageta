@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
@@ -61,7 +63,11 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		maps.Copy(envs, ctx.Envs)
 		maps.Copy(envs, ctx.Secrets)
 
-		command := s.commandArgs(run, ctx)
+		command, err := s.commandArgs(run, ctx)
+		if err != nil {
+			return ctx, err
+		}
+
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
 			Stdin:           ctx.Stdin != nil || run.Stdin,
@@ -129,11 +135,14 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		ctx, err := s.exec(ctx, pod)
+		ctx, err = s.exec(ctx, pod)
 
 		if err != nil {
 			return ctx, fmt.Errorf("container %s failed: %w", pod.Name, err)
 		}
+
+		//TODO: is this at the right place?
+		ctx.StdinPath = ""
 
 		return next(ctx)
 	}, nil
@@ -185,11 +194,31 @@ func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template)
 	}
 }
 
-func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) []string {
+func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) ([]string, error) {
 	script := strings.TrimSpace(run.Script)
 	args := run.Args
 	useHandler := len(ctx.AdditionalStdoutPaths) > 0 || len(ctx.AdditionalStderrPaths) > 0 || ctx.StdinPath != ""
 	var cmd []string
+	entrypoint := run.Command
+
+	if len(entrypoint) == 0 && script == "" {
+		ref, err := name.ParseReference(run.Image)
+		if err != nil {
+			return cmd, err
+		}
+
+		img, err := remote.Image(ref)
+		if err != nil {
+			return cmd, err
+		}
+
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			return cmd, err
+		}
+
+		entrypoint = cfg.Config.Entrypoint
+	}
 
 	if useHandler {
 		cmd = []string{s.handlerBinaryPath}
@@ -210,10 +239,10 @@ func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) []string {
 	}
 
 	if script == "" {
-		cmd = append(cmd, run.Command...)
+		cmd = append(cmd, entrypoint...)
 		cmd = append(cmd, args...)
 
-		return cmd
+		return cmd, nil
 	}
 
 	hasShebang := strings.HasPrefix(script, "#!")
@@ -228,7 +257,7 @@ func (s *Run) commandArgs(run *v1beta1.RunStep, ctx StepContext) []string {
 	cmd = append(cmd, shebang[1])
 	cmd = append(cmd, "-c", script)
 
-	return cmd
+	return cmd, nil
 }
 
 func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {

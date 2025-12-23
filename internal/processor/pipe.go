@@ -59,9 +59,8 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		var errs []error
 
 		// Create FIFO pipes for each step except the last one
-		for i := 0; i < len(steps)-1; i++ {
+		for i := range len(steps) - 1 {
 			fifoPath := filepath.Join(ctx.Dir, fmt.Sprintf("pipe-%d.fifo", i))
-
 			if err := os.MkdirAll(filepath.Dir(fifoPath), 0755); err != nil {
 				return ctx, fmt.Errorf("failed to create fifo directory: %w", err)
 			}
