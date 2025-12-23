@@ -72,6 +72,8 @@ func applyFlagProfile() error {
 		return runArgs.githubActionsProfile()
 	case flagProfileDebug.String():
 		return runArgs.debugProfile()
+  case flagProfileDefault.String():
+    return nil
 	default:
 		return fmt.Errorf("invalid flag profile given: %s", runArgs.profile)
 	}
@@ -146,6 +148,7 @@ type flagProfile string
 var (
 	flagProfileGithubActions flagProfile = "github-actions"
 	flagProfileDebug         flagProfile = "debug"
+	flagProfileDefault         flagProfile = "default"
 )
 
 func (d flagProfile) String() string {
@@ -157,7 +160,7 @@ func electDefaultProfile() flagProfile {
 		return flagProfileGithubActions
 	}
 
-	return flagProfile("")
+	return flagProfileDefault
 }
 
 func init() {
