@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"time"
+	"maps"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -59,6 +60,21 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 		return nil, err
 	}
 
+	meta := metav1.ObjectMeta{
+		Name:   pod.Name,
+		Labels: pod.Labels,
+	}
+
+	var secrets *corev1.Secret
+	if len(pod.Spec.Containers[0].Secrets) > 0 {
+		secrets = &corev1.Secret{
+			ObjectMeta: meta,
+			StringData: make(map[string]string),
+		}
+
+		maps.Copy(secrets.StringData, pod.Spec.Containers[0].Secrets)
+	}
+
 	var securityContext *corev1.SecurityContext
 
 	if pod.Spec.Containers[0].Uid != nil {
@@ -83,23 +99,39 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 		pullPolicy = corev1.PullIfNotPresent
 	case PullImagePolicyNever:
 		pullPolicy = corev1.PullNever
+	default:
+		pullPolicy = corev1.PullIfNotPresent
 	}
 
-	restartPolicy := d.getRestartPolicy(pod.Spec.Containers[0].RestartPolicy)
-	kubePod := &corev1.Pod{}
-	kubePod.Name = pod.Name
-	kubePod.Spec.RestartPolicy = restartPolicy
-	kubePod.Spec.Containers = append(kubePod.Spec.Containers, corev1.Container{
-		Name:            "step",
-		Image:           pod.Spec.Containers[0].Image,
-		ImagePullPolicy: pullPolicy,
-		Command:         pod.Spec.Containers[0].Command,
-		Args:            pod.Spec.Containers[0].Args,
-		StdinOnce:       pod.Spec.Containers[0].Stdin,
-		Stdin:           pod.Spec.Containers[0].Stdin,
-		WorkingDir:      pod.Spec.Containers[0].PWD,
-		SecurityContext: securityContext,
-	})
+	kubePod := &corev1.Pod{
+		ObjectMeta: meta,
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:            "step",
+					Image:           pod.Spec.Containers[0].Image,
+					ImagePullPolicy: pullPolicy,
+					Command:         pod.Spec.Containers[0].Command,
+					Args:            pod.Spec.Containers[0].Args,
+					StdinOnce:       pod.Spec.Containers[0].Stdin,
+					Stdin:           pod.Spec.Containers[0].Stdin,
+					WorkingDir:      pod.Spec.Containers[0].PWD,
+					SecurityContext: securityContext,
+				},
+			},
+			RestartPolicy: d.getRestartPolicy(pod.Spec.Containers[0].RestartPolicy),
+		},
+	}
+
+	if secrets != nil {
+		kubePod.Spec.Containers[0].EnvFrom = append(kubePod.Spec.Containers[0].EnvFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: pod.Name,
+				},
+			},
+		})
+	}
 
 	for name, value := range pod.Spec.Containers[0].Env {
 		kubePod.Spec.Containers[0].Env = append(kubePod.Spec.Containers[0].Env, corev1.EnvVar{

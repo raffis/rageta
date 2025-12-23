@@ -3,7 +3,6 @@ package processor
 import (
 	"context"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,10 +58,6 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		envs := make(map[string]string)
-		maps.Copy(envs, ctx.Envs)
-		maps.Copy(envs, ctx.Secrets)
-
 		command, err := s.commandArgs(run, ctx)
 		if err != nil {
 			return ctx, err
@@ -75,7 +70,8 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         command,
-			Env:             envs,
+			Env:             ctx.Envs,
+			Secrets:         ctx.Secrets,
 			PWD:             run.WorkingDir,
 			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}

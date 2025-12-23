@@ -16,6 +16,7 @@ type Await interface {
 }
 
 type Pod struct {
+	Labels map[string]string
 	Name   string
 	Spec   PodSpec
 	Status PodStatus
@@ -46,6 +47,7 @@ type ContainerSpec struct {
 	ImagePullPolicy PullImagePolicy
 	Stdin           bool
 	TTY             bool
+	Secrets         map[string]string
 	Env             map[string]string
 	Uid             *int
 	Guid            *int
