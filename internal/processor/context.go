@@ -21,30 +21,31 @@ var (
 )
 
 type StepContext struct {
-	context.Context  `json:"-"`
-	Dir              string
-	DataDir          string
-	Matrix           map[string]string
-	Inputs           map[string]v1beta1.ParamValue
-	Steps            map[string]*StepContext `json:"-"`
-	Envs             map[string]string
-	Secrets          map[string]string
-	Containers       map[string]cruntime.ContainerStatus
-	tags             []Tag
-	NamePrefix       string
-	Secret           string
-	Env              string
-	Outputs          []OutputParam
-	Stdin            io.Reader
-	Stdout           io.Writer
-	Stderr           io.Writer
-	AdditionalStdout []io.Writer
-	AdditionalStderr []io.Writer
-	Template         *v1beta1.Template
-	StartedAt        time.Time
-	EndedAt          time.Time
-	OutputVars       map[string]v1beta1.ParamValue
-	Error            error
+	context.Context       `json:"-"`
+	Dir                   string
+	DataDir               string
+	Matrix                map[string]string
+	Inputs                map[string]v1beta1.ParamValue
+	Steps                 map[string]*StepContext `json:"-"`
+	Envs                  map[string]string
+	Secrets               map[string]string
+	Containers            map[string]cruntime.ContainerStatus
+	tags                  []Tag
+	NamePrefix            string
+	Secret                string
+	Env                   string
+	Outputs               []OutputParam
+	Stdin                 io.Reader
+	Stdout                io.Writer
+	Stderr                io.Writer
+	AdditionalStdoutPaths []string
+	AdditionalStderrPaths []string
+	StdinPath             string
+	Template              *v1beta1.Template
+	StartedAt             time.Time
+	EndedAt               time.Time
+	OutputVars            map[string]v1beta1.ParamValue
+	Error                 error
 }
 
 type Tag struct {
@@ -79,9 +80,23 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Stdout = c.Stdout
 	copy.Stderr = c.Stderr
 	copy.Stdin = c.Stdin
-	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
-	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
-	copy.Outputs = append(copy.Outputs, c.Outputs...)
+	//copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
+	//copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
+	//copy.Outputs = append(copy.Outputs, c.Outputs...)
+	copy.AdditionalStdoutPaths = append(copy.AdditionalStdoutPaths, c.AdditionalStdoutPaths...)
+	copy.AdditionalStderrPaths = append(copy.AdditionalStderrPaths, c.AdditionalStderrPaths...)
+	copy.StdinPath = c.StdinPath
+
+	/*for k, v := range c.Steps {
+		copy.Steps[k] = &StepResult{
+			StartedAt: v.StartedAt,
+			EndedAt:   v.EndedAt,
+			Outputs:   maps.Clone(v.Outputs),
+			Error:     v.Error,
+			DataDir:   v.DataDir,
+		}
+	}*/
+
 	copy.OutputVars = maps.Clone(c.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
 	copy.tags = append(copy.tags, c.tags...)

@@ -53,7 +53,6 @@ type StepOptions struct {
 	Generates    []Generate        `json:"generates,omitempty"`
 	Sources      []Source          `json:"sources,omitempty"`
 	Needs        []StepReference   `json:"needs,omitempty"`
-	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
@@ -144,6 +143,7 @@ type PipeStep struct {
 type RunStep struct {
 	Await     AwaitStatus `json:"await,omitempty"`
 	Container `json:",inline"`
+	Streams   *Streams `json:"streams,omitempty"`
 }
 
 type Template Container

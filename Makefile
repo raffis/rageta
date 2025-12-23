@@ -40,9 +40,12 @@ vet:
 code-gen:
 	./hack/code-gen.sh
 
-build:
+build: build-handler
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
 	docker build . -t ghcr.io/rageta/rageta:latest
+
+build-handler:
+	CGO_ENABLED=0 go build -C cmd/handler/ -o ../cli/handler
 
 .PHONY: docker-build
 docker-build: build

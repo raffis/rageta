@@ -9,22 +9,28 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/merge"
+	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 type kubernetes struct {
 	client      clientcorev1.CoreV1Interface
 	podTemplate corev1.Pod
+	restConfig  *rest.Config
 }
 
-func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod) *kubernetes {
+func NewKubernetes(client clientcorev1.CoreV1Interface, podTemplate corev1.Pod, restConfig *rest.Config) *kubernetes {
 	d := &kubernetes{
 		client:      client,
 		podTemplate: podTemplate,
+		restConfig:  restConfig,
 	}
 
 	return d
@@ -95,9 +101,11 @@ func (d *kubernetes) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, s
 VOLUMES:
 	for _, volume := range pod.Spec.Containers[0].Volumes {
 		//If there is a pod template which already covers the same volume mount we will skip it here
-		for _, mount := range d.podTemplate.Spec.Containers[0].VolumeMounts {
-			if strings.HasPrefix(mount.MountPath, volume.Path) {
-				continue VOLUMES
+		if len(d.podTemplate.Spec.Containers) > 0 {
+			for _, mount := range d.podTemplate.Spec.Containers[0].VolumeMounts {
+				if strings.HasPrefix(mount.MountPath, volume.Path) {
+					continue VOLUMES
+				}
 			}
 		}
 
@@ -144,7 +152,15 @@ VOLUMES:
 	}
 
 	return &kubeWait{
+		ctx:         ctx,
+		logger:      logger,
 		watchStream: watchStream,
+		client:      d.client,
+		restConfig:  d.restConfig,
+		podName:     created.Name,
+		stdin:       stdin,
+		stdout:      stdout,
+		stderr:      stderr,
 	}, nil
 }
 
@@ -160,28 +176,91 @@ func (d *kubernetes) getRestartPolicy(policy RestartPolicy) corev1.RestartPolicy
 }
 
 type kubeWait struct {
+	ctx         context.Context
+	logger      logr.Logger
 	watchStream watch.Interface
+	client      clientcorev1.CoreV1Interface
+	restConfig  *rest.Config
+	podName     string
+	stdin       io.Reader
+	stdout      io.Writer
+	stderr      io.Writer
+	execGroup   *errgroup.Group
 }
 
 func (w *kubeWait) Wait() error {
+	streamsAttached := false
+
 	for event := range w.watchStream.ResultChan() {
-		fmt.Printf("event %#v\n", event)
+		w.logger.V(5).Info("kube watch stream event", "event", event)
+
 		switch event.Type {
 		case watch.Error:
-			return &Result{
-				ExitCode: int(1),
+			return fmt.Errorf("watch stream error occurred: %#v", event.Object)
+		case watch.Deleted:
+			return fmt.Errorf("pod has been deleted")
+		case watch.Modified:
+			pod, ok := event.Object.(*corev1.Pod)
+			if !ok {
+				continue
 			}
 
-		case watch.Deleted:
-			return &Result{
-				ExitCode: int(1),
+			// Attach streams when pod becomes running
+			if !streamsAttached && pod.Status.Phase == corev1.PodRunning {
+				if err := w.attachStreams(); err != nil {
+					return fmt.Errorf("failed to attach streams: %w", err)
+				}
+				streamsAttached = true
+				continue
 			}
-		case watch.Modified:
-			return &Result{
-				ExitCode: int(1),
+
+			// Check for container termination
+			for _, status := range pod.Status.ContainerStatuses {
+				if status.State.Terminated != nil {
+					if w.execGroup != nil {
+						if err := w.execGroup.Wait(); err != nil {
+							w.logger.V(1).Error(err, "remote stream executor failed")
+						}
+					}
+					return &Result{
+						ExitCode: int(status.State.Terminated.ExitCode),
+					}
+				}
 			}
 		}
 	}
+
+	return nil
+}
+
+func (w *kubeWait) attachStreams() error {
+	req := w.client.RESTClient().Post().
+		Resource("pods").
+		Name(w.podName).
+		Namespace("default").
+		SubResource("attach").
+		VersionedParams(&corev1.PodAttachOptions{
+			Container: "step",
+			Stdin:     w.stdin != nil,
+			Stdout:    w.stdout != nil,
+			Stderr:    w.stderr != nil,
+			TTY:       false,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(w.restConfig, "POST", req.URL())
+	if err != nil {
+		return fmt.Errorf("failed to create exec: %w", err)
+	}
+
+	w.execGroup = &errgroup.Group{}
+
+	w.execGroup.Go(func() error {
+		return exec.StreamWithContext(w.ctx, remotecommand.StreamOptions{
+			Stdin:  w.stdin,
+			Stdout: w.stdout,
+			Stderr: w.stderr,
+		})
+	})
 
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -54,14 +55,12 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/term"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 var (
@@ -130,6 +129,119 @@ type runFlags struct {
 	kubeOptions        *kubesetup.Options
 	kubePodTemplate     string        `env:"KUBE_POD_TEMPLATE"`
 	kubeTemplateFromPod string        `env:"KUBE_TEMPLATE_FROM_POD"`
+
+	otelOptions         otelsetup.Options
+	dockerOptions       dockersetup.Options
+	ociOptions          *ocisetup.Options
+	kubeOptions         *kubesetup.Options
+}
+
+func newRunFlags() runFlags {
+	return runFlags{
+		kubeOptions: kubesetup.DefaultOptions(),
+		ociOptions:  ocisetup.DefaultOptions(),
+	}
+}
+
+const otelName = "github.com/raffis/rageta"
+
+func init() {
+	executionFlags := pflag.NewFlagSet("execution", pflag.ExitOnError)
+	executionFlags.BoolVarP(&runArgs.tee, "tee", "", false, "Dump any internal redirected streams to stdout. Works similar as piping to tee on the console.")
+	executionFlags.StringVarP(&runArgs.output, "output", "o", electDefaultOutput(), "Output renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
+	executionFlags.BoolVarP(&runArgs.noGC, "no-gc", "", false, "Keep all containers and temporary files after execution.")
+	executionFlags.BoolVarP(&runArgs.expand, "expand", "", false, "Expand steps from inherited pipelines and display them as separate entities.")
+	executionFlags.IntVarP(&runArgs.maxConcurrent, "max-concurrent", "", runtime.NumCPU(), "Maximum number of concurrent steps. Affects concurrent and matrix steps.")
+	executionFlags.BoolVarP(&runArgs.noStatus, "no-status", "", false, "Do not print task status messages")
+	executionFlags.DurationVarP(&runArgs.waitUpdateInterval, "wait-update-interval", "", time.Second*5, "Print waiting for task status updates every n interval")
+	executionFlags.BoolVarP(&runArgs.withInternals, "with-internals", "", false, "Expose internal steps")
+	executionFlags.BoolVarP(&runArgs.skipDone, "skip-done", "", false, "Skip steps which have been successfully processed before. This is only useful in combination with a static context directory `--context-dir`.")
+	executionFlags.StringSliceVarP(&runArgs.skipSteps, "skip-steps", "", nil, "Do not executed these steps")
+	executionFlags.StringSliceVarP(&runArgs.tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
+	executionFlags.DurationVarP(&runArgs.gracefulTermination, "graceful-termination", "", time.Second*5, "Allow containers to exit gracefully.")
+	executionFlags.StringVarP(&runArgs.containerRuntime, "container-runtime", "", electDefaultDriver().String(), "Container runtime. One of [docker].")
+	executionFlags.StringVarP(&runArgs.report, "report", "r", "none", "Report summary of steps at the end of execution. One of [none, table, json, markdown].")
+	executionFlags.StringVarP(&runArgs.statusOutput, "status-output", "", "", "Destination for the status output. By default this depends on the output (-o) set.")
+	executionFlags.StringVarP(&runArgs.reportOutput, "report-output", "", electDefaultReportOutput(), "Destination for the report output.")
+	executionFlags.StringVarP(&runArgs.pull, "pull", "", pullImageMissing.String(), "Pull image before running. one of [always, missing, never].")
+	executionFlags.StringVarP(&runArgs.contextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
+	executionFlags.BoolVarP(&runArgs.logDetached, "log-detached", "", false, "Detach logs.")
+	executionFlags.Uint64VarP(&runArgs.retry, "retry", "", 0, "Retry pipeline if a failure occurred.")
+	runCmd.Flags().AddFlagSet(executionFlags)
+
+	pipelineFlags := pflag.NewFlagSet("pipeline", pflag.ExitOnError)
+	pipelineFlags.StringVarP(&runArgs.entrypoint, "entrypoint", "t", "", "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
+	pipelineFlags.BoolVarP(&runArgs.fork, "fork", "", runArgs.fork, "Creates a controller container which handles this pipeline and exit.")
+	pipelineFlags.StringSliceVarP(&runArgs.secretEnvs, "secret", "s", nil, "Pass secret envs to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
+	pipelineFlags.StringSliceVarP(&runArgs.envs, "env", "e", nil, "Pass envs to the pipeline.")
+	pipelineFlags.StringSliceVarP(&runArgs.volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
+	pipelineFlags.StringArrayVarP(&runArgs.inputs, "input", "i", nil, "Pass inputs to the pipeline.")
+	pipelineFlags.StringVarP(&runArgs.user, "user", "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
+	runCmd.Flags().AddFlagSet(pipelineFlags)
+
+	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
+	dockerFlags.BoolVarP(&runArgs.dockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
+	runArgs.dockerOptions.BindFlags(dockerFlags)
+	runCmd.Flags().AddFlagSet(dockerFlags)
+
+	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
+	runArgs.otelOptions.BindFlags(otelFlags)
+	runCmd.Flags().AddFlagSet(otelFlags)
+
+	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
+	runArgs.ociOptions.BindFlags(ociFlags)
+	runCmd.Flags().AddFlagSet(ociFlags)
+
+	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
+	runArgs.kubeOptions.BindFlags(kubeFlags)
+	kubeFlags.StringVarP(&runArgs.kubePodTemplate, "kube-pod-template", "", "", "YAML core.v1.Pod template")
+
+	runCmd.Flags().AddFlagSet(kubeFlags)
+
+	sets := []struct {
+		set         *pflag.FlagSet
+		displayName string
+	}{
+		{
+			set:         executionFlags,
+			displayName: "Execution",
+		},
+		{
+			set:         pipelineFlags,
+			displayName: "Pipeline",
+		},
+		{
+			set:         dockerFlags,
+			displayName: "Docker runtime",
+		},
+		{
+			set:         kubeFlags,
+			displayName: "Kubernetes runtime",
+		},
+		{
+			set:         otelFlags,
+			displayName: "Open Telemetry",
+		},
+		{
+			set:         ociFlags,
+			displayName: "OCI Registry",
+		},
+		{
+			set:         rootCmd.Flags(),
+			displayName: "Global",
+		},
+	}
+
+	runCmd.SetUsageFunc(func(c *cobra.Command) error {
+		for _, group := range sets {
+			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.displayName), group.set.FlagUsages())
+		}
+		return nil
+	})
+
+	rootCmd.AddCommand(runCmd)
+
+>>>>>>> 418c9a9 (fix: kubernetes support)
 	_ = v1beta1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 
@@ -243,44 +355,39 @@ func createContainerRuntime(ctx context.Context, d containerRuntime, logger logr
 			return nil, fmt.Errorf("failed to create kube client: %w", err)
 		}
 
-		podTemplate, err := podTemplate(ctx, clientset.CoreV1())
+		restConfig, err := runArgs.kubeOptions.ConfigFlags.ToRESTConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kube rest config: %w", err)
+		}
+
+		podTemplate, err := podTemplate()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create pod template: %w", err)
 		}
 
 		logger.V(3).Info("kubernetes pod template", "template", podTemplate)
 
-		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate)
+		driver := cruntime.NewKubernetes(clientset.CoreV1(), podTemplate, restConfig)
 		return driver, err
 	}
 
 	return nil, errors.New("unknown container runtime")
 }
 
-func podTemplate(ctx context.Context, client v1.CoreV1Interface) (corev1.Pod, error) {
+func copyHandlerBinary(contextDir string) error {
+	handlerPath := filepath.Join(contextDir, "handler")
+	return os.WriteFile(handlerPath, handlerBinary, 0755)
+}
+
+func podTemplate() (corev1.Pod, error) {
 	template := corev1.Pod{}
-
-	if runArgs.kubeTemplateFromPod != "" {
-		pod, err := client.Pods("default").Get(ctx, runArgs.kubeTemplateFromPod, metav1.GetOptions{})
-		if err != nil {
-			return template, err
-		}
-
-		meta := metav1.ObjectMeta{
-			Annotations: pod.Annotations,
-			Labels:      pod.Labels,
-		}
-
-		pod.ObjectMeta = meta
-
-		template = *pod
+	if runArgs.kubePodTemplate == "" {
+		return template, nil
 	}
 
-	if runArgs.kubePodTemplate != "" {
-		_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
-		if err != nil {
-			return template, err
-		}
+	_, _, err := decoder.Decode([]byte(runArgs.kubePodTemplate), nil, &template)
+	if err != nil {
+		return template, err
 	}
 
 	return template, nil
@@ -374,6 +481,7 @@ func stepBuilder(
 	template v1beta1.Template,
 	monitorDev io.Writer,
 	tags []processor.Tag,
+	handlerBinaryPath string,
 ) pipeline.StepBuilder {
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
@@ -402,7 +510,7 @@ func stepBuilder(
 			processor.WithTemplate(template),
 			processor.WithNeeds(),
 			processor.WithStdioRedirect(runArgs.tee),
-			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown),
+			processor.WithRun(imagePullPolicy, driver, outputFactory, teardown, handlerBinaryPath),
 			processor.WithInherit(*builder, provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(pool),
@@ -495,6 +603,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.V(1).Info("use context directory", "path", contextDir)
+
+	if err := copyHandlerBinary(contextDir); err != nil {
+		return fmt.Errorf("failed to copy handler binary: %w", err)
+	}
 
 	template, err := buildTemplate(contextDir)
 	if err != nil {
@@ -622,6 +734,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			template,
 			monitorDev,
 			tags(),
+			filepath.Join(contextDir, "handler"),
 		)),
 		pipeline.WithLogger(logger),
 		pipeline.WithTmpDir(contextDir),
