@@ -1,9 +1,6 @@
 package processor
 
 import (
-	"fmt"
-	"io"
-	"os"
 	"slices"
 
 	"github.com/raffis/rageta/internal/substitute"
@@ -12,12 +9,12 @@ import (
 
 func WithStdioRedirect(tee bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Streams == nil {
+		if spec.Run == nil || spec.Run.Streams == nil {
 			return nil
 		}
 
 		stdio := &StdioRedirect{
-			streams: spec.Streams,
+			streams: spec.Run.Streams,
 			tee:     tee,
 		}
 
@@ -32,9 +29,7 @@ type StdioRedirect struct {
 
 func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		var stdoutRedirect, stderrRedirect io.Writer
 		streams := s.streams.DeepCopy()
-
 		vars := []any{}
 		if streams.Stdout != nil {
 			vars = append(vars, &streams.Stdout.Path)
@@ -52,53 +47,24 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			return ctx, err
 		}
 
-		stdout := ctx.Stdout
-		stderr := ctx.Stderr
+		originStdoutPaths := slices.Clone(ctx.AdditionalStdoutPaths)
+		originStderrPaths := slices.Clone(ctx.AdditionalStderrPaths)
 
 		if streams.Stdout != nil {
-			if !s.tee {
-				ctx.Stdout = io.Discard
-			}
-
-			outFile, err := os.OpenFile(streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-			if err != nil {
-				return ctx, fmt.Errorf("failed to redirect stdout: %w", err)
-			}
-
-			defer func() {
-				_ = outFile.Close()
-			}()
-			ctx.AdditionalStdout = append(ctx.AdditionalStdout, outFile)
-			stdoutRedirect = outFile
+			ctx.AdditionalStdoutPaths = append(ctx.AdditionalStdoutPaths, streams.Stdout.Path)
 		}
 
 		if streams.Stderr != nil {
-			if !s.tee {
-				ctx.Stdout = io.Discard
-			}
+			ctx.AdditionalStderrPaths = append(ctx.AdditionalStderrPaths, streams.Stderr.Path)
+		}
 
-			outFile, err := os.OpenFile(streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-			if err != nil {
-				return ctx, fmt.Errorf("failed to redirect stderr: %w", err)
-			}
-
-			defer func() {
-				_ = outFile.Close()
-			}()
-			ctx.AdditionalStderr = append(ctx.AdditionalStderr, outFile)
-			stderrRedirect = outFile
+		if streams.Stdin != nil {
+			ctx.StdinPath = streams.Stdin.Path
 		}
 
 		ctx, err := next(ctx)
-		ctx.AdditionalStdout = slices.DeleteFunc(ctx.AdditionalStdout, func(w io.Writer) bool {
-			return w == stdoutRedirect
-		})
-		ctx.AdditionalStderr = slices.DeleteFunc(ctx.AdditionalStderr, func(w io.Writer) bool {
-			return w == stderrRedirect
-		})
-
-		ctx.Stdout = stdout
-		ctx.Stderr = stderr
+		ctx.AdditionalStdoutPaths = originStdoutPaths
+		ctx.AdditionalStderrPaths = originStderrPaths
 
 		return ctx, err
 	}, nil

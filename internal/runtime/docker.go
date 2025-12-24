@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"time"
 
@@ -363,13 +364,17 @@ func envSlice(env map[string]string) []string {
 }
 
 func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *Pod, container ContainerSpec, logConfig dockercontainer.LogConfig) (*dockercontainer.CreateResponse, error) {
+	envs := make(map[string]string)
+	maps.Copy(envs, container.Env)
+	maps.Copy(envs, container.Secrets)
+
 	containerConfig := dockercontainer.Config{
 		Image:      container.Image,
 		StdinOnce:  container.Stdin,
 		OpenStdin:  container.Stdin,
 		Entrypoint: strslice.StrSlice(container.Command),
 		Cmd:        strslice.StrSlice(container.Args),
-		Env:        envSlice(container.Env),
+		Env:        envSlice(envs),
 		WorkingDir: container.PWD,
 	}
 
