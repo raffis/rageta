@@ -50,16 +50,16 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 		originStdoutPaths := slices.Clone(ctx.AdditionalStdoutPaths)
 		originStderrPaths := slices.Clone(ctx.AdditionalStderrPaths)
 
-		if s.streams.Stdout != nil {
-			ctx.AdditionalStdoutPaths = append(ctx.AdditionalStdoutPaths, s.streams.Stdout.Path)
+		if streams.Stdout != nil {
+			ctx.AdditionalStdoutPaths = append(ctx.AdditionalStdoutPaths, streams.Stdout.Path)
 		}
 
-		if s.streams.Stderr != nil {
-			ctx.AdditionalStderrPaths = append(ctx.AdditionalStderrPaths, s.streams.Stderr.Path)
+		if streams.Stderr != nil {
+			ctx.AdditionalStderrPaths = append(ctx.AdditionalStderrPaths, streams.Stderr.Path)
 		}
 
-		if s.streams.Stdin != nil {
-			ctx.StdinPath = s.streams.Stdin.Path
+		if streams.Stdin != nil {
+			ctx.StdinPath = streams.Stdin.Path
 		}
 
 		ctx, err := next(ctx)

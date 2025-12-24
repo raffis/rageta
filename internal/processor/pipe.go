@@ -59,8 +59,13 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		var errs []error
 
 		// Create FIFO pipes for each step except the last one
+		// Use NamePrefix to make FIFOs unique per matrix iteration
+		fifoPrefix := "pipe"
+		if ctx.NamePrefix != "" {
+			fifoPrefix = fmt.Sprintf("pipe-%s", ctx.NamePrefix)
+		}
 		for i := range len(steps) - 1 {
-			fifoPath := filepath.Join(ctx.Dir, fmt.Sprintf("pipe-%d.fifo", i))
+			fifoPath := filepath.Join(ctx.Dir, fmt.Sprintf("%s-%d.fifo", fifoPrefix, i))
 			if err := os.MkdirAll(filepath.Dir(fifoPath), 0755); err != nil {
 				return ctx, fmt.Errorf("failed to create fifo directory: %w", err)
 			}
@@ -108,14 +113,14 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}()
 
-		for _, step := range stepEntrypoints {
-			step := step
-			step.ctx.Context = cancelCtx
+		for i := range stepEntrypoints {
+			stepEntrypoints[i].ctx.Context = cancelCtx
 
-			go func() {
+			go func(idx int) {
+				step := stepEntrypoints[idx]
 				resultCtx, err := step.next(step.ctx)
 				results <- result{resultCtx, err}
-			}()
+			}(i)
 		}
 
 		var done int
