@@ -9,11 +9,11 @@ import (
 
 	"slices"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/processor"
 )
@@ -47,7 +47,7 @@ const (
 	KeyQ      = "q"
 )
 
-// UI represents the main Terminal User Interface model
+// UI represents the main tui model
 type UI struct {
 	list         list.Model
 	loader       spinner.Model
@@ -214,7 +214,7 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleStepMessage(msg)...)
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKeyMessage(msg)
 	case tea.WindowSizeMsg:
 		cmds = append(cmds, m.handleWindowResize(msg)...)
@@ -264,7 +264,7 @@ func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
 			m.updateViewportDimensions(&msg)
 		}
 
-		cmds = append(cmds, msg.loader.Tick)
+		cmds = append(cmds, func() tea.Msg { return msg.loader.Tick() })
 
 		m.list.InsertItem(-1, msg.WithStatus(msg.Status))
 		m.sortList()
@@ -289,23 +289,29 @@ func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
 func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 	var cmd tea.Cmd
 
-	if m.activePanel == PanelList {
-		// Handle mouse wheel events using the new API
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			m.list.CursorUp()
-		case tea.MouseButtonWheelDown:
-			m.list.CursorDown()
+	switch mmsg := msg.(type) {
+	case tea.MouseWheelMsg:
+		if m.activePanel == PanelList {
+			switch mmsg.Button {
+			case tea.MouseWheelUp:
+				m.list.CursorUp()
+			case tea.MouseWheelDown:
+				m.list.CursorDown()
+			}
+		} else {
+			cmd = m.updateSelectedViewport(msg)
 		}
-	} else {
-		cmd = m.updateSelectedViewport(msg)
+	default:
+		if m.activePanel != PanelList {
+			cmd = m.updateSelectedViewport(msg)
+		}
 	}
 
 	return cmd
 }
 
 // handleKeyMessage handles keyboard input
-func (m UI) handleKeyMessage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case KeyQuit:
 	case KeyQ:
@@ -331,7 +337,7 @@ func (m *UI) toggleActivePanel() {
 }
 
 // handleListPanelKeys handles keyboard input for the list panel
-func (m UI) handleListPanelKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m UI) handleListPanelKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg.String() {
@@ -428,14 +434,19 @@ func (m *UI) updateLastSelected() {
 }
 
 // View renders the UI
-func (m UI) View() string {
+func (m UI) View() tea.View {
 	m.logger.Info("tUI view", "height", m.height, "width", m.width, "last", m.lastSelected)
 
+	var content string
 	if m.lastSelected == nil || m.height == 0 || m.width == 0 {
-		return m.loader.View()
+		content = m.loader.View()
+	} else {
+		content = m.renderMainLayout()
 	}
-
-	return m.renderMainLayout()
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // renderMainLayout renders the main UI layout
@@ -495,7 +506,7 @@ func (m UI) renderHeaderPanel() string {
 	}
 
 	listHeader := listStyle.
-		Render(strings.Repeat("─", m.list.Width()-1))
+		Render(strings.Repeat("─", m.list.Width()-2))
 
 	if m.lastSelected != nil {
 		step := m.lastSelected.(StepMsg)

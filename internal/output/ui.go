@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/tui"
 )

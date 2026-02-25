@@ -38,9 +38,9 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/sethvargo/go-retry"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/alitto/pond/v2"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/google/cel-go/cel"
@@ -72,8 +72,8 @@ func applyFlagProfile() error {
 		return runArgs.githubActionsProfile()
 	case flagProfileDebug.String():
 		return runArgs.debugProfile()
-  case flagProfileDefault.String():
-    return nil
+	case flagProfileDefault.String():
+		return nil
 	default:
 		return fmt.Errorf("invalid flag profile given: %s", runArgs.profile)
 	}
@@ -148,7 +148,7 @@ type flagProfile string
 var (
 	flagProfileGithubActions flagProfile = "github-actions"
 	flagProfileDebug         flagProfile = "debug"
-	flagProfileDefault         flagProfile = "default"
+	flagProfileDefault       flagProfile = "default"
 )
 
 func (d flagProfile) String() string {
@@ -164,7 +164,7 @@ func electDefaultProfile() flagProfile {
 }
 
 func init() {
-	applyFlagProfile()
+	_ = applyFlagProfile()
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		return applyFlagProfile()
 	}
@@ -1230,8 +1230,6 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 	tuiModel = tui.NewUI(logger.WithValues("component", "tui"))
 	tuiApp = tea.NewProgram(
 		tuiModel,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 		tea.WithOutput(xio.NewFDWrapper(stdout, os.Stdout)),
 	)
 
@@ -1247,6 +1245,7 @@ func uiOutput(logger logr.Logger, cancel context.CancelFunc) *tea.Program {
 			logger.V(3).Error(err, "failed to release terminal")
 		}
 
+		fmt.Print("\033[H\033[2J")
 		cancel()
 		tuiDone <- struct{}{}
 	}()
