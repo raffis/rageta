@@ -5,10 +5,10 @@ import (
 	"math"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // SearchState represents the current state of the filter
@@ -248,7 +248,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.PageDown):
 			m.LineDown(m.Height)
@@ -291,15 +291,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.filterInput.SetValue("")
 			}
 		}
-	case tea.MouseMsg:
-		if !m.MouseWheelEnabled || msg.Action != tea.MouseActionPress {
+	case tea.MouseWheelMsg:
+		if !m.MouseWheelEnabled {
 			break
 		}
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseWheelUp:
 			m.LineUp(m.MouseWheelDelta)
 
-		case tea.MouseButtonWheelDown:
+		case tea.MouseWheelDown:
 			m.LineDown(m.MouseWheelDelta)
 		}
 	}

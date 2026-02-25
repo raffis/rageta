@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/go-logr/logr"
-	"github.com/muesli/termenv"
 	"github.com/raffis/rageta/internal/logsetup"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -86,7 +86,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	if rootArgs.noColor {
-		lipgloss.SetColorProfile(termenv.Ascii)
+		w := colorprofile.NewWriter(os.Stdout, os.Environ())
+		w.Profile = colorprofile.Ascii
+		lipgloss.Writer = w
 	}
 
 	if rootArgs.workDir != "" {

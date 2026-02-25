@@ -1,8 +1,8 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Modal styling constants
@@ -46,14 +46,14 @@ func (m *Modal) handleWindowResize(msg tea.WindowSizeMsg) {
 
 // View renders the modal with appropriate styling
 // It implements part of the tea.Model interface
-func (m *Modal) View() string {
+func (m *Modal) View() tea.View {
 	modalStyle := m.createModalStyle()
 	titleStyle := m.createTitleStyle()
 
 	title := titleStyle.Render(ModalTitle)
 	layout := lipgloss.JoinVertical(lipgloss.Left, title, ModalContent)
 
-	return modalStyle.Render(layout)
+	return tea.NewView(modalStyle.Render(layout))
 }
 
 // createModalStyle creates the main modal styling

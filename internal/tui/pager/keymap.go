@@ -1,8 +1,8 @@
 package pager
 
-import "github.com/charmbracelet/bubbles/key"
-
-const spacebar = " "
+import (
+	"charm.land/bubbles/v2/key"
+)
 
 // KeyMap defines the keybindings for the viewport
 type KeyMap struct {
@@ -22,7 +22,7 @@ type KeyMap struct {
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		PageDown: key.NewBinding(
-			key.WithKeys("pgdown", spacebar),
+			key.WithKeys("pgdown", "space"),
 			key.WithHelp("f/pgdn", "page down"),
 		),
 		PageUp: key.NewBinding(

@@ -3,7 +3,8 @@ package tui
 import (
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
 	"github.com/raffis/rageta/internal/styles"
 )
 
@@ -42,14 +43,14 @@ var (
 	listTagLabelStyle       lipgloss.Style
 
 	activePanelColor = lipgloss.Color("#7D56F4")
-	lightGrey        = lipgloss.AdaptiveColor{
-		Light: "#909090",
-		Dark:  "#626262",
+	lightGrey        = compat.AdaptiveColor{
+		Light: lipgloss.Color("#909090"),
+		Dark:  lipgloss.Color("#626262"),
 	}
 	inactivePanelColor        = lightGrey
-	inactiveFordergroundColor = lipgloss.AdaptiveColor{
-		Dark:  "#CCCCCC",
-		Light: "#CCCCCC",
+	inactiveFordergroundColor = compat.AdaptiveColor{
+		Dark:  lipgloss.Color("#CCCCCC"),
+		Light: lipgloss.Color("#CCCCCC"),
 	}
 )
 

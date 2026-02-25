@@ -1,8 +1,7 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
-	overlay "github.com/rmhubbert/bubbletea-overlay"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Session state constants
@@ -19,7 +18,7 @@ const (
 const (
 	KeyQuitManager   = "q"
 	KeyEscapeManager = "esc"
-	KeySpaceManager  = " "
+	KeySpaceManager  = "space"
 )
 
 // Manager implements tea.Model and manages the overall UI state including modals
@@ -30,7 +29,6 @@ type Manager struct {
 	windowHeight int
 	foreground   tea.Model
 	background   tea.Model
-	overlay      tea.Model
 }
 
 // NewManager creates a new Manager instance with the given background UI model
@@ -45,14 +43,6 @@ func NewManager(ui tea.Model) *Manager {
 func (m *Manager) Init() tea.Cmd {
 	m.state = mainView
 	m.foreground = &Modal{}
-	m.overlay = overlay.New(
-		m.foreground,
-		m.background,
-		overlay.Center,
-		overlay.Center,
-		0,
-		0,
-	)
 	return nil
 }
 
@@ -62,7 +52,7 @@ func (m *Manager) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.handleWindowResize(msg)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if cmd := m.handleKeyMessage(msg); cmd != nil {
 			return m, cmd
 		}
@@ -78,7 +68,7 @@ func (m *Manager) handleWindowResize(msg tea.WindowSizeMsg) {
 }
 
 // handleKeyMessage handles keyboard input for manager-level actions
-func (m *Manager) handleKeyMessage(msg tea.KeyMsg) tea.Cmd {
+func (m *Manager) handleKeyMessage(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case KeyQuitManager, KeyEscapeManager:
 		return tea.Quit
@@ -119,9 +109,9 @@ func (m *Manager) updateComponents(message tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the appropriate view based on current state
 // It implements part of the tea.Model interface
-func (m *Manager) View() string {
+func (m *Manager) View() tea.View {
 	if m.state == modalView {
-		return m.overlay.View()
+		return m.foreground.View()
 	}
 	return m.background.View()
 }

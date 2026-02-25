@@ -27,7 +27,6 @@ type InputVars struct {
 }
 
 func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-
 	return func(ctx StepContext) (StepContext, error) {
 		expr := make(map[string]cel.Program)
 
