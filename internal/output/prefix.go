@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-  "charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/xio"

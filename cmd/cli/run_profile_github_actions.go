@@ -39,8 +39,8 @@ func (f *runFlags) githubActionsProfile() error {
 	if !runCmd.Flags().Changed("report-output") && os.Getenv("GITHUB_STEP_SUMMARY") != "" {
 		runArgs.reportOutput = os.Getenv("GITHUB_STEP_SUMMARY")
 	}
-	
-  if !runCmd.Flags().Changed("no-gc") {
+
+	if !runCmd.Flags().Changed("no-gc") {
 		runArgs.noGC = true
 	}
 

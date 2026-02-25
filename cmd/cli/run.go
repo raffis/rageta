@@ -164,7 +164,7 @@ func electDefaultProfile() flagProfile {
 }
 
 func init() {
-	applyFlagProfile()
+	_ = applyFlagProfile()
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		return applyFlagProfile()
 	}
@@ -797,8 +797,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 		tearDown()
 		<-tuiDone
-
-		tea.ClearScreen()
 	} else {
 		tearDown()
 	}
