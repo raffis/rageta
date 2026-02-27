@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/google/cel-go/cel"
@@ -21,7 +20,11 @@ func WithIf(celEnv *cel.Env) ProcessorBuilder {
 	}
 }
 
-var ErrConditionFalse = errors.New("conditional step skipped")
+var ErrConditionFalse = &pipelineError{
+	message:      "conditional step skipped",
+	result:       "skipped-condition",
+	abortOnError: false,
+}
 
 type If struct {
 	celEnv     *cel.Env

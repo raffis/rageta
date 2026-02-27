@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-func (o *Options) BuildTracer(ctx context.Context) (*trace.TracerProvider, error) {
-	var providero []trace.TracerProviderOption
+func (o *Options) BuildTraceProvider(ctx context.Context) (*trace.TracerProvider, error) {
+	var providers []trace.TracerProviderOption
 
 	if o.Endpoint != "" {
 		var grpcOptions []otlptracegrpc.Option
@@ -44,7 +44,7 @@ func (o *Options) BuildTracer(ctx context.Context) (*trace.TracerProvider, error
 			return nil, err
 		}
 
-		providero = append(providero, trace.WithBatcher(exporter))
+		providers = append(providers, trace.WithBatcher(exporter))
 	}
 
 	if o.Stdout {
@@ -53,17 +53,21 @@ func (o *Options) BuildTracer(ctx context.Context) (*trace.TracerProvider, error
 			return nil, err
 		}
 
-		providero = append(providero, trace.WithBatcher(exporter))
+		providers = append(providers, trace.WithBatcher(exporter))
+	}
+
+	if len(providers) == 0 {
+		return nil, nil
 	}
 
 	// labels/tags/resources that are common to all traces.
-	providero = append(providero, trace.WithResource(resource.NewWithAttributes(
+	providers = append(providers, trace.WithResource(resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(o.ServiceName),
 	)))
 
-	providero = append(providero, trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(1))))
-	provider := trace.NewTracerProvider(providero...)
+	providers = append(providers, trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(1))))
+	provider := trace.NewTracerProvider(providers...)
 
 	otel.SetTextMapPropagator(
 		propagation.NewCompositeTextMapPropagator(

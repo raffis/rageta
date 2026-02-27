@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -20,7 +19,11 @@ func WithAllowFailure() ProcessorBuilder {
 type AllowFailure struct {
 }
 
-var ErrAllowFailure = errors.New("ignore error returned from step")
+var ErrAllowFailure = &pipelineError{
+	message:      "ignore error returned from step",
+	result:       "allow-failure",
+	abortOnError: false,
+}
 
 func (s *AllowFailure) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {

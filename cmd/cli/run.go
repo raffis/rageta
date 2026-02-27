@@ -22,6 +22,7 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/raffis/rageta/internal/dockersetup"
 	"github.com/raffis/rageta/internal/kubesetup"
+	"github.com/raffis/rageta/internal/logbridge"
 	"github.com/raffis/rageta/internal/mask"
 	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/otelsetup"
@@ -47,7 +48,7 @@ import (
 	"github.com/google/cel-go/ext"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -522,10 +523,64 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	logBuilder := logBuilder(logCoreFile, zapConfig)
+	traceProvider, err := runArgs.otelOptions.BuildTraceProvider(context.Background())
+	if err != nil {
+		return err
+	}
+
+	var tracer trace.Tracer
+	if traceProvider != nil {
+		tracer = traceProvider.Tracer(otelName)
+		defer func() {
+			if err := traceProvider.Shutdown(context.Background()); err != nil {
+				logger.V(3).Error(err, "failed to shutdown tracer provider")
+			}
+		}()
+	}
+
+	meterProvider, err := runArgs.otelOptions.BuildMeterProvider(context.Background())
+	if err != nil {
+		return err
+	}
+
+	var meter metric.Meter
+	if meterProvider != nil {
+		meter = meterProvider.Meter(otelName)
+		defer func() {
+			if meterProvider != nil {
+				if err := meterProvider.Shutdown(context.Background()); err != nil {
+					logger.V(3).Error(err, "failed to shutdown meter provider")
+				}
+			}
+		}()
+	}
+
+	logProvider, err := runArgs.otelOptions.BuildLoggerProvider(context.Background())
+	if err != nil {
+		return err
+	}
+
+	var loggr log.Logger
+	if logProvider != nil {
+		loggr = logProvider.Logger(otelName)
+		defer func() {
+			if logProvider != nil {
+				if err := logProvider.Shutdown(context.Background()); err != nil {
+					logger.V(3).Error(err, "failed to shutdown log provider")
+				}
+			}
+		}()
+	}
+
+	defaultLog := logCoreFile
+	if loggr != nil {
+		defaultLog = zapcore.NewTee(logCoreFile, logbridge.OtelCore(loggr))
+	}
+
+	logBuilder := logBuilder(defaultLog, zapConfig)
 
 	if runArgs.output == renderOutputUI.String() {
-		logger = zapr.NewLogger(zap.New(logCoreFile))
+		logger = zapr.NewLogger(zap.New(defaultLog))
 	} else {
 		logger, err = logBuilder(stderr)
 		if err != nil {
@@ -631,18 +686,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("setup cel env failed: %w", err)
 	}
 
-	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			logger.V(3).Error(err, "failed to shutdown tracer provider")
-		}
-	}()
-	meter := otel.Meter(otelName)
-
 	outputFactory, err := outputFactory(logger, cancel)
 	if err != nil {
 		return err
@@ -700,7 +743,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 			celEnv,
 			driver,
 			imagePullPolicy,
-			tp.Tracer(otelName),
+			tracer,
 			meter,
 			outputFactory,
 			reportFactory,

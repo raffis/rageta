@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"errors"
 	"slices"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -25,7 +24,11 @@ type SkipBlacklist struct {
 	blacklist []string
 }
 
-var ErrSkipBlacklist = errors.New("skip blacklisted step")
+var ErrSkipBlacklist = &pipelineError{
+	message:      "skip blacklisted step",
+	result:       "skipped-blacklist",
+	abortOnError: false,
+}
 
 func (s *SkipBlacklist) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
