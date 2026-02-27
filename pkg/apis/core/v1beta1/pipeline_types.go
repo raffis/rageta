@@ -44,6 +44,7 @@ func (p Pipeline) SetDefaults() {
 
 type StepOptions struct {
 	If           []IfCondition     `json:"if,omitempty"`
+	Expose       bool              `json:"expose,omitempty"`
 	Inputs       []InputParam      `json:"inputs,omitempty"`
 	Timeout      metav1.Duration   `json:"timeout"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
@@ -115,6 +116,7 @@ type Generate struct {
 type Step struct {
 	Name        string `json:"name,omitempty"`
 	Short       string `json:"short,omitempty"`
+	Long        string `json:"long,omitempty"`
 	StepOptions `json:",inline"`
 	Pipe        *PipeStep       `json:"pipe,omitempty"`
 	And         *AndStep        `json:"and,omitempty"`

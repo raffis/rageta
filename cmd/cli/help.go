@@ -20,6 +20,7 @@ var helpCmd = &cobra.Command{
 }
 
 type helpFlags struct {
+	full       bool
 	ociOptions *ocisetup.Options
 }
 
@@ -33,6 +34,8 @@ func newHelpFlags() helpFlags {
 
 func init() {
 	helpArgs.ociOptions.BindFlags(helpCmd.Flags())
+	helpCmd.Flags().BoolVarP(&helpArgs.full, "full", "f", false, "Show full help page including all flags from rageta")
+
 	rootCmd.AddCommand(helpCmd)
 }
 
@@ -74,15 +77,26 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		longDescription,
 	)
 
+	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Targets:"))
+	for _, step := range command.Steps {
+		if !step.Expose {
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "%s: %s\n%s\n\n", styles.Bold.Render(step.Name), step.Short, step.Long)
+	}
+
 	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
 	pipeline.Flags(flagSet, command.Inputs)
 
 	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Inputs:"))
 	flagSet.PrintDefaults()
 
-	fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Rageta flags:"))
-	if err := runCmd.Usage(); err != nil {
-		return err
+	if helpArgs.full {
+		fmt.Fprintf(os.Stderr, "\n%s\n", styles.Bold.Render("Rageta flags:"))
+		if err := runCmd.Usage(); err != nil {
+			return err
+		}
 	}
 
 	if err := persistDB(); err != nil {
