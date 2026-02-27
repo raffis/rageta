@@ -43,7 +43,11 @@ type Matrix struct {
 	maxConcurrent int
 }
 
-var ErrEmptyMatrix = errors.New("empty matrix")
+var ErrEmptyMatrix = &pipelineError{
+	message:      "matrix is empty",
+	result:       "empty-matrix",
+	abortOnError: false,
+}
 
 type matrixContext struct{}
 

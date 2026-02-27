@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-func (o *Options) BuildTracer(ctx context.Context) (*trace.TracerProvider, error) {
+func (o *Options) BuildTraceProvider(ctx context.Context) (*trace.TracerProvider, error) {
 	var providero []trace.TracerProviderOption
 
 	if o.Endpoint != "" {

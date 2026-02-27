@@ -47,7 +47,6 @@ import (
 	"github.com/google/cel-go/ext"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -631,17 +630,29 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("setup cel env failed: %w", err)
 	}
 
-	tp, err := runArgs.otelOptions.BuildTracer(context.Background())
+	traceProvider, err := runArgs.otelOptions.BuildTraceProvider(context.Background())
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
 			logger.V(3).Error(err, "failed to shutdown tracer provider")
 		}
 	}()
-	meter := otel.Meter(otelName)
+
+	meterProvider, err := runArgs.otelOptions.BuildMeterProvider(context.Background())
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if meterProvider != nil {
+			if err := meterProvider.Shutdown(context.Background()); err != nil {
+				logger.V(3).Error(err, "failed to shutdown meter provider")
+			}
+		}
+	}()
 
 	outputFactory, err := outputFactory(logger, cancel)
 	if err != nil {
@@ -700,8 +711,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 			celEnv,
 			driver,
 			imagePullPolicy,
-			tp.Tracer(otelName),
-			meter,
+			traceProvider.Tracer(otelName),
+			meterProvider.Meter(otelName),
 			outputFactory,
 			reportFactory,
 			teardown,
