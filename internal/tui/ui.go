@@ -435,7 +435,7 @@ func (m *UI) updateLastSelected() {
 
 // View renders the UI
 func (m UI) View() tea.View {
-	m.logger.Info("tUI view", "height", m.height, "width", m.width, "last", m.lastSelected)
+	m.logger.Info("tui view", "height", m.height, "width", m.width, "last", m.lastSelected)
 
 	var content string
 	if m.lastSelected == nil || m.height == 0 || m.width == 0 {

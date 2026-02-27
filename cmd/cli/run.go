@@ -67,6 +67,14 @@ var runCmd = &cobra.Command{
 	RunE: runRun,
 }
 
+// runFlagGroup is used by help -f to print rageta flags in the same style as pipeline inputs.
+type runFlagGroup struct {
+	Set         *pflag.FlagSet
+	DisplayName string
+}
+
+var runFlagGroups []runFlagGroup
+
 func applyFlagProfile() error {
 	switch runArgs.profile {
 	case flagProfileGithubActions.String():
@@ -221,43 +229,20 @@ func init() {
 	runArgs.kubeOptions.BindFlags(kubeFlags)
 	runCmd.Flags().AddFlagSet(kubeFlags)
 
-	sets := []struct {
-		set         *pflag.FlagSet
-		displayName string
-	}{
-		{
-			set:         executionFlags,
-			displayName: "Execution",
-		},
-		{
-			set:         pipelineFlags,
-			displayName: "Pipeline",
-		},
-		{
-			set:         dockerFlags,
-			displayName: "Docker runtime",
-		},
-		{
-			set:         kubeFlags,
-			displayName: "Kubernetes runtime",
-		},
-		{
-			set:         otelFlags,
-			displayName: "Open Telemetry",
-		},
-		{
-			set:         ociFlags,
-			displayName: "OCI Registry",
-		},
-		{
-			set:         rootCmd.Flags(),
-			displayName: "Global",
-		},
+	sets := []runFlagGroup{
+		{Set: executionFlags, DisplayName: "Execution"},
+		{Set: pipelineFlags, DisplayName: "Pipeline"},
+		{Set: dockerFlags, DisplayName: "Docker runtime"},
+		{Set: kubeFlags, DisplayName: "Kubernetes runtime"},
+		{Set: otelFlags, DisplayName: "Open Telemetry"},
+		{Set: ociFlags, DisplayName: "OCI Registry"},
+		{Set: rootCmd.Flags(), DisplayName: "Global"},
 	}
+	runFlagGroups = sets
 
 	runCmd.SetUsageFunc(func(c *cobra.Command) error {
 		for _, group := range sets {
-			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.displayName), group.set.FlagUsages())
+			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.DisplayName), group.Set.FlagUsages())
 		}
 		return nil
 	})

@@ -1,27 +1,33 @@
 package processor
 
+import (
+	"errors"
+)
+
 func AbortOnError(err error) bool {
-	if abortable, ok := err.(errorIsAbortable); ok {
-		return abortable.AbortOnError()
+	if err == nil {
+		return false
 	}
 
-	if err != nil {
-		return true
+	var abortPipeline errorIsAbortable
+	if errors.As(err, &abortPipeline) {
+		return abortPipeline.AbortOnError()
 	}
 
-	return false
+	return true
 }
 
 func ErrorResult(err error) string {
-	if abortable, ok := err.(errorResult); ok {
-		return abortable.Result()
+	if err == nil {
+		return "success"
 	}
 
-	if err != nil {
-		return "error"
+	var result errorResult
+	if errors.As(err, &result) {
+		return result.Result()
 	}
 
-	return "success"
+	return "error"
 }
 
 type pipelineError struct {

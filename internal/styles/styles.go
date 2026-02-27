@@ -13,6 +13,55 @@ var (
 	Bold      = lipgloss.NewStyle().Bold(true)
 	TagLabel  = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#FFFFFF"), Dark: lipgloss.Color("#000000")}).PaddingRight(1).PaddingLeft(1)
 	Highlight = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#CCCCCC"), Dark: lipgloss.Color("#666666")}).Padding(0, 0, 0, 0).Margin(0, 0, 0, 0)
+
+	// Help page styles
+	HelpTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#7D56F4"))
+
+	HelpShort = lipgloss.NewStyle().
+			Foreground(compat.AdaptiveColor{
+			Light: lipgloss.Color("#626262"),
+			Dark:  lipgloss.Color("#909090"),
+		}).
+		Italic(true)
+
+	HelpSection = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#7D56F4")).
+			Underline(true)
+
+	HelpBody = lipgloss.NewStyle()
+
+	HelpMuted = lipgloss.NewStyle().
+			Foreground(compat.AdaptiveColor{
+			Light: lipgloss.Color("#626262"),
+			Dark:  lipgloss.Color("#909090"),
+		})
+
+	HelpTargetName = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7D56F4"))
+
+	HelpTargetShort = lipgloss.NewStyle().
+			Foreground(compat.AdaptiveColor{
+			Light: lipgloss.Color("#333333"),
+			Dark:  lipgloss.Color("#CCCCCC"),
+		})
+
+	HelpTargetLong = lipgloss.NewStyle().
+			Foreground(compat.AdaptiveColor{
+			Light: lipgloss.Color("#626262"),
+			Dark:  lipgloss.Color("#909090"),
+		})
+
+	HelpInputFlag = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7D56F4"))
+
+	HelpInputType = lipgloss.NewStyle().
+			Foreground(compat.AdaptiveColor{
+			Light: lipgloss.Color("#626262"),
+			Dark:  lipgloss.Color("#909090"),
+		})
 )
 
 func RandHEXColor(min, max int) string {
