@@ -12,8 +12,6 @@ import (
 )
 
 // BuildMeterProvider creates a MeterProvider from options (same flags as tracing).
-// When no export is configured (no endpoint, no stdout), returns (nil, nil) and
-// the caller should pass a nil meter so metrics are not collected.
 func (o *Options) BuildMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 	var readers []metric.Reader
 
@@ -44,6 +42,10 @@ func (o *Options) BuildMeterProvider(ctx context.Context) (*metric.MeterProvider
 			return nil, err
 		}
 		readers = append(readers, metric.NewPeriodicReader(exporter))
+	}
+
+	if len(readers) == 0 {
+		return nil, nil
 	}
 
 	res := resource.NewWithAttributes(
