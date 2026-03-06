@@ -13,8 +13,6 @@ var (
 	Bold      = lipgloss.NewStyle().Bold(true)
 	TagLabel  = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#FFFFFF"), Dark: lipgloss.Color("#000000")}).PaddingRight(1).PaddingLeft(1)
 	Highlight = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#CCCCCC"), Dark: lipgloss.Color("#666666")}).Padding(0, 0, 0, 0).Margin(0, 0, 0, 0)
-
-	// Help page styles
 	HelpTitle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#7D56F4"))
@@ -23,13 +21,11 @@ var (
 			Foreground(compat.AdaptiveColor{
 			Light: lipgloss.Color("#626262"),
 			Dark:  lipgloss.Color("#909090"),
-		}).
-		Italic(true)
+		})
 
 	HelpSection = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
-			Underline(true)
+			Foreground(lipgloss.Color("#7D56F4"))
 
 	HelpBody = lipgloss.NewStyle()
 

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/raffis/rageta/internal/ocisetup"
@@ -15,8 +14,9 @@ import (
 )
 
 var helpCmd = &cobra.Command{
-	Use:  "help",
-	RunE: runHelp,
+	Use:   "help",
+	RunE:  runHelp,
+	Short: "Show help for a pipeline",
 }
 
 type helpFlags struct {
@@ -37,9 +37,11 @@ func init() {
 	helpCmd.Flags().BoolVarP(&helpArgs.full, "full", "f", false, "Show full help page including all flags from rageta")
 
 	rootCmd.AddCommand(helpCmd)
+	// Hide Cobra's default help command so only our custom help subcommand is shown
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
-func runHelp(cmd *cobra.Command, args []string) error {
+func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
@@ -48,17 +50,105 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		defer cancel()
 	}
 
-	var ref string
-	if len(args) > 0 {
-		ref = args[0]
-	}
-
 	store, persistDB := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
 	}
 
+	sections := formatPipelineHelpSections(command, full)
+	fmt.Fprintln(cmd.ErrOrStderr(), strings.Join(sections, ""))
+
+	if err := persistDB(); err != nil {
+		logger.V(1).Error(err, "failed to persist database")
+	}
+
+	return nil
+}
+
+func formatFlagSetStyle(set *pflag.FlagSet) []string {
+	var flagBlocks []string
+	set.VisitAll(func(f *pflag.Flag) {
+		name := "--" + f.Name
+		if f.Shorthand != "" {
+			name = "-" + string(f.Shorthand) + ", " + name
+		}
+		line := styles.HelpInputFlag.Render(name)
+		if f.DefValue != "" && f.DefValue != "[]" && f.DefValue != "map[]" {
+			line += styles.HelpInputType.Render("  [default: " + f.DefValue + "]")
+		}
+		if f.Usage != "" {
+			line += "\n  " + styles.HelpMuted.Render(f.Usage)
+		}
+		flagBlocks = append(flagBlocks, line)
+	})
+	return flagBlocks
+}
+
+func printHelpCommand(cmd *cobra.Command) {
+	var sections []string
+	name := cmd.Name()
+	if name == "" {
+		name = cmd.Use
+	}
+	title := styles.HelpTitle.Render(name)
+	sections = append(sections, title, "\n")
+
+	if cmd.Short != "" {
+		short := styles.HelpShort.Render(cmd.Short)
+		sections = append(sections, short)
+	}
+
+	if cmd.Long != "" {
+		descHeader := styles.HelpSection.Render("\n\nDescription:")
+		descBody := styles.HelpBody.Render(cmd.Long)
+		sections = append(sections, descHeader, "\n", descBody)
+	}
+
+	if len(cmd.Commands()) > 0 {
+		var cmdBlocks []string
+		for _, c := range cmd.Commands() {
+			if c.Hidden {
+				continue
+			}
+
+			line := styles.HelpTargetName.Render(c.Name())
+			if c.Short != "" {
+				line = line + "\n" + styles.HelpTargetShort.Render(c.Short)
+			}
+
+			cmdBlocks = append(cmdBlocks, line)
+		}
+
+		if len(cmdBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Commands:"), "\n\n", strings.Join(cmdBlocks, "\n\n"))
+		}
+	}
+
+	if cmd == runCmd {
+		// Run has grouped flag sets (Execution, Pipeline, etc.)
+		for _, group := range runFlagGroups {
+			flagBlocks := formatFlagSetStyle(group.Set)
+			if len(flagBlocks) > 0 {
+				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+			}
+		}
+	} else {
+		// Generic: show this command's flags, then global (inherited) flags
+		localBlocks := formatFlagSetStyle(cmd.NonInheritedFlags())
+		if len(localBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(localBlocks, "\n\n"))
+		}
+		inheritedBlocks := formatFlagSetStyle(cmd.InheritedFlags())
+		if len(inheritedBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Global Flags:"), "\n\n", strings.Join(inheritedBlocks, "\n\n"))
+		}
+	}
+
+	fmt.Fprintln(cmd.ErrOrStderr(), strings.Join(sections, ""))
+}
+
+func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 	var sections []string
 
 	title := styles.HelpTitle.Render(fmt.Sprintf("● %s ●\n", command.Name))
@@ -115,7 +205,7 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		sections = append(sections, styles.HelpSection.Render("\n\nInputs:"), styles.HelpBody.Render("\n\n"), strings.Join(inputBlocks, "\n\n"))
 	}
 
-	if helpArgs.full {
+	if full {
 		for _, group := range runFlagGroups {
 			var flagBlocks []string
 			group.Set.VisitAll(func(f *pflag.Flag) {
@@ -140,13 +230,16 @@ func runHelp(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, strings.Join(sections, ""))
+	return sections
+}
 
-	if err := persistDB(); err != nil {
-		logger.V(1).Error(err, "failed to persist database")
+func runHelp(cmd *cobra.Command, args []string) error {
+	var ref string
+	if len(args) > 0 {
+		ref = args[0]
 	}
 
-	return nil
+	return printHelpPipeline(cmd, ref, helpArgs.full)
 }
 
 func formatParamDefault(p *v1beta1.ParamValue) string {
