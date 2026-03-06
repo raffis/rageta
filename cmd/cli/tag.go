@@ -75,6 +75,15 @@ func init() {
 	tagCmd.Flags().StringArrayVarP(&tagArgs.tags, "tags", "t", nil, "tag additional tags")
 	tagCmd.Flags().StringArrayVarP(&tagArgs.annotations, "annotations", "a", nil, "Set custom annotations in the format '<key>=<value>'")
 
+	tagCmd.SetUsageFunc(func(cmd *cobra.Command) error {
+		printHelpCommand(cmd)
+		return nil
+	})
+
+	tagCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		printHelpCommand(cmd)
+	})
+
 	rootCmd.AddCommand(tagCmd)
 }
 

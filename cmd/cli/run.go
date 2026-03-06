@@ -63,8 +63,9 @@ import (
 )
 
 var runCmd = &cobra.Command{
-	Use:  "run",
-	RunE: runRun,
+	Use:   "run",
+	Short: "Execute a pipeline.",
+	RunE:  runRun,
 }
 
 // runFlagGroup is used by help -f to print rageta flags in the same style as pipeline inputs.
@@ -240,11 +241,13 @@ func init() {
 	}
 	runFlagGroups = sets
 
-	runCmd.SetUsageFunc(func(c *cobra.Command) error {
-		for _, group := range sets {
-			fmt.Printf("%s\n%s\n", styles.Bold.Render(group.DisplayName), group.Set.FlagUsages())
-		}
+	runCmd.SetUsageFunc(func(cmd *cobra.Command) error {
+		printHelpCommand(cmd)
 		return nil
+	})
+
+	runCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		printHelpCommand(cmd)
 	})
 
 	rootCmd.AddCommand(runCmd)
@@ -842,7 +845,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	if result != nil {
-		helpAndExit(flagSet, result)
+		fmt.Fprintln(os.Stderr, "")
+
+		var stepErr processor.ErrorGetStepName
+		if errors.As(err, &stepErr) {
+			fmt.Fprintf(os.Stderr, "The step %s failed.\n", styles.Highlight.Render(stepErr.StepName()))
+			stepErr.StepName()
+		}
+
+		fmt.Fprintln(os.Stderr, styles.HelpSection.Render("\n\nDetails:"))
+		fmt.Fprintln(os.Stderr, result.Error())
+
+		helmCmd := os.Args[0]
+		if len(args) > 1 {
+			helmCmd = fmt.Sprintf("%s %s", helmCmd, args[1])
+		}
+
+		fmt.Fprintf(os.Stderr, "\nType %s for more information\n", styles.Highlight.Render(helmCmd))
 	}
 
 	return nil

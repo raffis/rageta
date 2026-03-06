@@ -76,6 +76,15 @@ func init() {
 	rootCmd.PersistentFlags().DurationVarP(&rootArgs.timeout, "timeout", "", 0, "")
 	rootCmd.PersistentFlags().BoolVarP(&rootArgs.noColor, "no-color", "", false, "Disable all color output to the terminal.")
 	rootArgs.logOptions.BindFlags(rootCmd.PersistentFlags())
+
+	rootCmd.SetUsageFunc(func(cmd *cobra.Command) error {
+		printHelpCommand(cmd)
+		return nil
+	})
+
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		printHelpCommand(cmd)
+	})
 }
 
 func runRoot(cmd *cobra.Command, args []string) error {

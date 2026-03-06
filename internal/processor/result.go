@@ -19,6 +19,24 @@ type Result struct {
 	stepName string
 }
 
+type stepError struct {
+	parent         error
+	stepName       string
+	uniqueStepName string
+}
+
+func (e *stepError) Error() string {
+	return fmt.Sprintf("step %s failed: %s", e.stepName, e.parent.Error())
+}
+
+func (e *stepError) Unwrap() error {
+	return e.parent
+}
+
+func (e *stepError) StepName() string {
+	return e.stepName
+}
+
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
@@ -26,8 +44,11 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx.EndedAt = time.Now()
 
 		if nextErr != nil {
-			nextErr = fmt.Errorf("step %s failed: %w", s.stepName, nextErr)
-			ctx.Error = nextErr
+			ctx.Error = &stepError{
+				parent:         nextErr,
+				stepName:       s.stepName,
+				uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
+			}
 		} else {
 			ctx.Error = nil
 		}
