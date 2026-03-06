@@ -219,6 +219,12 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		return nil
 	})
 
+	wg.Go(func() error {
+		<-ctx.Done()
+		_ = streams.Conn.Close()
+		return ctx.Err()
+	})
+
 	if stdin != nil {
 		wg.Go(func() (err error) {
 			_, err = io.Copy(streams.Conn, stdin)
@@ -244,7 +250,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg.Go(func() error {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		case await := <-waitC:
 			if await.StatusCode > 0 {
 				return &Result{

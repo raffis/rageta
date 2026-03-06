@@ -848,20 +848,20 @@ func runRun(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "")
 
 		var stepErr processor.ErrorGetStepName
-		if errors.As(err, &stepErr) {
+		if errors.As(result, &stepErr) {
 			fmt.Fprintf(os.Stderr, "The step %s failed.\n", styles.Highlight.Render(stepErr.StepName()))
 			stepErr.StepName()
 		}
 
-		fmt.Fprintln(os.Stderr, styles.HelpSection.Render("\n\nDetails:"))
+		fmt.Fprintln(os.Stderr, styles.HelpSection.Render("\nDetails:"))
 		fmt.Fprintln(os.Stderr, result.Error())
 
-		helmCmd := os.Args[0]
-		if len(args) > 1 {
-			helmCmd = fmt.Sprintf("%s %s", helmCmd, args[1])
+		helpCmd := "rageta help"
+		if ref != "" {
+			helpCmd = fmt.Sprintf("%s %s", helpCmd, ref)
 		}
 
-		fmt.Fprintf(os.Stderr, "\nType %s for more information\n", styles.Highlight.Render(helmCmd))
+		fmt.Fprintf(os.Stderr, "\nRun %s for more information\n", styles.Highlight.Render(helpCmd))
 	}
 
 	return nil

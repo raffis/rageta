@@ -40,20 +40,21 @@ func (e *stepError) StepName() string {
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
-		ctx, nextErr := next(ctx)
+		ctx, err := next(ctx)
 		ctx.EndedAt = time.Now()
 
-		if nextErr != nil {
-			ctx.Error = &stepError{
-				parent:         nextErr,
+		if err != nil {
+			err = &stepError{
+				parent:         err,
 				stepName:       s.stepName,
 				uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
 			}
+			ctx.Error = err
 		} else {
 			ctx.Error = nil
 		}
 
 		ctx.Steps[s.stepName] = &ctx
-		return ctx, nextErr
+		return ctx, err
 	}, nil
 }
