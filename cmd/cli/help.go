@@ -63,14 +63,33 @@ func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 	return nil
 }
 
+func formatFlagSetStyle(set *pflag.FlagSet) []string {
+	var flagBlocks []string
+	set.VisitAll(func(f *pflag.Flag) {
+		name := "--" + f.Name
+		if f.Shorthand != "" {
+			name = "-" + string(f.Shorthand) + ", " + name
+		}
+		line := styles.HelpInputFlag.Render(name)
+		if f.DefValue != "" && f.DefValue != "[]" && f.DefValue != "map[]" {
+			line += styles.HelpInputType.Render("  [default: " + f.DefValue + "]")
+		}
+		if f.Usage != "" {
+			line += "\n  " + styles.HelpMuted.Render(f.Usage)
+		}
+		flagBlocks = append(flagBlocks, line)
+	})
+	return flagBlocks
+}
+
 func printHelpCommand(cmd *cobra.Command) {
 	var sections []string
 	name := cmd.Name()
 	if name == "" {
 		name = cmd.Use
 	}
-	title := styles.HelpTitle.Render(fmt.Sprintf("● %s ●\n", name))
-	sections = append(sections, title)
+	title := styles.HelpTitle.Render(name)
+	sections = append(sections, title, "\n")
 
 	if cmd.Short != "" {
 		short := styles.HelpShort.Render(cmd.Short)
@@ -78,31 +97,28 @@ func printHelpCommand(cmd *cobra.Command) {
 	}
 
 	if cmd.Long != "" {
-		descHeader := styles.HelpSection.Render("\n\nDescription:\n\n")
-		descBody := styles.HelpBody.Render(cmd.Long + "\n")
-		sections = append(sections, descHeader, descBody)
+		descHeader := styles.HelpSection.Render("\n\nDescription:")
+		descBody := styles.HelpBody.Render(cmd.Long)
+		sections = append(sections, descHeader, "\n", descBody)
 	}
 
-	// Always include run flag groups in the same style as help -f
-	for _, group := range runFlagGroups {
-		var flagBlocks []string
-		group.Set.VisitAll(func(f *pflag.Flag) {
-			name := "--" + f.Name
-			if f.Shorthand != "" {
-				name = "-" + string(f.Shorthand) + ", " + name
+	if cmd == runCmd {
+		// Run has grouped flag sets (Execution, Pipeline, etc.)
+		for _, group := range runFlagGroups {
+			flagBlocks := formatFlagSetStyle(group.Set)
+			if len(flagBlocks) > 0 {
+				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
-			line := styles.HelpInputFlag.Render(name)
-			if f.DefValue != "" && f.DefValue != "[]" && f.DefValue != "map[]" {
-				line += styles.HelpInputType.Render("  [default: " + f.DefValue + "]")
-			}
-			if f.Usage != "" {
-				line += "\n  " + styles.HelpMuted.Render(f.Usage)
-			}
-			flagBlocks = append(flagBlocks, line)
-		})
-
-		if len(flagBlocks) > 0 {
-			sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+		}
+	} else {
+		// Generic: show this command's flags, then global (inherited) flags
+		localBlocks := formatFlagSetStyle(cmd.NonInheritedFlags())
+		if len(localBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(localBlocks, "\n\n"))
+		}
+		inheritedBlocks := formatFlagSetStyle(cmd.InheritedFlags())
+		if len(inheritedBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Global Flags:"), "\n\n", strings.Join(inheritedBlocks, "\n\n"))
 		}
 	}
 
