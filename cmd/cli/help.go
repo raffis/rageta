@@ -14,8 +14,9 @@ import (
 )
 
 var helpCmd = &cobra.Command{
-	Use:  "help",
-	RunE: runHelp,
+	Use:   "help",
+	RunE:  runHelp,
+	Short: "Show help for a pipeline",
 }
 
 type helpFlags struct {
@@ -36,6 +37,8 @@ func init() {
 	helpCmd.Flags().BoolVarP(&helpArgs.full, "full", "f", false, "Show full help page including all flags from rageta")
 
 	rootCmd.AddCommand(helpCmd)
+	// Hide Cobra's default help command so only our custom help subcommand is shown
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
 func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
@@ -100,6 +103,26 @@ func printHelpCommand(cmd *cobra.Command) {
 		descHeader := styles.HelpSection.Render("\n\nDescription:")
 		descBody := styles.HelpBody.Render(cmd.Long)
 		sections = append(sections, descHeader, "\n", descBody)
+	}
+
+	if len(cmd.Commands()) > 0 {
+		var cmdBlocks []string
+		for _, c := range cmd.Commands() {
+			if c.Hidden {
+				continue
+			}
+
+			line := styles.HelpTargetName.Render(c.Name())
+			if c.Short != "" {
+				line = line + "\n" + styles.HelpTargetShort.Render(c.Short)
+			}
+
+			cmdBlocks = append(cmdBlocks, line)
+		}
+
+		if len(cmdBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Commands:"), "\n\n", strings.Join(cmdBlocks, "\n\n"))
+		}
 	}
 
 	if cmd == runCmd {

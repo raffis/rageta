@@ -11,8 +11,9 @@ import (
 )
 
 var versionCmd = &cobra.Command{
-	Use:  "version",
-	RunE: runVersion,
+	Use:   "version",
+	RunE:  runVersion,
+	Short: "Show version information",
 }
 
 type versionFlags struct {
