@@ -219,12 +219,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		return nil
 	})
 
-	wg.Go(func() error {
-		<-ctx.Done()
-		_ = streams.Conn.Close()
-		return ctx.Err()
-	})
-
 	if stdin != nil {
 		wg.Go(func() (err error) {
 			_, err = io.Copy(streams.Conn, stdin)

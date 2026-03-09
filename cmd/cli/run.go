@@ -466,6 +466,7 @@ func stepBuilder(
 			processor.WithTags(tags),
 			processor.WithMatrix(pool),
 			processor.WithOutput(outputFactory, runArgs.withInternals, runArgs.expand),
+			processor.WithHighlightStderr(),
 			processor.WithMonitor(!runArgs.noStatus, runArgs.waitUpdateInterval, monitorDev),
 			processor.WithOtelTrace(logger, tracer),
 			processor.WithLogger(logger, logBuilder, runArgs.logDetached),
