@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/ocisetup"
+	"github.com/raffis/rageta/internal/runner"
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -50,7 +51,7 @@ func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 		defer cancel()
 	}
 
-	store, persistDB := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	store, persistDB := runner.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err

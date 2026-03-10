@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/provider"
+	"github.com/raffis/rageta/internal/runner"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
@@ -163,7 +164,7 @@ func tagCmdRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	err = persistDatabase(rootArgs.dbPath, localDB)
+	err = runner.PersistDatabase(rootArgs.dbPath, localDB)
 	if err != nil {
 		return fmt.Errorf("failed to persist database: %w", err)
 	}
