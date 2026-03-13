@@ -17,12 +17,16 @@ func (s ContextDirOptions) Build() Step {
 	}
 }
 
-func (s ContextDirOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ContextDirOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVarP(&s.ContextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
 }
 
 type ContextDir struct {
 	opts ContextDirOptions
+}
+
+type ContextDirContext struct {
+	Path string
 }
 
 func (s *ContextDir) Run(rc *RunContext, next Next) error {
@@ -34,7 +38,8 @@ func (s *ContextDir) Run(rc *RunContext, next Next) error {
 		}
 		contextDir = tmpDir
 	}
-	rc.ContextDir = contextDir
-	rc.Logger.V(1).Info("use context directory", "path", contextDir)
+
+	rc.ContextDir.Path = contextDir
+	rc.Logging.Logger.V(1).Info("use context directory", "path", contextDir)
 	return next(rc)
 }

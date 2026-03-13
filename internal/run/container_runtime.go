@@ -27,12 +27,13 @@ func (d containerRuntime) String() string {
 
 func NewContainerRuntimeOptions() ContainerRuntimeOptions {
 	return ContainerRuntimeOptions{
-		ContainerRuntime: electDefaultContainerRuntime(),
+		ContainerRuntime: electDefaultContainerRuntime().String(),
+		KubeOptions:      kubesetup.DefaultOptions(),
 	}
 }
 
 type ContainerRuntimeOptions struct {
-	ContainerRuntime containerRuntime
+	ContainerRuntime string
 	DockerOptions    dockersetup.Options
 	KubeOptions      *kubesetup.Options
 	DockerQuiet      bool
@@ -66,6 +67,8 @@ func isPossiblyInsideDocker() (bool, error) {
 }
 
 func (s ContainerRuntimeOptions) BindFlags(flags *pflag.FlagSet) {
+	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. One of [docker].")
+
 	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
 	dockerFlags.BoolVarP(&s.DockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
 	s.DockerOptions.BindFlags(dockerFlags)
@@ -80,12 +83,17 @@ type ContainerRuntime struct {
 	opts ContainerRuntimeOptions
 }
 
+type ContainerRuntimeContext struct {
+	Driver cruntime.Interface
+}
+
 func (s *ContainerRuntime) Run(rc *RunContext, next Next) error {
-	driver, err := s.createContainerRuntime(rc.Ctx, rc.Logger)
+	driver, err := s.createContainerRuntime(rc.Context, rc.Logging.Logger)
 	if err != nil {
 		return err
 	}
-	rc.Driver = driver
+
+	rc.ContainerRuntime.Driver = driver
 	return next(rc)
 }
 
@@ -93,7 +101,7 @@ func (s *ContainerRuntime) createContainerRuntime(ctx context.Context, logger lo
 	logger.V(3).Info("create container runtime client", "container-runtime", s.opts.ContainerRuntime)
 
 	switch s.opts.ContainerRuntime {
-	case containerRuntimeDocker:
+	case containerRuntimeDocker.String():
 		s.opts.DockerOptions.Logger = logger
 		c, err := s.opts.DockerOptions.Build()
 		if err != nil {
@@ -104,7 +112,7 @@ func (s *ContainerRuntime) createContainerRuntime(ctx context.Context, logger lo
 			cruntime.WithHidePullOutput(s.opts.DockerQuiet),
 			cruntime.WithLogger(logger),
 		), nil
-	case containerRuntimeKubernetes:
+	case containerRuntimeKubernetes.String():
 		if s.opts.KubeOptions == nil {
 			return nil, errors.New("kubernetes options not set")
 		}

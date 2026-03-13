@@ -1,4 +1,4 @@
-package runner
+package run
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/gofrs/flock"
@@ -13,38 +14,69 @@ import (
 	"github.com/raffis/rageta/internal/provider"
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"github.com/spf13/pflag"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 )
 
-type ProviderStep struct {
-	ociOpts *ocisetup.Options
+type ProviderOptions struct {
+	OCI    *ocisetup.Options
+	DBPath string
 }
 
-func WithProvider(ociOpts *ocisetup.Options) *ProviderStep {
-	return &ProviderStep{ociOpts: ociOpts}
+func (s *ProviderOptions) BindFlags(flags *pflag.FlagSet) {
+	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
+	s.OCI.BindFlags(ociFlags)
+	flags.AddFlagSet(ociFlags)
 }
 
-func (s *ProviderStep) Run(rc *RunContext, next Next) error {
+func (s ProviderOptions) Build() Step {
+	return &Provider{opts: s}
+}
+
+func NewProviderOptions() ProviderOptions {
+	return ProviderOptions{
+		OCI: ocisetup.DefaultOptions(),
+	}
+}
+
+type Provider struct {
+	opts ProviderOptions
+}
+
+type ProviderContext struct {
+	Provider provider.Interface
+	Pipeline v1beta1.Pipeline
+	Args     []string
+}
+
+func (s *Provider) Run(rc *RunContext, next Next) error {
 	store, persistDB := CreateProvider(
-		rc.ImagePullPolicy,
-		rc.Input.DBPath,
-		s.ociOpts,
+		rc.ImagePolicy.PullPolicy,
+		s.opts.DBPath,
+		s.opts.OCI,
 	)
-	rc.Store = store
-	rc.PersistDB = persistDB
+	rc.Provider.Provider = store
+	defer func() {
+		_ = persistDB()
+	}()
 
-	rc.Logger.V(3).Info("resolve pipeline reference", "source", rc.Input.Ref)
-	command, err := store.Resolve(rc.Ctx, rc.Input.Ref)
+	var ref string
+	if len(rc.Provider.Args) > 0 && !strings.HasPrefix(rc.Provider.Args[0], "--") {
+		ref = rc.Provider.Args[0]
+	}
+
+	rc.Logging.Logger.V(3).Info("resolve pipeline reference", "source", ref)
+	pipeline, err := store.Resolve(rc.Context, ref)
 	if err != nil {
 		return err
 	}
-	rc.Command = command
+
+	rc.Provider.Pipeline = pipeline
 	return next(rc)
 }
 
-// CreateProvider builds a pipeline provider and a persist function.
 func CreateProvider(
 	imagePullPolicy cruntime.PullImagePolicy,
 	dbPath string,

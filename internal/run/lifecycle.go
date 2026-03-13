@@ -20,7 +20,7 @@ func (s LifecycleOptions) Build() Step {
 	}
 }
 
-func (s LifecycleOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *LifecycleOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.DurationVarP(&s.Timeout, "timeout", "", 0, "")
 }
 
@@ -29,23 +29,24 @@ type Lifecycle struct {
 }
 
 func (s *Lifecycle) Run(rc *RunContext, next Next) error {
-	ctx, cancel := context.WithCancel(rc.Input.Ctx)
-	rc.Ctx = ctx
-	rc.Cancel = cancel
+	ctx, cancel := context.WithCancel(rc.Context)
+	rc.Context = ctx
 
-	if rc.Input.Timeout > 0 {
-		ctx, cancel := context.WithTimeout(rc.Ctx, rc.Input.Timeout)
-		rc.Ctx = ctx
-		rc.Cancel = cancel
+	if s.opts.Timeout > 0 {
+		ctx, c := context.WithTimeout(rc.Context, s.opts.Timeout)
+		rc.Context = ctx
+		cancel = c
 	}
+
+	defer cancel()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		sig := <-signals
-		rc.Logger.V(1).Info("received signal", "signal", sig)
-		rc.Cancel()
+		rc.Logging.Logger.V(1).Info("received signal", "signal", sig)
+		cancel()
 	}()
 
 	return next(rc)

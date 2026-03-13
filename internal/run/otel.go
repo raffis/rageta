@@ -1,84 +1,88 @@
-package runner
+package run
 
 import (
 	"context"
-	"fmt"
-	"io"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/zapr"
-	"github.com/raffis/rageta/internal/logbridge"
 	"github.com/raffis/rageta/internal/otelsetup"
-	"github.com/raffis/rageta/internal/processor"
+	"github.com/spf13/pflag"
+	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 const otelName = "github.com/raffis/rageta"
 
-type OtelStep struct {
-	otelOpts  otelsetup.Options
-	output    string
-	zapConfig zap.Config
+type OtelOptions struct {
+	OtelOpts  otelsetup.Options
+	Output    string
+	ZapConfig zap.Config
 }
 
-func WithOtel(otelOpts otelsetup.Options, output string, zapConfig zap.Config) *OtelStep {
-	return &OtelStep{otelOpts: otelOpts, output: output, zapConfig: zapConfig}
+func (s *OtelOptions) BindFlags(flags *pflag.FlagSet) {
+	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
+	s.OtelOpts.BindFlags(otelFlags)
+	flags.AddFlagSet(otelFlags)
 }
 
-func (s *OtelStep) Run(rc *RunContext, next Next) error {
+func (s OtelOptions) Build() Step {
+	return &Otel{opts: s}
+}
+
+type Otel struct {
+	opts OtelOptions
+}
+
+type OtelContext struct {
+	Tracer trace.Tracer
+	Meter  metric.Meter
+	Logger log.Logger
+}
+
+func (s *Otel) Run(rc *RunContext, next Next) error {
 	ctx := context.Background()
 
-	traceProvider, err := s.otelOpts.BuildTraceProvider(ctx)
+	traceProvider, err := s.opts.OtelOpts.BuildTraceProvider(ctx)
 	if err != nil {
 		return err
 	}
 	if traceProvider != nil {
-		rc.Tracer = traceProvider.Tracer(otelName)
-		rc.TraceShutdown = func() error { return traceProvider.Shutdown(context.Background()) }
+		rc.Otel.Tracer = traceProvider.Tracer(otelName)
 		defer func() {
-			if rc.TraceShutdown != nil {
-				_ = rc.TraceShutdown()
-			}
+			traceProvider.Shutdown(context.Background())
 		}()
 	}
 
-	meterProvider, err := s.otelOpts.BuildMeterProvider(ctx)
+	meterProvider, err := s.opts.OtelOpts.BuildMeterProvider(ctx)
 	if err != nil {
 		return err
 	}
 	if meterProvider != nil {
-		rc.Meter = meterProvider.Meter(otelName)
-		rc.MeterShutdown = func() error { return meterProvider.Shutdown(context.Background()) }
+		rc.Otel.Meter = meterProvider.Meter(otelName)
 		defer func() {
-			if rc.MeterShutdown != nil {
-				_ = rc.MeterShutdown()
-			}
+			meterProvider.Shutdown(context.Background())
 		}()
 	}
 
-	logProvider, err := s.otelOpts.BuildLoggerProvider(ctx)
+	logProvider, err := s.opts.OtelOpts.BuildLoggerProvider(ctx)
 	if err != nil {
 		return err
 	}
 	if logProvider != nil {
-		rc.OtelLogger = logProvider.Logger(otelName)
-		rc.LogShutdown = func() error { return logProvider.Shutdown(context.Background()) }
+		rc.Otel.Logger = logProvider.Logger(otelName)
 		defer func() {
-			if rc.LogShutdown != nil {
-				_ = rc.LogShutdown()
-			}
+			logProvider.Shutdown(context.Background())
 		}()
 	}
 
-	defaultLog := rc.LogCoreFile
+	/*defaultLog := rc.LogCoreFile
 	if rc.OtelLogger != nil {
 		defaultLog = zapcore.NewTee(rc.LogCoreFile, logbridge.OtelCore(rc.OtelLogger))
 	}
 
 	rc.LogBuilder = s.logBuilder(defaultLog)
 
-	if s.output == "ui" {
+	if s.opts.Output == "ui" {
 		rc.Logger = zapr.NewLogger(zap.New(defaultLog))
 	} else {
 		var err error
@@ -86,12 +90,12 @@ func (s *OtelStep) Run(rc *RunContext, next Next) error {
 		if err != nil {
 			return err
 		}
-	}
+	}*/
 
 	return next(rc)
 }
 
-func (s *OtelStep) logBuilder(defaultLog zapcore.Core) processor.LogBuilder {
+/*func (s *Otel) logBuilder(defaultLog zapcore.Core) processor.LogBuilder {
 	return func(w io.Writer) (logr.Logger, error) {
 		log, err := s.buildZapCore(w)
 		if err != nil {
@@ -102,8 +106,8 @@ func (s *OtelStep) logBuilder(defaultLog zapcore.Core) processor.LogBuilder {
 	}
 }
 
-func (s *OtelStep) buildZapCore(w io.Writer) (zapcore.Core, error) {
-	config := s.zapConfig
+func (s *Otel) buildZapCore(w io.Writer) (zapcore.Core, error) {
+	config := s.opts.ZapConfig
 	var encoder zapcore.Encoder
 	switch config.Encoding {
 	case "json":
@@ -115,3 +119,4 @@ func (s *OtelStep) buildZapCore(w io.Writer) (zapcore.Core, error) {
 	}
 	return zapcore.NewCore(encoder, zapcore.AddSync(w), config.Level), nil
 }
+*/

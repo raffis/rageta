@@ -20,7 +20,7 @@ func (s ForkOptions) Build() Step {
 	}
 }
 
-func (s ForkOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ForkOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.BoolVarP(&s.Fork, "fork", "", s.Fork, "Creates a controller container which handles this pipeline and exit.")
 }
 
@@ -33,7 +33,7 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		return next(rc)
 	}
 
-	rc.Logger.V(0).Info("fork pipeline runner, attaching streams. This process can be exited using ctrl+c")
+	rc.Logging.Logger.V(0).Info("fork pipeline runner, attaching streams. This process can be exited using ctrl+c")
 
 	forkFlags := os.Args[1:]
 	forkFlags = slices.DeleteFunc(forkFlags, func(v string) bool { return v == "--fork" })
@@ -44,8 +44,8 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		Args:  forkFlags,
 		Stdin: true,
 		//TTY:             IsTerm(),
-		Env:             rc.Envs,
-		ImagePullPolicy: rc.ImagePullPolicy,
+		Env:             rc.Envs.Envs,
+		ImagePullPolicy: rc.ImagePolicy.PullPolicy,
 	}
 	pod := cruntime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
@@ -54,7 +54,7 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		},
 	}
 
-	status, err := rc.Driver.CreatePod(rc.Ctx, &pod, os.Stdin, rc.Stdout, rc.Stderr)
+	status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
 	if err != nil {
 		return err
 	}

@@ -119,16 +119,6 @@ func init() {
 	pushCmd.Flags().BoolVarP(&pushArgs.debug, "debug", "", false, "display logs from underlying library")
 
 	pushArgs.ociOptions.BindFlags(pushCmd.Flags())
-
-	pushCmd.SetUsageFunc(func(cmd *cobra.Command) error {
-		printHelpCommand(cmd)
-		return nil
-	})
-
-	pushCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		printHelpCommand(cmd)
-	})
-
 	rootCmd.AddCommand(pushCmd)
 	oci.CanonicalConfigMediaType = "application/rageta"
 }

@@ -1,4 +1,4 @@
-package runner
+package run
 
 import (
 	"errors"
@@ -12,16 +12,29 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type InputsStep struct{}
-
-func WithInputs() *InputsStep {
-	return &InputsStep{}
+type InputsOptions struct {
+	Args []string
 }
 
-func (s *InputsStep) Run(rc *RunContext, next Next) error {
+func (s InputsOptions) Build() Step {
+	return &Inputs{opts: s}
+}
+
+func (s *InputsOptions) BindFlags(flags *pflag.FlagSet) {
+	flags.StringArrayVarP(&s.Args, "input", "i", s.Args, "Pass inputs to the pipeline.")
+}
+
+type Inputs struct {
+	opts InputsOptions
+}
+
+type InputsContext struct {
+	Args map[string]v1beta1.ParamValue
+}
+
+func (s *Inputs) Run(rc *RunContext, next Next) error {
 	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
-	pipeline.Flags(flagSet, rc.Command.Inputs)
-	rc.InputFlagSet = flagSet
+	pipeline.Flags(flagSet, rc.Provider.Pipeline.Inputs)
 
 	if flagStart := slices.Index(os.Args, "--"); flagStart != -1 {
 		if err := flagSet.Parse(os.Args[flagStart+1:]); err != nil {
@@ -29,17 +42,16 @@ func (s *InputsStep) Run(rc *RunContext, next Next) error {
 		}
 	}
 
-	inputs, err := s.parseInputsFromFlags(rc.Command.Inputs, rc.Input.Inputs, flagSet)
+	inputs, err := s.parseInputsFromFlags(rc.Provider.Pipeline.Inputs, s.opts.Args, flagSet)
 	if err != nil {
 		return err
 	}
 
-	rc.Inputs = inputs
-	rc.Command.Name = ""
+	rc.Inputs.Args = inputs
 	return next(rc)
 }
 
-func (s *InputsStep) parseInputsFromFlags(params []v1beta1.InputParam, inputs []string, flagSet *pflag.FlagSet) (map[string]v1beta1.ParamValue, error) {
+func (s *Inputs) parseInputsFromFlags(params []v1beta1.InputParam, inputs []string, flagSet *pflag.FlagSet) (map[string]v1beta1.ParamValue, error) {
 	result := make(map[string]v1beta1.ParamValue)
 	steps := make(map[string][]string)
 

@@ -9,7 +9,19 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type CEL struct{}
+type CELOptions struct{}
+
+func (s CELOptions) Build() Step {
+	return &CEL{opts: s}
+}
+
+type CEL struct {
+	opts CELOptions
+}
+
+type CELContext struct {
+	Env *cel.Env
+}
 
 func (s *CEL) Run(rc *RunContext, next Next) error {
 	celEnv, err := cel.NewEnv(
@@ -30,6 +42,7 @@ func (s *CEL) Run(rc *RunContext, next Next) error {
 	if err != nil {
 		return fmt.Errorf("setup cel env failed: %w", err)
 	}
-	rc.CelEnv = celEnv
+
+	rc.CEL.Env = celEnv
 	return next(rc)
 }

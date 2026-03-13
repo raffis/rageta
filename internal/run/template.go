@@ -1,4 +1,4 @@
-package runner
+package run
 
 import (
 	"errors"
@@ -8,30 +8,44 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-type TemplateStep struct {
-	volumes []string
-	user    string
+type TemplateOptions struct {
+	Volumes []string
+	User    string
 }
 
-func WithTemplate(volumes []string, userSpec string) *TemplateStep {
-	return &TemplateStep{volumes: volumes, user: userSpec}
+func (s *TemplateOptions) BindFlags(flags *pflag.FlagSet) {
+	flags.StringSliceVarP(&s.Volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
+	flags.StringVarP(&s.User, "user", "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
 }
 
-func (s *TemplateStep) Run(rc *RunContext, next Next) error {
-	tmpl, err := s.buildTemplate(rc.ContextDir)
+func (s TemplateOptions) Build() Step {
+	return &Template{opts: s}
+}
+
+type Template struct {
+	opts TemplateOptions
+}
+
+type TemplateContext struct {
+	Container v1beta1.Template
+}
+
+func (s *Template) Run(rc *RunContext, next Next) error {
+	tmpl, err := s.buildTemplate(rc.ContextDir.Path)
 	if err != nil {
 		return fmt.Errorf("failed to create template: %w", err)
 	}
-	rc.Template = tmpl
+	rc.Template.Container = tmpl
 	return next(rc)
 }
 
-func (s *TemplateStep) buildTemplate(contextDir string) (v1beta1.Template, error) {
+func (s *Template) buildTemplate(contextDir string) (v1beta1.Template, error) {
 	tmpl := v1beta1.Template{}
-	volumes := append([]string(nil), s.volumes...)
+	volumes := append([]string(nil), s.opts.Volumes...)
 	volumes = append(volumes, fmt.Sprintf("%s:%s", contextDir, contextDir))
 
 	for i, volume := range volumes {
@@ -46,8 +60,8 @@ func (s *TemplateStep) buildTemplate(contextDir string) (v1beta1.Template, error
 		})
 	}
 
-	if s.user != "" {
-		parts := strings.SplitN(s.user, ":", 2)
+	if s.opts.User != "" {
+		parts := strings.SplitN(s.opts.User, ":", 2)
 		uid, err := s.getUID(parts[0])
 		if err != nil {
 			return tmpl, err
@@ -66,7 +80,7 @@ func (s *TemplateStep) buildTemplate(contextDir string) (v1beta1.Template, error
 	return tmpl, nil
 }
 
-func (s *TemplateStep) getUID(name string) (int, error) {
+func (s *Template) getUID(name string) (int, error) {
 	if uid, err := strconv.Atoi(name); err == nil {
 		return uid, nil
 	}
@@ -77,7 +91,7 @@ func (s *TemplateStep) getUID(name string) (int, error) {
 	return strconv.Atoi(u.Uid)
 }
 
-func (s *TemplateStep) getGID(name string) (int, error) {
+func (s *Template) getGID(name string) (int, error) {
 	if gid, err := strconv.Atoi(name); err == nil {
 		return gid, nil
 	}

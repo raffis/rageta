@@ -1,56 +1,58 @@
-package runner
+package run
 
 import (
-	"io"
-	"os"
+	"context"
+	"time"
 
-	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/spf13/pflag"
 )
 
-type TeardownStep struct {
-	maxConcurrent int
-	statusOutput  string
-	output        string
+type TeardownOptions struct {
+	MaxConcurrent int
+	Disabled      bool
 }
 
-func WithTeardown(maxConcurrent int, statusOutput, output string) *TeardownStep {
-	return &TeardownStep{maxConcurrent: maxConcurrent, statusOutput: statusOutput, output: output}
+func (s *TeardownOptions) BindFlags(flags *pflag.FlagSet) {
+	flags.BoolVarP(&s.Disabled, "no-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
 }
 
-func (s *TeardownStep) Run(rc *RunContext, next Next) error {
+func (s TeardownOptions) Build() Step {
+	return &Teardown{opts: s}
+}
+
+type Teardown struct {
+	opts TeardownOptions
+}
+
+type TeardownContext struct {
+	Teardown chan processor.Teardown
+}
+
+func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
-	rc.Teardown = teardown
+	rc.Teardown.Teardown = teardown
+	defer close(teardown)
 
 	go func() {
-		for fn := range teardown {
-			rc.TeardownFuncs = append(rc.TeardownFuncs, fn)
-		}
+		s.runTeardown(rc)
 	}()
 
-	rc.Pool = pond.NewPool(s.maxConcurrent)
-	rc.Logger.V(3).Info("worker pool", "max-concurrency", s.maxConcurrent)
-
-	rc.MonitorDev = s.monitorDevice(rc)
 	return next(rc)
 }
 
-func (s *TeardownStep) monitorDevice(rc *RunContext) io.Writer {
-	switch {
-	case s.statusOutput == "/dev/stdout" || s.statusOutput == "-":
-		return rc.Stdout
-	case s.statusOutput == "/dev/stderr":
-		return rc.Stderr
-	case s.statusOutput != "":
-		f, err := os.OpenFile(s.statusOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
-		if err != nil {
-			return nil
-		}
-		rc.monitorFile = f
-		return f
-	case s.output == renderOutputDiscard || s.output == renderOutputPassthrough:
-		return rc.Stdout
-	default:
-		return nil
+func (s *Teardown) runTeardown(rc *RunContext) {
+	/*teardownCtx, cancel := context.WithTimeout(context.Background(), s.opts.GracefulTermination+time.Second)
+	defer cancel()*/
+
+	for fn := range rc.Teardown.Teardown {
+		go func(fn processor.Teardown) {
+			teardownCtx := context.TODO()
+
+			rc.Logging.Logger.V(5).Info("execute teardown")
+			if err := fn(teardownCtx, time.Second*2); err != nil {
+				rc.Logging.Logger.V(5).Info("failed execute teardown", "err", err)
+			}
+		}(fn)
 	}
 }

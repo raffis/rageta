@@ -1,55 +1,106 @@
-package runner
+package run
 
 import (
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/raffis/rageta/internal/mask"
+	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
+	"github.com/raffis/rageta/internal/processor"
+	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/term"
 )
 
-type LoggingStep struct {
-	zapConfig zap.Config
+type LoggingOptions struct {
+	ZapConfig zap.Config
+	Detached  bool
 }
 
-func WithLogging(zapConfig zap.Config) Step {
-	return &LoggingStep{zapConfig: zapConfig}
+func (s LoggingOptions) Build() Step {
+	return &Logging{
+		opts: s,
+	}
 }
 
-func (s *LoggingStep) Run(rc *RunContext, next Next) error {
+func (s *LoggingOptions) BindFlags(flags *pflag.FlagSet) {
+	flags.BoolVarP(&s.Detached, "log-detached", "", s.Detached, "Detach logs.")
+}
+
+func NewLoggingOptions() LoggingOptions {
+	return LoggingOptions{
+		ZapConfig: zap.NewDevelopmentConfig(),
+	}
+}
+
+type Logging struct {
+	opts LoggingOptions
+}
+
+type LoggingContext struct {
+	Logger   logr.Logger
+	Builder  processor.LogBuilder
+	Detached bool
+}
+
+func (s *Logging) Run(rc *RunContext, next Next) error {
 	logFile, err := os.CreateTemp(os.TempDir(), "rageta-log")
 	if err != nil {
 		return err
 	}
 
-	rc.SecretStore = mask.NewSecretStore(mask.DefaultMask)
-	maskedLog := rc.SecretStore.Writer(logFile)
+	maskedLog := rc.Secrets.Store.Writer(logFile)
+	stdout := rc.Secrets.Store.Writer(rc.Output.Stdout)
 
-	if rc.Stdout == nil {
-		rc.Stdout = rc.SecretStore.Writer(os.Stdout)
-	}
-	if rc.Stderr == nil {
-		if IsTerm() {
-			rc.Stderr = rc.Stdout
-		} else {
-			rc.Stderr = rc.SecretStore.Writer(os.Stderr)
-		}
+	var isTerm = term.IsTerminal(int(os.Stdout.Fd()))
+
+	if isTerm {
+		rc.Output.Stderr = stdout
+	} else {
+		rc.Output.Stderr = rc.Secrets.Store.Writer(os.Stderr)
 	}
 
-	logCoreFile, err := s.buildZapCore(maskedLog)
+	logCoreFile, err := s.buildZapCore(s.opts.ZapConfig, maskedLog)
 	if err != nil {
 		return err
 	}
 
-	rc.LogCoreFile = logCoreFile
-	_ = logFile
+	defaultLog := logCoreFile
+	/*if loggr != nil {
+		defaultLog = zapcore.NewTee(logCoreFile, logbridge.OtelCore(loggr))
+	}*/
+
+	logBuilder := s.logBuilder(defaultLog, s.opts.ZapConfig)
+
+	if rc.Output.Type == renderOutputUI.String() {
+		rc.Logging.Logger = zapr.NewLogger(zap.New(defaultLog))
+	} else {
+		rc.Logging.Logger, err = logBuilder(rc.Output.Stderr)
+		if err != nil {
+			return err
+		}
+	}
+
+	rc.Logging.Detached = s.opts.Detached
+	rc.Logging.Builder = logBuilder
 	return next(rc)
 }
 
-func (s *LoggingStep) buildZapCore(w io.Writer) (zapcore.Core, error) {
-	config := s.zapConfig
+func (s *Logging) logBuilder(defaultLog zapcore.Core, zapConfig zap.Config) processor.LogBuilder {
+	return func(w io.Writer) (logr.Logger, error) {
+		log, err := s.buildZapCore(zapConfig, w)
+		if err != nil {
+			return logr.Discard(), err
+		}
+
+		zapLogger := zap.New(zapcore.NewTee(defaultLog, log))
+		return zapr.NewLogger(zapLogger), nil
+	}
+}
+
+func (s *Logging) buildZapCore(config zap.Config, w io.Writer) (zapcore.Core, error) {
 	var encoder zapcore.Encoder
 	switch config.Encoding {
 	case "json":
@@ -57,7 +108,8 @@ func (s *LoggingStep) buildZapCore(w io.Writer) (zapcore.Core, error) {
 	case "console":
 		encoder = zapcore.NewConsoleEncoder(config.EncoderConfig)
 	default:
-		return nil, fmt.Errorf("failed setup step logger: no such log encoder `%s`", config.Encoding)
+		return nil, fmt.Errorf("no such log encoder `%s`", config.Encoding)
 	}
+
 	return zapcore.NewCore(encoder, zapcore.AddSync(w), config.Level), nil
 }
