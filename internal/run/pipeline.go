@@ -56,7 +56,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
 			//processor.WithSkipBlacklist(opts.SkipSteps),
-			//processor.WithGarbageCollector(opts.NoGC, rc.Driver, rc.Teardown),
+			processor.WithGarbageCollector(rc.Teardown.Enabled, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
 			//processor.WithSkipDone(opts.SkipDone),

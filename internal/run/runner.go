@@ -68,6 +68,7 @@ type Options struct {
 	InputsOptions           InputsOptions
 	ContextDirOptions       ContextDirOptions
 	TagsOptions             TagsOptions
+	ErrorOptions            ErrorOptions
 }
 
 func (s *Options) BindFlags(flags *pflag.FlagSet) {
@@ -104,6 +105,7 @@ func DefaultOptions() Options {
 
 func (o Options) Build() *Runner {
 	return Builder(
+		o.ErrorOptions.Build(),
 		o.ContextDirOptions.Build(),
 		o.EnvOptions.Build(),
 		o.SecretOptions.Build(),

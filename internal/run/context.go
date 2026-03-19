@@ -7,7 +7,7 @@ import (
 )
 
 type RunContext struct {
-	Context          context.Context
+	context.Context
 	CEL              CELContext
 	ContainerRuntime ContainerRuntimeContext
 	ContextDir       ContextDirContext

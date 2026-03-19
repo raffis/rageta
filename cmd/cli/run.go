@@ -62,9 +62,12 @@ func electDefaultProfile() flagProfile {
 var runOpts run.Options
 
 func init() {
-
 	runOpts = run.DefaultOptions()
 	runOpts.BindFlags(runCmd.Flags())
+	runCmd.SetUsageFunc(func(cmd *cobra.Command) error {
+		return nil
+	})
+
 	rootCmd.AddCommand(runCmd)
 
 }
@@ -75,18 +78,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	runOpts.LoggingOptions.ZapConfig = zapConfig
 	_, err := runOpts.Build().
 		Run(cmd.Context(), args, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.OutOrStderr())
-	fmt.Printf("err: %v\n", err)
-	/*
-		rc, err := runner.Run()
-		if err != nil {
-			if rc != nil && rc.InputFlagSet != nil {
-				helpAndExit(rc.InputFlagSet, err)
-			}
-			return err
-		}
-		logger.V(1).Info("pipeline completed", "result", rc.Result)
-		run.WriteErrorToStderr(rc)
-		return rc.Result*/
+
 	return err
 }
 

@@ -49,6 +49,7 @@ type ProviderContext struct {
 	Provider provider.Interface
 	Pipeline v1beta1.Pipeline
 	Args     []string
+	Ref      string
 }
 
 func (s *Provider) Run(rc *RunContext, next Next) error {
@@ -59,12 +60,15 @@ func (s *Provider) Run(rc *RunContext, next Next) error {
 	)
 	rc.Provider.Provider = store
 	defer func() {
-		_ = persistDB()
+		if err := persistDB(); err != nil {
+			rc.Logging.Logger.V(1).Error(err, "failed to persist database")
+		}
 	}()
 
 	var ref string
 	if len(rc.Provider.Args) > 0 && !strings.HasPrefix(rc.Provider.Args[0], "--") {
 		ref = rc.Provider.Args[0]
+		rc.Provider.Ref = ref
 	}
 
 	rc.Logging.Logger.V(3).Info("resolve pipeline reference", "source", ref)

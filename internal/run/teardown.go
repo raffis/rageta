@@ -27,11 +27,14 @@ type Teardown struct {
 
 type TeardownContext struct {
 	Teardown chan processor.Teardown
+	Enabled  bool
 }
 
 func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
 	rc.Teardown.Teardown = teardown
+	rc.Teardown.Enabled = !s.opts.Disabled
+
 	defer close(teardown)
 
 	go func() {

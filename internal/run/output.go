@@ -1,14 +1,20 @@
 package run
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"text/template"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/output"
+	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/tui"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
@@ -59,7 +65,9 @@ func electDefaultOutput() string {
 }
 
 type Output struct {
-	opts OutputOptions
+	opts    OutputOptions
+	tuiApp  *tea.Program
+	tuiDone chan struct{}
 }
 
 type OutputContext struct {
@@ -82,7 +90,24 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 	rc.Output.InternalSteps = s.opts.InternalSteps
 	rc.Output.Type = s.opts.Output
 
-	return next(rc)
+	err = next(rc)
+	if s.tuiApp == nil {
+		return err
+	}
+
+	if errors.Is(err, pipeline.ErrInvalidInput) {
+		s.tuiApp.Quit()
+	}
+	if err != nil {
+		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusFailed, Error: err})
+	} else {
+		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusDone, Error: nil})
+	}
+
+	<-s.tuiDone
+
+	return err
+
 }
 
 func (s *Output) buildOutputFactory(rc *RunContext) (processor.OutputFactory, error) {
@@ -94,8 +119,8 @@ func (s *Output) buildOutputFactory(rc *RunContext) (processor.OutputFactory, er
 	}
 
 	switch renderer {
-	//case renderOutputUI.String():
-	//return output.UI(s.uiOutput(rc)), nil
+	case renderOutputUI.String():
+		return output.UI(s.uiOutput(rc)), nil
 	case renderOutputPrefix.String():
 		return output.Prefix(rc.Output.Stdout, rc.Output.Stderr), nil
 	case renderOutputPassthrough.String():
@@ -116,31 +141,31 @@ func (s *Output) buildOutputFactory(rc *RunContext) (processor.OutputFactory, er
 	}
 }
 
-/*
-
 func (s *Output) uiOutput(rc *RunContext) *tea.Program {
 	if s.opts.Output != renderOutputUI.String() {
 		return nil
 	}
-	if rc.TUIApp != nil {
-		return rc.TUIApp.(*tea.Program)
+
+	if s.tuiApp != nil {
+		return s.tuiApp
 	}
-	rc.TUIDone = make(chan struct{})
+
+	s.tuiDone = make(chan struct{})
+
 	model := tui.NewUI(rc.Logging.Logger.WithValues("component", "tui"))
-	prog := tea.NewProgram(model, tea.WithOutput(xio.NewFDWrapper(rc.Stdout, os.Stdout)))
-	rc.TUIApp = prog
+	s.tuiApp = tea.NewProgram(model, tea.WithOutput(xio.NewFDWrapper(rc.Output.Stdout, os.Stdout)))
 
 	go func() {
 		for c := range time.Tick(100 * time.Millisecond) {
-			prog.Send(tui.TickMsg(c))
+			s.tuiApp.Send(tui.TickMsg(c))
 		}
 	}()
+
 	go func() {
-		_, _ = prog.Run()
-		_ = prog.ReleaseTerminal()
-		rc.Cancel()
-		rc.TUIDone <- struct{}{}
+		_, _ = s.tuiApp.Run()
+		_ = s.tuiApp.ReleaseTerminal()
+		//rc.Cancel()
+		s.tuiDone <- struct{}{}
 	}()
-	return prog
+	return s.tuiApp
 }
-*/

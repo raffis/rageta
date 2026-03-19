@@ -39,6 +39,11 @@ func (s *ContextDir) Run(rc *RunContext, next Next) error {
 		contextDir = tmpDir
 	}
 
+	/*
+		if s.opts.ContextDir == "" && !s.opts.NoGC {
+			_ = os.RemoveAll(rc.ContextDir)
+		}*/
+
 	rc.ContextDir.Path = contextDir
 	rc.Logging.Logger.V(1).Info("use context directory", "path", contextDir)
 	return next(rc)
