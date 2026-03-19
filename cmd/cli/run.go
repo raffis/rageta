@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
-	"charm.land/lipgloss/v2"
 	"github.com/raffis/rageta/internal/run"
-	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -73,43 +70,9 @@ func init() {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	//runArgs.loggingOptions.ZapConfig = zapConfig
-
 	runOpts.LoggingOptions.ZapConfig = zapConfig
 	_, err := runOpts.Build().
 		Run(cmd.Context(), args, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.OutOrStderr())
 
 	return err
-}
-
-/*func runInputFromArgs(ctx context.Context, args []string) run.RunInput {
-	ref := ""
-	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		ref = args[0]
-	}
-	return run.RunInput{
-		Ctx:        ctx,
-		Ref:        ref,
-		Entrypoint: runArgs.entrypoint,
-		Inputs:     runArgs.inputs,
-		Logger:     logger,
-		ZapConfig:  zapConfig,
-		Timeout:    rootArgs.timeout,
-		DBPath:     rootArgs.dbPath,
-	}
-}*/
-
-func helpAndExit(flagSet *pflag.FlagSet, err error) {
-	style := lipgloss.NewStyle().Bold(true)
-	fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Error:"))
-	fmt.Fprintln(os.Stderr, err.Error())
-
-	fmt.Fprintf(os.Stderr, "\n%s\n", style.Render("Inputs:"))
-	flagSet.PrintDefaults()
-
-	if res, ok := err.(*cruntime.Result); ok {
-		os.Exit(res.ExitCode)
-	}
-
-	os.Exit(1)
 }

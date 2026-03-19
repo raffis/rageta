@@ -48,7 +48,6 @@ type Report struct {
 }
 
 type ReportContext struct {
-	Dev     io.Writer
 	Factory reportFinalizer
 }
 
@@ -79,6 +78,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
+	rc.Report.Factory = reportFactory
 	err = next(rc)
 
 	if reportFactory != nil {

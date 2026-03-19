@@ -209,10 +209,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		Name:        container.Name,
 	})
 
-	wg := &errgroup.Group{}
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
+	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
 		_, err := stdcopy.StdCopy(stdout, stderr, streams.Reader)
 		if err != nil {
@@ -221,12 +218,6 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 		return nil
 	})
-
-	/*wg.Go(func() error {
-		<-ctx.Done()
-		_ = streams.Conn.Close()
-		return ctx.Err()
-	})*/
 
 	if stdin != nil {
 		wg.Go(func() (err error) {
@@ -253,14 +244,13 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	wg.Go(func() error {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil
 		case await := <-waitC:
 			if await.StatusCode > 0 {
 				return &Result{
 					ExitCode: int(await.StatusCode),
 				}
 			}
-			defer cancel()
 
 			return nil
 		}
