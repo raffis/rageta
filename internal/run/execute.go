@@ -2,6 +2,8 @@ package run
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -27,21 +29,19 @@ type Execute struct {
 	opts ExecuteOptions
 }
 
+var PipelineSetupError = errors.New("pipeline setup failed")
+
 func (s *Execute) Run(rc *RunContext, next Next) error {
 	stepCtx := processor.NewContext()
 	stepCtx.Context = rc.Context
 
 	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, stepCtx)
 	if err != nil {
-		//rc.Result = err
-		//return next(rc)
-		return err
+		return fmt.Errorf("%w: %w", PipelineSetupError, err)
 	}
 
 	err = s.retryRun(rc.Context, pipelineCmd)
 	if err != nil {
-		//rc.Result = err
-		//return next(rc)
 		return err
 	}
 

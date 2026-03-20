@@ -9,12 +9,13 @@ import (
 )
 
 type TeardownOptions struct {
-	MaxConcurrent int
-	Disabled      bool
+	Disabled    bool
+	GracePeriod time.Duration
 }
 
 func (s *TeardownOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.BoolVarP(&s.Disabled, "no-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
+	flags.DurationVarP(&s.GracePeriod, "grace-period", "", s.GracePeriod, "Maximum time to wait for termination and cleanup of steps.")
 }
 
 func (s TeardownOptions) Build() Step {
@@ -34,26 +35,33 @@ func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
 	rc.Teardown.Teardown = teardown
 	rc.Teardown.Enabled = !s.opts.Disabled
+	teardownDone := make(chan struct{})
 
-	defer close(teardown)
+	defer func() {
+		close(teardown)
+		<-teardownDone
+	}()
 
 	go func() {
 		s.runTeardown(rc)
+		teardownDone <- struct{}{}
 	}()
 
 	return next(rc)
 }
 
 func (s *Teardown) runTeardown(rc *RunContext) {
-	/*teardownCtx, cancel := context.WithTimeout(context.Background(), s.opts.GracefulTermination+time.Second)
-	defer cancel()*/
-
 	for fn := range rc.Teardown.Teardown {
 		go func(fn processor.Teardown) {
 			teardownCtx := context.TODO()
+			if s.opts.GracePeriod > 0 {
+				ctx, cancel := context.WithTimeout(teardownCtx, s.opts.GracePeriod)
+				teardownCtx = ctx
+				defer cancel()
+			}
 
 			rc.Logging.Logger.V(5).Info("execute teardown")
-			if err := fn(teardownCtx, time.Second*2); err != nil {
+			if err := fn(teardownCtx, s.opts.GracePeriod); err != nil {
 				rc.Logging.Logger.V(5).Info("failed execute teardown", "err", err)
 			}
 		}(fn)

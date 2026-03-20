@@ -11,7 +11,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/output"
-	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/xio"
@@ -95,7 +94,7 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	if errors.Is(err, pipeline.ErrInvalidInput) {
+	if errors.Is(err, PipelineSetupError) {
 		s.tuiApp.Quit()
 	}
 
