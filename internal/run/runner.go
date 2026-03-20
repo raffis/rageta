@@ -72,6 +72,7 @@ type Options struct {
 }
 
 func (s *Options) BindFlags(flags *pflag.FlagSet) {
+	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
 	s.OutputOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
@@ -108,11 +109,11 @@ func (o Options) Build() *Runner {
 		o.ErrorOptions.Build(),
 		o.ContextDirOptions.Build(),
 		o.ReportOptions.Build(),
+		o.OutputOptions.Build(),
+		o.OtelOptions.Build(),
+		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
 		o.SecretOptions.Build(),
-		o.OutputOptions.Build(),
-		o.LoggingOptions.Build(),
-		o.ForkOptions.Build(),
 		o.ImagePolicyOptions.Build(),
 		o.TemplateOptions.Build(),
 		o.TeardownOptions.Build(),
@@ -120,8 +121,8 @@ func (o Options) Build() *Runner {
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),
+		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
-		o.OtelOptions.Build(),
 		o.ProviderOptions.Build(),
 		o.PipelineOptions.Build(),
 		o.InputsOptions.Build(),

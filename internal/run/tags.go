@@ -12,7 +12,7 @@ type TagsOptions struct {
 }
 
 func (s *TagsOptions) BindFlags(flags *pflag.FlagSet) {
-	pflag.StringSliceVarP(&s.Tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
+	flags.StringSliceVarP(&s.Tags, "tags", "", nil, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
 }
 
 func (s TagsOptions) Build() Step {

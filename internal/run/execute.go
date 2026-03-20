@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"time"
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/sethvargo/go-retry"
@@ -48,8 +49,12 @@ func (s *Execute) Run(rc *RunContext, next Next) error {
 }
 
 func (s *Execute) retryRun(ctx context.Context, pipelineCmd processor.Executable) error {
-	var backoff retry.Backoff
-	return retry.Do(ctx, retry.WithMaxRetries(s.opts.MaxRetries, backoff), func(ctx context.Context) error {
+	var inner retry.Backoff = retry.BackoffFunc(func() (time.Duration, bool) { return 0, true })
+	if s.opts.MaxRetries > 0 {
+		inner = retry.NewConstant(time.Second)
+	}
+	b := retry.WithMaxRetries(s.opts.MaxRetries, inner)
+	return retry.Do(ctx, b, func(ctx context.Context) error {
 		_, _, err := pipelineCmd()
 		if err != nil {
 			return retry.RetryableError(err)

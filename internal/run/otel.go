@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 
+	"github.com/raffis/rageta/internal/logbridge"
 	"github.com/raffis/rageta/internal/otelsetup"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/log"
@@ -68,55 +69,15 @@ func (s *Otel) Run(rc *RunContext, next Next) error {
 	if err != nil {
 		return err
 	}
+
 	if logProvider != nil {
 		rc.Otel.Logger = logProvider.Logger(otelName)
 		defer func() {
 			logProvider.Shutdown(context.Background())
 		}()
+
+		rc.Logging.MainLog = logbridge.OtelCore(rc.Otel.Logger)
 	}
-
-	/*defaultLog := rc.LogCoreFile
-	if rc.OtelLogger != nil {
-		defaultLog = zapcore.NewTee(rc.LogCoreFile, logbridge.OtelCore(rc.OtelLogger))
-	}
-
-	rc.LogBuilder = s.logBuilder(defaultLog)
-
-	if s.opts.Output == "ui" {
-		rc.Logger = zapr.NewLogger(zap.New(defaultLog))
-	} else {
-		var err error
-		rc.Logger, err = rc.LogBuilder(rc.Stderr)
-		if err != nil {
-			return err
-		}
-	}*/
 
 	return next(rc)
 }
-
-/*func (s *Otel) logBuilder(defaultLog zapcore.Core) processor.LogBuilder {
-	return func(w io.Writer) (logr.Logger, error) {
-		log, err := s.buildZapCore(w)
-		if err != nil {
-			return logr.Discard(), err
-		}
-		zapLogger := zap.New(zapcore.NewTee(defaultLog, log))
-		return zapr.NewLogger(zapLogger), nil
-	}
-}
-
-func (s *Otel) buildZapCore(w io.Writer) (zapcore.Core, error) {
-	config := s.opts.ZapConfig
-	var encoder zapcore.Encoder
-	switch config.Encoding {
-	case "json":
-		encoder = zapcore.NewJSONEncoder(config.EncoderConfig)
-	case "console":
-		encoder = zapcore.NewConsoleEncoder(config.EncoderConfig)
-	default:
-		return nil, fmt.Errorf("no such log encoder %q", config.Encoding)
-	}
-	return zapcore.NewCore(encoder, zapcore.AddSync(w), config.Level), nil
-}
-*/

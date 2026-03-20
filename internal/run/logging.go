@@ -43,6 +43,7 @@ type LoggingContext struct {
 	Logger   logr.Logger
 	Builder  processor.LogBuilder
 	Detached bool
+	MainLog  zapcore.Core
 }
 
 func (s *Logging) Run(rc *RunContext, next Next) error {
@@ -68,9 +69,9 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 	}
 
 	defaultLog := logCoreFile
-	/*if loggr != nil {
-		defaultLog = zapcore.NewTee(logCoreFile, logbridge.OtelCore(loggr))
-	}*/
+	if rc.Logging.MainLog != nil {
+		defaultLog = zapcore.NewTee(logCoreFile, rc.Logging.MainLog)
+	}
 
 	logBuilder := s.logBuilder(defaultLog, s.opts.ZapConfig)
 
