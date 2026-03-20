@@ -43,6 +43,7 @@ type LoggingContext struct {
 	Logger   logr.Logger
 	Builder  processor.LogBuilder
 	Detached bool
+	Debug    bool
 	MainLog  zapcore.Core
 }
 
@@ -86,6 +87,7 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 
 	rc.Logging.Detached = s.opts.Detached
 	rc.Logging.Builder = logBuilder
+	rc.Logging.Debug = s.opts.ZapConfig.Level.Level() <= -5
 	return next(rc)
 }
 

@@ -35,6 +35,14 @@ func (s *Error) writeErrorToStderr(err error, rc *RunContext) {
 	if errors.As(err, &stepErr) {
 		fmt.Fprintf(os.Stderr, "The step %s failed.\n", styles.Highlight.Render(stepErr.StepName()))
 	}
+
+	var runErr processor.ErrorContainer
+	if errors.As(err, &runErr) {
+		fmt.Fprintf(os.Stderr, "Container: %s\n", styles.Highlight.Render(runErr.ContainerName()))
+		fmt.Fprintf(os.Stderr, "Image: %s\n", styles.Highlight.Render(runErr.Image()))
+		fmt.Fprintf(os.Stderr, "Exit Code: %s\n", styles.Highlight.Render(fmt.Sprintf("%d", runErr.ExitCode())))
+	}
+
 	fmt.Fprintln(os.Stderr, styles.HelpSection.Render("\nDetails:"))
 	fmt.Fprintln(os.Stderr, err.Error())
 	helpCmd := "rageta help"

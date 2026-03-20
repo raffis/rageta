@@ -3,6 +3,8 @@ package run
 import (
 	"fmt"
 	"os"
+	"path"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -31,18 +33,24 @@ type ContextDirContext struct {
 
 func (s *ContextDir) Run(rc *RunContext, next Next) error {
 	contextDir := s.opts.ContextDir
+
 	if contextDir == "" {
 		tmpDir, err := os.MkdirTemp(os.TempDir(), "rageta")
 		if err != nil {
-			return fmt.Errorf("failed to create tmp dir: %w", err)
+			return fmt.Errorf("failed to create temp context run directory: %w", err)
 		}
-		contextDir = tmpDir
-	}
 
-	/*
-		if s.opts.ContextDir == "" && !s.opts.NoGC {
-			_ = os.RemoveAll(rc.ContextDir)
-		}*/
+		contextDir = tmpDir
+		defer func() {
+			_ = os.RemoveAll(contextDir)
+		}()
+	} else {
+		contextDir = path.Join(contextDir, time.Now().Format(time.RFC3339))
+
+		if err := os.MkdirAll(contextDir, 0700); err != nil {
+			return fmt.Errorf("failed to create context run directory: %w", err)
+		}
+	}
 
 	rc.ContextDir.Path = contextDir
 	rc.Logging.Logger.V(1).Info("use context directory", "path", contextDir)

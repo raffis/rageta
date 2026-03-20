@@ -72,8 +72,6 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithPipe(false),
 		)
 
-		return processors
-		//debug := rc.Input.ZapConfig.Level.Level() <= -5
-		//return processor.WithDebug(rc.Logger, debug, &spec, processors...)
+		return processor.WithDebug(rc.Logging.Logger, rc.Logging.Debug, &spec, processors...)
 	}
 }

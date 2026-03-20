@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -132,11 +133,49 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
-			return ctx, fmt.Errorf("container %s failed: %w", pod.Name, err)
+			var exitCode int
+			var runtimeErr ExitCode
+			if errors.As(err, &runtimeErr) {
+				exitCode = runtimeErr.ExitCode()
+			}
+
+			return ctx, &ContainerError{
+				containerName: pod.Name,
+				image:         container.Image,
+				exitCode:      exitCode,
+				err:           err,
+			}
 		}
 
 		return next(ctx)
 	}, nil
+}
+
+type ContainerError struct {
+	containerName string
+	image         string
+	exitCode      int
+	err           error
+}
+
+func (e *ContainerError) Error() string {
+	return fmt.Sprintf("container exited with code %d: %w", e.exitCode, e.err)
+}
+
+func (e *ContainerError) Unwrap() error {
+	return e.err
+}
+
+func (e *ContainerError) ContainerName() string {
+	return e.containerName
+}
+
+func (e *ContainerError) ExitCode() int {
+	return e.exitCode
+}
+
+func (e *ContainerError) Image() string {
+	return e.image
 }
 
 func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
