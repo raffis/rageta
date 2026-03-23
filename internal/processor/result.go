@@ -23,6 +23,7 @@ type stepError struct {
 	parent         error
 	stepName       string
 	uniqueStepName string
+	context        StepContext
 }
 
 func (e *stepError) Error() string {
@@ -37,6 +38,10 @@ func (e *stepError) StepName() string {
 	return e.stepName
 }
 
+func (e *stepError) Context() StepContext {
+	return e.context
+}
+
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
@@ -48,6 +53,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				parent:         err,
 				stepName:       s.stepName,
 				uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
+				context:        ctx,
 			}
 			ctx.Error = err
 		} else {

@@ -248,7 +248,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 		case await := <-waitC:
 			if await.StatusCode > 0 {
 				return &Result{
-					ExitCode: int(await.StatusCode),
+					exitCode: int(await.StatusCode),
 				}
 			}
 
@@ -274,11 +274,15 @@ func (a *await) Wait() error {
 }
 
 type Result struct {
-	ExitCode int
+	exitCode int
 }
 
 func (e *Result) Error() string {
-	return fmt.Sprintf("container terminated with code %d", e.ExitCode)
+	return fmt.Sprintf("container terminated with code %d", e.exitCode)
+}
+
+func (e *Result) ExitCode() int {
+	return e.exitCode
 }
 
 type dockerAuth interface {

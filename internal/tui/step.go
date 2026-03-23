@@ -95,6 +95,8 @@ func (t *StepMsg) TagsAsString() string {
 		tagLabel := styles.TagLabel.
 			Background(lipgloss.Color(tag.Color)).
 			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+			PaddingLeft(1).
+			PaddingRight(1).
 			Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value))
 		tags = append(tags, tagLabel)
 	}

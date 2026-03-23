@@ -155,16 +155,16 @@ func (w *kubeWait) Wait() error {
 		switch event.Type {
 		case watch.Error:
 			return &Result{
-				ExitCode: int(1),
+				exitCode: int(1),
 			}
 
 		case watch.Deleted:
 			return &Result{
-				ExitCode: int(1),
+				exitCode: int(1),
 			}
 		case watch.Modified:
 			return &Result{
-				ExitCode: int(1),
+				exitCode: int(1),
 			}
 		}
 	}

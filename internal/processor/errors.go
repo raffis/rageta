@@ -56,8 +56,9 @@ type ErrorGetResult interface {
 	Result() string
 }
 
-type ErrorGetStepName interface {
+type StepError interface {
 	StepName() string
+	Context() StepContext
 }
 
 type ErrorContainer interface {

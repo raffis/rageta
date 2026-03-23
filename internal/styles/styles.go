@@ -11,7 +11,7 @@ import (
 
 var (
 	Bold      = lipgloss.NewStyle().Bold(true)
-	TagLabel  = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#FFFFFF"), Dark: lipgloss.Color("#000000")}).PaddingRight(1).PaddingLeft(1)
+	TagLabel  = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#FFFFFF"), Dark: lipgloss.Color("#000000")})
 	Highlight = lipgloss.NewStyle().Foreground(compat.AdaptiveColor{Light: lipgloss.Color("#CCCCCC"), Dark: lipgloss.Color("#666666")}).Padding(0, 0, 0, 0).Margin(0, 0, 0, 0)
 	HelpTitle = lipgloss.NewStyle().
 			Bold(true).

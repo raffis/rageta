@@ -159,7 +159,7 @@ type ContainerError struct {
 }
 
 func (e *ContainerError) Error() string {
-	return fmt.Sprintf("container exited with code %d: %w", e.exitCode, e.err)
+	return fmt.Sprintf("container failed: %s", e.err.Error())
 }
 
 func (e *ContainerError) Unwrap() error {
