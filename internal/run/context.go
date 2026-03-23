@@ -26,6 +26,7 @@ type RunContext struct {
 	Provider         ProviderContext
 	Pipeline         PipelineContext
 	Template         TemplateContext
+	Execution        ExecutionContext
 }
 
 func NewContext() *RunContext {

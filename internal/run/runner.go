@@ -69,11 +69,13 @@ type Options struct {
 	ContextDirOptions       ContextDirOptions
 	TagsOptions             TagsOptions
 	ErrorOptions            ErrorOptions
+	StepContextOptions      StepContextOptions
 }
 
 func (s *Options) BindFlags(flags *pflag.FlagSet) {
 	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
+	s.StepContextOptions.BindFlags(flags)
 	s.OutputOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
 	s.TemplateOptions.BindFlags(flags)
@@ -108,6 +110,7 @@ func (o Options) Build() *Runner {
 	return Builder(
 		o.ErrorOptions.Build(),
 		o.ContextDirOptions.Build(),
+		o.StepContextOptions.Build(),
 		o.ReportOptions.Build(),
 		o.OutputOptions.Build(),
 		o.OtelOptions.Build(),

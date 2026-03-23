@@ -41,7 +41,8 @@ func (s *Error) writeErrorToStderr(err error, rc *RunContext) {
 	w := tabwriter.NewWriter(rc.Output.Stderr, 0, 0, 2, ' ', 0)
 	var innerStepErr processor.StepError
 	if AsInner(err, &innerStepErr) {
-		fmt.Fprintln(w, fmt.Sprintf("%s\t%s", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName()))
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
 
 		for _, tag := range innerStepErr.Context().Tags() {
 			tags = append(tags, styles.TagLabel.
@@ -54,19 +55,21 @@ func (s *Error) writeErrorToStderr(err error, rc *RunContext) {
 
 	var runErr processor.ErrorContainer
 	if errors.As(err, &runErr) {
-		fmt.Fprintln(w, fmt.Sprintf("%s\t%s", styles.Highlight.Render("Container:"), runErr.ContainerName()))
-		fmt.Fprintln(w, fmt.Sprintf("%s\t%s", styles.Highlight.Render("Image:"), runErr.Image()))
-		fmt.Fprintln(w, fmt.Sprintf("%s\t%d", styles.Highlight.Render("Exit Code:"), runErr.ExitCode()))
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Container:"), runErr.ContainerName())
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), runErr.Image())
+		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), runErr.ExitCode())
 
 		if len(tags) > 0 {
-			fmt.Fprintln(w, fmt.Sprintf("%s\t%s", styles.Highlight.Render("Tags:"), strings.Join(tags, " ")))
+			fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
 
 		}
+
+		fmt.Fprint(w, "\n")
 	}
 
 	w.Flush()
 
-	fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render("\nDetails:"))
+	fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render("Details:"))
 	fmt.Fprintln(rc.Output.Stderr, err.Error())
 	helpCmd := "rageta help"
 

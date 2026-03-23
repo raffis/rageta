@@ -11,6 +11,7 @@ import (
 
 type ContextDirOptions struct {
 	ContextDir string
+	Persist    bool
 }
 
 func (s ContextDirOptions) Build() Step {
@@ -21,6 +22,7 @@ func (s ContextDirOptions) Build() Step {
 
 func (s *ContextDirOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVarP(&s.ContextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
+	flags.BoolVarP(&s.Persist, "persist", "", s.Persist, "Keep the context directory after the pipeline execution.")
 }
 
 type ContextDir struct {
@@ -41,9 +43,12 @@ func (s *ContextDir) Run(rc *RunContext, next Next) error {
 		}
 
 		contextDir = tmpDir
-		defer func() {
-			_ = os.RemoveAll(contextDir)
-		}()
+
+		if !s.opts.Persist {
+			defer func() {
+				_ = os.RemoveAll(contextDir)
+			}()
+		}
 	} else {
 		contextDir = path.Join(contextDir, time.Now().Format(time.RFC3339))
 

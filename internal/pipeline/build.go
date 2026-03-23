@@ -1,10 +1,8 @@
 package pipeline
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -133,10 +131,6 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 			}
 		}
 
-		if err := recoverContext(stepCtx, contextDir); err != nil {
-			return stepCtx, outputs, fmt.Errorf("failed to recover context: %w", err)
-		}
-
 		stepCtx, pipelineErr := entrypoint(stepCtx)
 
 		for _, pipelineOutput := range pipeline.Outputs {
@@ -154,68 +148,9 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 			}
 		}
 
-		if err := storeContext(stepCtx, contextDir); err != nil {
-			if pipelineErr != nil {
-				return stepCtx, outputs, fmt.Errorf("failed to store context: %w; pipeline error: %w", err, pipelineErr)
-			}
-
-			return stepCtx, outputs, fmt.Errorf("failed to store context: %w", err)
-		}
-
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
-
 		return stepCtx, outputs, pipelineErr
 	}, nil
-}
-
-func storeContext(stepCtx processor.StepContext, contextDir string) error {
-	contextPath := filepath.Join(contextDir, "context.json")
-	f, err := os.OpenFile(contextPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		_ = f.Close()
-	}()
-
-	b, err := json.Marshal(stepCtx.ToV1Beta1())
-	if err != nil {
-		return err
-	}
-
-	_, err = f.Write(b)
-	return err
-}
-
-func recoverContext(stepCtx processor.StepContext, contextDir string) error {
-	contextPath := filepath.Join(contextDir, "context.json")
-	if _, err := os.Stat(contextPath); err == nil {
-		f, err := os.Open(contextPath)
-		if err != nil {
-			return err
-		}
-
-		defer func() {
-			_ = f.Close()
-		}()
-
-		vars := &v1beta1.Context{}
-
-		b, err := io.ReadAll(f)
-		if err != nil {
-			return err
-		}
-
-		err = json.Unmarshal(b, vars)
-		if err != nil {
-			return err
-		}
-
-		stepCtx.FromV1Beta1(vars)
-	}
-
-	return nil
 }
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {

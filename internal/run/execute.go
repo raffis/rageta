@@ -29,13 +29,16 @@ type Execute struct {
 	opts ExecuteOptions
 }
 
+type ExecutionContext struct {
+	StepContext processor.StepContext
+}
+
 var PipelineSetupError = errors.New("pipeline setup failed")
 
 func (s *Execute) Run(rc *RunContext, next Next) error {
-	stepCtx := processor.NewContext()
-	stepCtx.Context = rc.Context
+	rc.Execution.StepContext.Context = rc.Context
 
-	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, stepCtx)
+	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, rc.Execution.StepContext)
 	if err != nil {
 		return fmt.Errorf("%w: %w", PipelineSetupError, err)
 	}

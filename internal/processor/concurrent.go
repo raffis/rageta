@@ -4,30 +4,27 @@ import (
 	"context"
 	"errors"
 
-	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithConcurrent(pool pond.Pool) ProcessorBuilder {
+func WithConcurrent() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Concurrent == nil || len(spec.Concurrent.Refs) == 0 || pool == nil {
+		if spec.Concurrent == nil || len(spec.Concurrent.Refs) == 0 {
 			return nil
 		}
 
 		return &Concurrent{
-			refs:          refSlice(spec.Concurrent.Refs),
-			failFast:      spec.Concurrent.FailFast,
-			pool:          pool,
-			maxConcurrent: spec.Concurrent.MaxConcurrent,
+			refs:     refSlice(spec.Concurrent.Refs),
+			failFast: spec.Concurrent.FailFast,
+			pool:     make(chan struct{}, spec.Concurrent.MaxConcurrent),
 		}
 	}
 }
 
 type Concurrent struct {
-	failFast      bool
-	refs          []string
-	pool          pond.Pool
-	maxConcurrent int
+	failFast bool
+	refs     []string
+	pool     chan struct{}
 }
 
 func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
@@ -43,11 +40,6 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		cancelCtx, cancel := context.WithCancel(ctx.Context)
 		defer cancel()
 
-		pool := s.pool
-		if s.maxConcurrent > 0 {
-			pool = s.pool.NewSubpool(s.maxConcurrent)
-		}
-
 		for _, step := range steps {
 			next, err := step.Entrypoint()
 
@@ -57,12 +49,18 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
-			if err := pool.Go(func() {
+
+			go func() {
+				if cap(s.pool) > 0 {
+					s.pool <- struct{}{}
+					defer func() {
+						<-s.pool
+					}()
+				}
+
 				t, err := next(copyCtx)
 				results <- result{t, err}
-			}); err != nil {
-				return ctx, err
-			}
+			}()
 		}
 
 		var done int

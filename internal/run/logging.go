@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -48,7 +49,7 @@ type LoggingContext struct {
 }
 
 func (s *Logging) Run(rc *RunContext, next Next) error {
-	logFile, err := os.CreateTemp(os.TempDir(), "rageta-log")
+	logFile, err := os.OpenFile(path.Join(rc.ContextDir.Path, "main.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 	if err != nil {
 		return err
 	}
