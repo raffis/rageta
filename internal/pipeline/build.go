@@ -160,7 +160,12 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 		entrypoint: command.Entrypoint,
 	}
 
-	for _, spec := range command.Steps {
+	steps, err := resolveExtends(command.Steps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve step extends: %w", err)
+	}
+
+	for _, spec := range steps {
 		name := spec.Name
 		origName := name
 		processors := e.stepBuilder(spec)
