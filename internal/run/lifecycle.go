@@ -6,8 +6,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/spf13/pflag"
 )
 
 type LifecycleOptions struct {
@@ -18,10 +16,6 @@ func (s LifecycleOptions) Build() Step {
 	return &Lifecycle{
 		opts: s,
 	}
-}
-
-func (s *LifecycleOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.DurationVarP(&s.Timeout, "timeout", "", 0, "")
 }
 
 type Lifecycle struct {

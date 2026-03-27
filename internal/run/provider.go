@@ -114,7 +114,7 @@ func CreateProvider(
 	localDBProviderWrapper := func(ctx context.Context, ref string) (io.Reader, error) {
 		localDB, err := openDB()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to open local database: %w", err)
 		}
 		return provider.WithLocalDB(localDB)(ctx, ref)
 	}
@@ -123,20 +123,24 @@ func CreateProvider(
 		ociOptions.URL = ref
 		ociClient, err := ociOptions.Build(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to build oci client: %w", err)
 		}
+
 		r, err := provider.WithOCI(ociClient)(ctx, ref)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to pull image from oci registry: %w", err)
 		}
+
 		localDB, err := openDB()
 		if err != nil {
-			return r, err
+			return r, fmt.Errorf("failed to open local database: %w", err)
 		}
+
 		manifest, err := io.ReadAll(r)
 		if err != nil {
-			return r, err
+			return r, fmt.Errorf("failed to read manifest: %w", err)
 		}
+
 		r = bytes.NewReader(manifest)
 		err = localDB.Add(ref, manifest)
 		return r, err

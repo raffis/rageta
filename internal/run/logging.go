@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/term"
 )
 
 type LoggingOptions struct {
@@ -55,16 +54,6 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 	}
 
 	maskedLog := rc.Secrets.Store.Writer(logFile)
-	stdout := rc.Secrets.Store.Writer(rc.Output.Stdout)
-
-	var isTerm = term.IsTerminal(int(os.Stdout.Fd()))
-
-	if isTerm {
-		rc.Output.Stderr = stdout
-	} else {
-		rc.Output.Stderr = rc.Secrets.Store.Writer(os.Stderr)
-	}
-
 	logCoreFile, err := s.buildZapCore(s.opts.ZapConfig, maskedLog)
 	if err != nil {
 		return err
@@ -76,16 +65,7 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 	}
 
 	logBuilder := s.logBuilder(defaultLog, s.opts.ZapConfig)
-
-	if rc.Output.Type == renderOutputUI.String() {
-		rc.Logging.Logger = zapr.NewLogger(zap.New(defaultLog))
-	} else {
-		rc.Logging.Logger, err = logBuilder(rc.Output.Stderr)
-		if err != nil {
-			return err
-		}
-	}
-
+	rc.Logging.Logger = zapr.NewLogger(zap.New(defaultLog))
 	rc.Logging.Detached = s.opts.Detached
 	rc.Logging.Builder = logBuilder
 	rc.Logging.Debug = s.opts.ZapConfig.Level.Level() <= -5

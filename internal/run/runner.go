@@ -83,7 +83,6 @@ func (s *Options) BindFlags(flags *pflag.FlagSet) {
 	s.EventsOptions.BindFlags(flags)
 	s.ForkOptions.BindFlags(flags)
 	s.ContainerRuntimeOptions.BindFlags(flags)
-	s.LifecycleOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
 	s.TagsOptions.BindFlags(flags)
@@ -111,12 +110,11 @@ func (o Options) Build() *Runner {
 		o.ErrorOptions.Build(),
 		o.ContextDirOptions.Build(),
 		o.StepContextOptions.Build(),
+		o.SecretOptions.Build(),
 		o.ReportOptions.Build(),
-		o.OutputOptions.Build(),
 		o.OtelOptions.Build(),
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
-		o.SecretOptions.Build(),
 		o.ImagePolicyOptions.Build(),
 		o.TemplateOptions.Build(),
 		o.TeardownOptions.Build(),
@@ -129,6 +127,7 @@ func (o Options) Build() *Runner {
 		o.ProviderOptions.Build(),
 		o.PipelineOptions.Build(),
 		o.InputsOptions.Build(),
+		o.OutputOptions.Build(),
 		o.ExecuteOptions.Build(),
 	)
 }

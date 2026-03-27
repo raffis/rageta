@@ -14,6 +14,7 @@ import (
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -130,6 +131,8 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
+
+		_, _ = ctx.Events.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
 		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
@@ -250,6 +253,12 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
 		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
 	)
+
+	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
+		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
+		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events, []byte("$ ")))
+		w.Write([]byte(cmd))
+	}
 
 	if err != nil {
 		return ctx, err

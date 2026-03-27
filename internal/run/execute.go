@@ -3,7 +3,6 @@ package run
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -17,7 +16,7 @@ type ExecuteOptions struct {
 }
 
 func (s *ExecuteOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.Uint64VarP(&s.MaxRetries, "retry", "", 0, "Retry pipeline if a failure occurred.")
+	flags.Uint64VarP(&s.MaxRetries, "retry", "", s.MaxRetries, "Retry pipeline if a failure occurred.")
 	flags.StringVarP(&s.Entrypoint, "entrypoint", "t", s.Entrypoint, "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 }
 
@@ -33,19 +32,19 @@ type ExecutionContext struct {
 	StepContext processor.StepContext
 }
 
-var PipelineSetupError = errors.New("pipeline setup failed")
+var PipelineExecutionError = errors.New("pipeline execution failed")
 
 func (s *Execute) Run(rc *RunContext, next Next) error {
 	rc.Execution.StepContext.Context = rc.Context
 
 	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, rc.Execution.StepContext)
 	if err != nil {
-		return fmt.Errorf("%w: %w", PipelineSetupError, err)
+		return err
 	}
 
 	err = s.retryRun(rc.Context, pipelineCmd)
 	if err != nil {
-		return err
+		return errors.Join(PipelineExecutionError, err)
 	}
 
 	return next(rc)

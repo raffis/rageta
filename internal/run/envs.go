@@ -12,7 +12,7 @@ type EnvsOptions struct {
 }
 
 func (s *EnvsOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringSliceVarP(&s.Envs, "env", "e", nil, "Pass envs to the pipeline.")
+	flags.StringSliceVarP(&s.Envs, "env", "e", s.Envs, "Pass envs to the pipeline.")
 }
 
 func (s EnvsOptions) Build() Step {

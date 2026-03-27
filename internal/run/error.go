@@ -34,7 +34,7 @@ func (s *Error) Run(rc *RunContext, next Next) error {
 func (s *Error) writeErrorToStderr(err error, rc *RunContext) {
 	var stepErr processor.StepError
 	if errors.As(err, &stepErr) {
-		fmt.Fprintf(rc.Output.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
+		fmt.Fprintf(rc.Output.Stderr, "\nThe step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
 	}
 
 	var tags []string

@@ -16,10 +16,9 @@ type EventsOptions struct {
 }
 
 func (s *EventsOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringVarP(&s.EventsOutput, "events-output", "", "", "Destination for the events. By default this depends on the output (-o) set.")
-	flags.BoolVarP(&s.Disabled, "no-events", "", s.Disabled, "Do not emits event messages")
-	flags.DurationVarP(&s.WaitUpdateInterval, "wait-update-interval", "", s.WaitUpdateInterval, "Print waiting for task status updates every n interval")
-
+	flags.StringVarP(&s.EventsOutput, "events-output", "", s.EventsOutput, "Destination for the events. By default this depends on the output (-o) set.")
+	flags.DurationVarP(&s.WaitUpdateInterval, "events-interval", "", s.WaitUpdateInterval, "Print event for a running step at intervals.")
+	flags.BoolVarP(&s.Disabled, "skip-events", "", s.Disabled, "Do not emit events")
 }
 
 func (s EventsOptions) Build() Step {
@@ -29,7 +28,6 @@ func (s EventsOptions) Build() Step {
 func NewEventsOptions() EventsOptions {
 	return EventsOptions{
 		WaitUpdateInterval: 5 * time.Second,
-		EventsOutput:       "/dev/stdout",
 	}
 }
 
@@ -61,11 +59,10 @@ func (s *Events) Run(rc *RunContext, next Next) error {
 
 		rc.Events.Dev = f
 	default:
-		return next(rc)
+		rc.Events.Dev = nil
 	}
 
 	rc.Events.Enabled = !s.opts.Disabled
 	rc.Events.WaitUpdateInterval = s.opts.WaitUpdateInterval
-
 	return next(rc)
 }

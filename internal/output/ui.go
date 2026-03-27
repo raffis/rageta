@@ -2,6 +2,7 @@ package output
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	tea "charm.land/bubbletea/v2"
@@ -30,6 +31,10 @@ func UI(sender sender) processor.OutputFactory {
 		sender.Send(step)
 
 		return step, step, func(err error) error {
+			if err := step.Flush(); err != nil {
+				return fmt.Errorf("error flushing stdout: %w", err)
+			}
+
 			switch {
 			case err == nil:
 				sender.Send(tui.StepMsg{

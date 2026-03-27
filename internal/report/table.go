@@ -50,7 +50,7 @@ func (r *table) Finalize() error {
 			step.stepName,
 			status,
 			duration,
-			strings.Join(tags, ""),
+			strings.Join(tags, " "),
 			errMsg,
 		})
 	}

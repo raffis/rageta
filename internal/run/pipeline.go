@@ -18,9 +18,9 @@ func (s PipelineOptions) Build() Step {
 }
 
 func (s *PipelineOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.BoolVar(&s.SkipDone, "skip-done", false, "skip already done steps")
-	flags.IntVar(&s.MaxConcurrent, "max-concurrent", 0, "Max concurrent container steps")
-	flags.StringSliceVar(&s.SkipSteps, "skip-steps", nil, "skip steps")
+	flags.BoolVar(&s.SkipDone, "skip-done", s.SkipDone, "skip already done steps")
+	flags.IntVar(&s.MaxConcurrent, "max-concurrent", s.MaxConcurrent, "Max concurrent container steps")
+	flags.StringSliceVar(&s.SkipSteps, "skip-steps", s.SkipSteps, "skip steps")
 }
 
 type Pipeline struct {
@@ -63,7 +63,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithTags(rc.Tags.Tags),
 			processor.WithMatrix(),
 			processor.WithOutput(rc.Output.Factory, rc.Output.InternalSteps, rc.Output.Expand),
-			processor.WithMonitor(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
+			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
 			processor.WithOtelTrace(rc.Logging.Logger, rc.Otel.Tracer),
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),

@@ -7,15 +7,15 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type pullImage string
+type PullImage string
 
 var (
-	pullImageAlways  pullImage = "always"
-	pullImageNever   pullImage = "never"
-	pullImageMissing pullImage = "missing"
+	PullImageAlways  PullImage = "always"
+	PullImageNever   PullImage = "never"
+	PullImageMissing PullImage = "missing"
 )
 
-func (d pullImage) String() string {
+func (d PullImage) String() string {
 	return string(d)
 }
 
@@ -25,7 +25,7 @@ type ImagePolicyOptions struct {
 
 func NewImagePolicyOptions() ImagePolicyOptions {
 	return ImagePolicyOptions{
-		Policy: pullImageMissing.String(),
+		Policy: PullImageMissing.String(),
 	}
 }
 
@@ -59,11 +59,11 @@ func (s *ImagePolicy) Run(rc *RunContext, next Next) error {
 
 func (s *ImagePolicy) imagePullPolicy() (cruntime.PullImagePolicy, error) {
 	switch s.opts.Policy {
-	case pullImageAlways.String():
+	case PullImageAlways.String():
 		return cruntime.PullImagePolicyAlways, nil
-	case pullImageMissing.String():
+	case PullImageMissing.String():
 		return cruntime.PullImagePolicyMissing, nil
-	case pullImageNever.String():
+	case PullImageNever.String():
 		return cruntime.PullImagePolicyNever, nil
 	default:
 		return "", fmt.Errorf("invalid pull policy given: %s", s.opts.Policy)

@@ -10,8 +10,8 @@ import (
 )
 
 type ContextDirOptions struct {
-	ContextDir string
-	Persist    bool
+	ContextDir    string
+	SkipContextGC bool
 }
 
 func (s ContextDirOptions) Build() Step {
@@ -21,8 +21,8 @@ func (s ContextDirOptions) Build() Step {
 }
 
 func (s *ContextDirOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringVarP(&s.ContextDir, "context-dir", "", "", "Use a static context directory. If any context is found it attempts to recover it.")
-	flags.BoolVarP(&s.Persist, "persist", "", s.Persist, "Keep the context directory after the pipeline execution.")
+	flags.StringVarP(&s.ContextDir, "context-dir", "", s.ContextDir, "Use a static context directory. If any context is found it attempts to recover it.")
+	flags.BoolVarP(&s.SkipContextGC, "skip-context-gc", "", s.SkipContextGC, "Do not keep the context directory after the pipeline execution.")
 }
 
 type ContextDir struct {
@@ -44,7 +44,7 @@ func (s *ContextDir) Run(rc *RunContext, next Next) error {
 
 		contextDir = tmpDir
 
-		if !s.opts.Persist {
+		if s.opts.SkipContextGC {
 			defer func() {
 				_ = os.RemoveAll(contextDir)
 			}()

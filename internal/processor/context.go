@@ -40,6 +40,7 @@ type StepContext struct {
 	Stderr           io.Writer
 	AdditionalStdout []io.Writer
 	AdditionalStderr []io.Writer
+	Events           io.Writer
 	Template         *v1beta1.Template
 	StartedAt        time.Time
 	EndedAt          time.Time
@@ -67,6 +68,7 @@ func NewContext() StepContext {
 		Containers: make(map[string]cruntime.ContainerStatus),
 		Matrix:     make(map[string]string),
 		OutputVars: make(map[string]v1beta1.ParamValue),
+		Events:     io.Discard,
 	}
 }
 

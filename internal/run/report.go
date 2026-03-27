@@ -11,15 +11,15 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type reportType string
+type ReportType string
 
 var (
-	reportTypeTable    reportType = "table"
-	reportTypeMarkdown reportType = "markdown"
-	reportTypeJSON     reportType = "json"
+	ReportTypeTable    ReportType = "table"
+	ReportTypeMarkdown ReportType = "markdown"
+	ReportTypeJSON     ReportType = "json"
 )
 
-func (d reportType) String() string {
+func (d ReportType) String() string {
 	return string(d)
 }
 
@@ -81,7 +81,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 	rc.Report.Factory = reportFactory
 	err = next(rc)
 
-	if reportFactory != nil {
+	if reportFactory != nil && (errors.Is(err, PipelineExecutionError) || err == nil) {
 		if reportErr := reportFactory.Finalize(); reportErr != nil {
 			err = errors.Join(reportErr, err)
 		}
@@ -94,11 +94,11 @@ func (s *Report) buildReportFactory(w io.Writer) (reportFinalizer, error) {
 		return nil, nil
 	}
 	switch s.opts.ReportType {
-	case reportTypeTable.String():
+	case ReportTypeTable.String():
 		return report.Table(w), nil
-	case reportTypeMarkdown.String():
+	case ReportTypeMarkdown.String():
 		return report.Markdown(w), nil
-	case reportTypeJSON.String():
+	case ReportTypeJSON.String():
 		return report.JSON(w), nil
 	default:
 		return nil, fmt.Errorf("invalid report type given: %s", s.opts.ReportType)

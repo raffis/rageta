@@ -14,7 +14,7 @@ type TeardownOptions struct {
 }
 
 func (s *TeardownOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.BoolVarP(&s.Disabled, "no-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
+	flags.BoolVarP(&s.Disabled, "skip-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
 	flags.DurationVarP(&s.GracePeriod, "grace-period", "", s.GracePeriod, "Maximum time to wait for termination and cleanup of steps.")
 }
 

@@ -23,7 +23,7 @@ func (s StepContextOptions) Build() Step {
 }
 
 func (s *StepContextOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringVarP(&s.RecoverFrom, "recover", "", "", "Recover from previous execution. Path to context directory.")
+	flags.StringVarP(&s.RecoverFrom, "recover", "", s.RecoverFrom, "Recover from previous execution. Path to context directory.")
 }
 
 type StepContext struct {

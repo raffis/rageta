@@ -18,18 +18,18 @@ import (
 	"golang.org/x/term"
 )
 
-type renderOutput string
+type RenderOutput string
 
 var (
-	renderOutputPrefix                renderOutput = "prefix"
-	renderOutputUI                    renderOutput = "ui"
-	renderOutputPassthrough           renderOutput = "passthrough"
-	renderOutputDiscard               renderOutput = "discard"
-	renderOutputBuffer                renderOutput = "buffer"
-	renderOutputBufferDefaultTemplate string       = "{{ .Buffer }}"
+	RenderOutputPrefix                RenderOutput = "prefix"
+	RenderOutputUI                    RenderOutput = "ui"
+	RenderOutputPassthrough           RenderOutput = "passthrough"
+	RenderOutputDiscard               RenderOutput = "discard"
+	RenderOutputBuffer                RenderOutput = "buffer"
+	RenderOutputBufferDefaultTemplate string       = "{{ .Buffer }}"
 )
 
-func (d renderOutput) String() string {
+func (d RenderOutput) String() string {
 	return string(d)
 }
 
@@ -57,10 +57,10 @@ func NewOutputOptions() OutputOptions {
 
 func electDefaultOutput() string {
 	if term.IsTerminal(int(os.Stdout.Fd())) {
-		return renderOutputUI.String()
+		return RenderOutputUI.String()
 	}
 
-	return renderOutputPrefix.String()
+	return RenderOutputPrefix.String()
 }
 
 type Output struct {
@@ -84,6 +84,13 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
+	if s.opts.Output != RenderOutputUI.String() {
+		rc.Logging.Logger, err = rc.Logging.Builder(rc.Output.Stderr)
+		if err != nil {
+			return err
+		}
+	}
+
 	rc.Output.Factory = outputFactory
 	rc.Output.Expand = s.opts.Expand
 	rc.Output.InternalSteps = s.opts.InternalSteps
@@ -94,7 +101,7 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	if errors.Is(err, PipelineSetupError) {
+	if err != nil && !errors.Is(err, PipelineExecutionError) {
 		s.tuiApp.Quit()
 	}
 
@@ -118,17 +125,17 @@ func (s *Output) buildOutputFactory(rc *RunContext) (processor.OutputFactory, er
 	}
 
 	switch renderer {
-	case renderOutputUI.String():
+	case RenderOutputUI.String():
 		return output.UI(s.uiOutput(rc)), nil
-	case renderOutputPrefix.String():
+	case RenderOutputPrefix.String():
 		return output.Prefix(rc.Output.Stdout, rc.Output.Stderr), nil
-	case renderOutputPassthrough.String():
+	case RenderOutputPassthrough.String():
 		return output.Passthrough(rc.Output.Stdout, rc.Output.Stderr), nil
-	case renderOutputDiscard.String():
+	case RenderOutputDiscard.String():
 		return output.Discard(), nil
-	case renderOutputBuffer.String():
+	case RenderOutputBuffer.String():
 		if opts == "" {
-			opts = renderOutputBufferDefaultTemplate
+			opts = RenderOutputBufferDefaultTemplate
 		}
 		tmpl, err := template.New("output").Parse(opts)
 		if err != nil {
@@ -141,7 +148,7 @@ func (s *Output) buildOutputFactory(rc *RunContext) (processor.OutputFactory, er
 }
 
 func (s *Output) uiOutput(rc *RunContext) *tea.Program {
-	if s.opts.Output != renderOutputUI.String() {
+	if s.opts.Output != RenderOutputUI.String() {
 		return nil
 	}
 

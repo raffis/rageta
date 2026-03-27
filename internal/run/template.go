@@ -18,8 +18,8 @@ type TemplateOptions struct {
 }
 
 func (s *TemplateOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringSliceVarP(&s.Volumes, "bind", "b", nil, "Bind directory as volume to the pipeline.")
-	flags.StringVarP(&s.User, "user", "u", "", "Username or UID (format: <name|uid>[:<group|gid>])")
+	flags.StringSliceVarP(&s.Volumes, "bind", "b", s.Volumes, "Bind directory as volume to the pipeline.")
+	flags.StringVarP(&s.User, "user", "u", s.User, "Username or UID (format: <name|uid>[:<group|gid>])")
 }
 
 func (s TemplateOptions) Build() Step {
