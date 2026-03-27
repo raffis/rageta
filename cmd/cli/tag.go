@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/provider"
+	"github.com/raffis/rageta/internal/run"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
@@ -74,16 +75,6 @@ func init() {
 	tagCmd.Flags().StringVar(&tagArgs.revision, "revision", "", "the source revision in the format '<branch|tag>@sha1:<commit-sha>'")
 	tagCmd.Flags().StringArrayVarP(&tagArgs.tags, "tags", "t", nil, "tag additional tags")
 	tagCmd.Flags().StringArrayVarP(&tagArgs.annotations, "annotations", "a", nil, "Set custom annotations in the format '<key>=<value>'")
-
-	tagCmd.SetUsageFunc(func(cmd *cobra.Command) error {
-		printHelpCommand(cmd)
-		return nil
-	})
-
-	tagCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		printHelpCommand(cmd)
-	})
-
 	rootCmd.AddCommand(tagCmd)
 }
 
@@ -163,7 +154,7 @@ func tagCmdRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	err = persistDatabase(rootArgs.dbPath, localDB)
+	err = run.PersistDatabase(rootArgs.dbPath, localDB)
 	if err != nil {
 		return fmt.Errorf("failed to persist database: %w", err)
 	}

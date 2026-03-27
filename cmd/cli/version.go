@@ -24,16 +24,6 @@ var versionArgs = versionFlags{}
 
 func init() {
 	versionCmd.Flags().BoolVarP(&versionArgs.json, "json", "", !term.IsTerminal(int(os.Stdout.Fd())), "")
-
-	versionCmd.SetUsageFunc(func(cmd *cobra.Command) error {
-		printHelpCommand(cmd)
-		return nil
-	})
-
-	versionCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		printHelpCommand(cmd)
-	})
-
 	rootCmd.AddCommand(versionCmd)
 }
 

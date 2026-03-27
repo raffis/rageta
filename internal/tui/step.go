@@ -11,6 +11,7 @@ import (
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
+	"github.com/raffis/rageta/internal/xio"
 )
 
 // Display constants for step formatting
@@ -40,6 +41,7 @@ func NewStep() StepMsg {
 	loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 
 	return StepMsg{
+		w:        xio.NewLineWriter(&viewport),
 		viewport: &viewport,
 		loader:   loader,
 	}
@@ -47,6 +49,7 @@ func NewStep() StepMsg {
 
 // StepMsg represents a pipeline step with its state and UI components
 type StepMsg struct {
+	w           *xio.LineWriter
 	viewport    *pager.Model
 	loader      spinner.Model
 	Name        string
@@ -60,9 +63,13 @@ type StepMsg struct {
 	listHeight  int
 }
 
+func (t StepMsg) Flush() error {
+	return t.w.Flush()
+}
+
 // Write implements io.Writer interface for the step's viewport
 func (t StepMsg) Write(b []byte) (int, error) {
-	return t.viewport.Write(b)
+	return t.w.Write(b)
 }
 
 // GetName returns the display name of the step
@@ -95,6 +102,8 @@ func (t *StepMsg) TagsAsString() string {
 		tagLabel := styles.TagLabel.
 			Background(lipgloss.Color(tag.Color)).
 			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+			PaddingLeft(1).
+			PaddingRight(1).
 			Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value))
 		tags = append(tags, tagLabel)
 	}

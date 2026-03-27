@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/ocisetup"
+	"github.com/raffis/rageta/internal/run"
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -35,9 +36,7 @@ func newHelpFlags() helpFlags {
 func init() {
 	helpArgs.ociOptions.BindFlags(helpCmd.Flags())
 	helpCmd.Flags().BoolVarP(&helpArgs.full, "full", "f", false, "Show full help page including all flags from rageta")
-
 	rootCmd.AddCommand(helpCmd)
-	// Hide Cobra's default help command so only our custom help subcommand is shown
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 }
 
@@ -50,7 +49,7 @@ func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 		defer cancel()
 	}
 
-	store, persistDB := createProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	store, persistDB := run.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
@@ -125,7 +124,7 @@ func printHelpCommand(cmd *cobra.Command) {
 		}
 	}
 
-	if cmd == runCmd {
+	if cmd == runCmd && len(runFlagGroups) > 0 {
 		// Run has grouped flag sets (Execution, Pipeline, etc.)
 		for _, group := range runFlagGroups {
 			flagBlocks := formatFlagSetStyle(group.Set)

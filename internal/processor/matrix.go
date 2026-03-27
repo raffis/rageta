@@ -12,35 +12,32 @@ import (
 
 	"maps"
 
-	"github.com/alitto/pond/v2"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithMatrix(pool pond.Pool) ProcessorBuilder {
+func WithMatrix() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 || pool == nil {
+		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 {
 			return nil
 		}
 
 		return &Matrix{
-			matrix:        spec.Matrix.Params,
-			include:       spec.Matrix.Include,
-			failFast:      spec.Matrix.FailFast,
-			stepName:      spec.Name,
-			pool:          pool,
-			maxConcurrent: spec.Matrix.MaxConcurrent,
+			matrix:   spec.Matrix.Params,
+			include:  spec.Matrix.Include,
+			failFast: spec.Matrix.FailFast,
+			stepName: spec.Name,
+			pool:     make(chan struct{}, spec.Matrix.MaxConcurrent),
 		}
 	}
 }
 
 type Matrix struct {
-	matrix        []v1beta1.Param
-	include       []v1beta1.IncludeParam
-	failFast      bool
-	stepName      string
-	pool          pond.Pool
-	maxConcurrent int
+	matrix   []v1beta1.Param
+	include  []v1beta1.IncludeParam
+	failFast bool
+	stepName string
+	pool     chan struct{}
 }
 
 var ErrEmptyMatrix = &pipelineError{
@@ -105,11 +102,6 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		pool := s.pool
-		if s.maxConcurrent > 0 {
-			pool = s.pool.NewSubpool(s.maxConcurrent)
-		}
-
 		for matrixKey, matrix := range matrixes {
 			copyCtx := ctx.DeepCopy()
 			copyCtx.Context = cancelCtx
@@ -126,13 +118,17 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				copyCtx.NamePrefix = SuffixName(copyCtx.NamePrefix, hex.EncodeToString(b)[:6])
 			}
 
-			if err := pool.Go(func() {
-				t, err := next(copyCtx)
+			go func() {
+				if cap(s.pool) > 0 {
+					s.pool <- struct{}{}
+					defer func() {
+						<-s.pool
+					}()
+				}
 
+				t, err := next(copyCtx)
 				results <- result{t, err}
-			}); err != nil {
-				return ctx, err
-			}
+			}()
 		}
 
 		var done int

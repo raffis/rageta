@@ -7,16 +7,17 @@ import (
 	"time"
 
 	"github.com/raffis/rageta/internal/styles"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithMonitor(enabled bool, interval time.Duration, dev io.Writer) ProcessorBuilder {
+func WithEvents(enabled bool, interval time.Duration, dev io.Writer) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if !enabled {
 			return nil
 		}
 
-		return &Monitor{
+		return &Events{
 			stepName: spec.Name,
 			ticker:   time.NewTicker(interval),
 			dev:      dev,
@@ -24,27 +25,25 @@ func WithMonitor(enabled bool, interval time.Duration, dev io.Writer) ProcessorB
 	}
 }
 
-const prompt = `➤`
-
-type Monitor struct {
+type Events struct {
 	stepName string
 	ticker   *time.Ticker
 	dev      io.Writer
 }
 
-func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Events) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		if ctx.StartedAt.IsZero() {
 			return ctx, errors.New("step not started, missing startedAt")
 		}
 
-		var dev io.Writer
+		origDev := ctx.Events
 
 		switch {
 		case s.dev != nil:
-			dev = s.dev
+			ctx.Events = s.dev
 		case ctx.Stderr != nil && ctx.Stderr != io.Discard:
-			dev = ctx.Stderr
+			ctx.Events = ctx.Stderr
 		default:
 			return next(ctx)
 		}
@@ -55,10 +54,11 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}()
 
 		stepName := SuffixName(s.stepName, ctx.NamePrefix)
+		ctx.Events = xio.NewLineWriter(xio.NewPrefixWriter(xio.NewLipglossWriter(ctx.Events, styles.Highlight), []byte("➤ ")))
 
 		progress := func() {
 			duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Waiting for %q to finish [%s]", prompt, stepName, duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Waiting for %q to finish [%s]\n", stepName, duration)
 		}
 
 		go func() {
@@ -73,24 +73,24 @@ func (s *Monitor) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}()
 
-		_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q started", prompt, stepName)) + "\n"))
-
+		_, _ = fmt.Fprintf(ctx.Events, "Task %q started\n", stepName)
 		ctx, err := next(ctx)
 		duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
 
 		switch {
 		case err == nil:
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q done [%s]", prompt, stepName, duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Task %q done [%s]\n", stepName, duration)
 		case errors.Is(err, ErrAllowFailure):
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q failed and pipeline is continued [%s]", prompt, stepName, duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Task %q failed and pipeline is continued [%s]\n", stepName, duration)
 		case errors.Is(err, ErrConditionFalse):
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q condition check did not pass [%s]", prompt, stepName, duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Task %q condition check did not pass [%s]\n", stepName, duration)
 		case errors.Is(err, ErrSkipDone):
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q skipped as it was marked as done [%s]", prompt, stepName, duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Task %q skipped as it was marked as done [%s]\n", stepName, duration)
 		default:
-			_, _ = dev.Write([]byte(styles.Highlight.Render(fmt.Sprintf("%s Task %q failed: %q [%s]", prompt, stepName, err.Error(), duration)) + "\n"))
+			_, _ = fmt.Fprintf(ctx.Events, "Task %q failed: %q [%s]\n", stepName, err.Error(), duration)
 		}
 
+		ctx.Events = origDev
 		return ctx, err
 	}, nil
 }

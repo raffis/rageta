@@ -56,6 +56,17 @@ type ErrorGetResult interface {
 	Result() string
 }
 
-type ErrorGetStepName interface {
+type StepError interface {
 	StepName() string
+	Context() StepContext
+}
+
+type ErrorContainer interface {
+	ExitCode
+	Image() string
+	ContainerName() string
+}
+
+type ExitCode interface {
+	ExitCode() int
 }

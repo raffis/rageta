@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -13,6 +14,7 @@ import (
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -129,14 +131,54 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
+
+		_, _ = ctx.Events.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
 		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
-			return ctx, fmt.Errorf("container %s failed: %w", pod.Name, err)
+			var exitCode int
+			var runtimeErr ExitCode
+			if errors.As(err, &runtimeErr) {
+				exitCode = runtimeErr.ExitCode()
+			}
+
+			return ctx, &ContainerError{
+				containerName: pod.Name,
+				image:         container.Image,
+				exitCode:      exitCode,
+				err:           err,
+			}
 		}
 
 		return next(ctx)
 	}, nil
+}
+
+type ContainerError struct {
+	containerName string
+	image         string
+	exitCode      int
+	err           error
+}
+
+func (e *ContainerError) Error() string {
+	return fmt.Sprintf("container failed: %s", e.err.Error())
+}
+
+func (e *ContainerError) Unwrap() error {
+	return e.err
+}
+
+func (e *ContainerError) ContainerName() string {
+	return e.containerName
+}
+
+func (e *ContainerError) ExitCode() int {
+	return e.exitCode
+}
+
+func (e *ContainerError) Image() string {
+	return e.image
 }
 
 func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
@@ -211,6 +253,12 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
 		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
 	)
+
+	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
+		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
+		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events, []byte("$ ")))
+		w.Write([]byte(cmd))
+	}
 
 	if err != nil {
 		return ctx, err
