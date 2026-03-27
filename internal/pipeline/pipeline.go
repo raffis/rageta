@@ -44,14 +44,14 @@ func (p *pipeline) Step(name string) (processor.Step, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no such step found: %s", name)
+	return nil, fmt.Errorf("no such step exists: %s", name)
 }
 
 func (p *pipeline) withStep(name string, processors []processor.Bootstraper) error {
 	if slices.ContainsFunc(p.steps, func(s *pipelineStep) bool {
 		return s.name == name
 	}) {
-		return fmt.Errorf("step already exists: %s", name)
+		return fmt.Errorf("duplicate step: %s", name)
 	}
 
 	p.steps = append(p.steps, &pipelineStep{
