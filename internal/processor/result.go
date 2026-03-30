@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"time"
 
@@ -45,15 +46,26 @@ func (e *stepError) Context() StepContext {
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
+
+		ctx.uniqueName = s.stepName
+		if ctx.namespace != "" {
+			ctx.uniqueName = fmt.Sprintf("%s-%s", ctx.namespace, s.stepName)
+		}
+
+		hasher := sha1.New()
+		hasher.Write([]byte(ctx.uniqueName))
+		b := hasher.Sum(nil)
+		ctx.uniqueID = fmt.Sprintf("%x", b)
+
 		ctx, err := next(ctx)
 		ctx.EndedAt = time.Now()
 
 		if err != nil {
 			err = &stepError{
-				parent:         err,
-				stepName:       s.stepName,
-				uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
-				context:        ctx,
+				parent:   err,
+				stepName: s.stepName,
+				//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
+				context: ctx,
 			}
 			ctx.Error = err
 		} else {
@@ -61,6 +73,10 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		ctx.Steps[s.stepName] = &ctx
+		ctx.uniqueName = ""
+		ctx.namespace = ""
+		ctx.uniqueID = ""
+
 		return ctx, err
 	}, nil
 }

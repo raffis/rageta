@@ -3,7 +3,6 @@ package processor
 import (
 	"context"
 	"crypto/sha1"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"reflect"
@@ -40,17 +39,27 @@ type Matrix struct {
 	pool     chan struct{}
 }
 
+type MatrixContext struct {
+	Params map[string]string
+}
+
+func newMatrixContext() MatrixContext {
+	return MatrixContext{
+		Params: make(map[string]string),
+	}
+}
+
 var ErrEmptyMatrix = &pipelineError{
 	message:      "matrix is empty",
 	result:       "empty-matrix",
 	abortOnError: false,
 }
 
-type matrixContext struct{}
+type isMatrixContext struct{}
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		if ctx.Value(matrixContext{}) == s {
+		if ctx.Value(isMatrixContext{}) == s {
 			return next(ctx)
 		}
 
@@ -85,7 +94,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ctx.Context = context.WithValue(ctx, matrixContext{}, s)
+		ctx.Context = context.WithValue(ctx, isMatrixContext{}, s)
 
 		matrixes, err := s.build(matrixParams)
 		if err != nil {
@@ -103,20 +112,14 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		defer cancel()
 
 		for matrixKey, matrix := range matrixes {
-			copyCtx := ctx.DeepCopy()
-			copyCtx.Context = cancelCtx
-			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
-			copyCtx.Matrix = matrix
-
 			hasher := sha1.New()
 			hasher.Write([]byte(matrixKey))
 			b := hasher.Sum(nil)
 
-			if copyCtx.NamePrefix == "" {
-				copyCtx.NamePrefix = hex.EncodeToString(b)[:6]
-			} else {
-				copyCtx.NamePrefix = SuffixName(copyCtx.NamePrefix, hex.EncodeToString(b)[:6])
-			}
+			copyCtx := ctx.DeepCopy().WithNamespace(fmt.Sprintf("%x", b)[:6])
+			copyCtx.Context = cancelCtx
+			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
+			copyCtx.Matrix.Params = matrix
 
 			go func() {
 				if cap(s.pool) > 0 {
@@ -138,10 +141,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			maps.Copy(ctx.Steps, res.ctx.Steps)
 
 			//Unify matrix outputs into an array output for the current step
-			for paramKey, paramValue := range res.ctx.OutputVars {
+			for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
 				var param v1beta1.ParamValue
 
-				if val, ok := ctx.OutputVars[paramKey]; !ok {
+				if val, ok := ctx.OutputVars.OutputVars[paramKey]; !ok {
 					param = v1beta1.ParamValue{
 						Type: v1beta1.ParamTypeArray,
 					}
@@ -153,7 +156,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					param.ArrayVal = append(param.ArrayVal, paramValue.StringVal)
 				}
 
-				ctx.OutputVars[paramKey] = param
+				ctx.OutputVars.OutputVars[paramKey] = param
 			}
 
 			if res.err != nil && AbortOnError(res.err) {
@@ -222,7 +225,7 @@ func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, i
 			}
 		}
 
-		ctx = ctx.WithTag(tag)
+		ctx.Tags.Add(tag)
 	}
 
 	maps.Copy(matrixParams, includeParams)
@@ -240,9 +243,7 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 		var combinationValues []string
 		for _, key := range keys {
 			val := currentCombination[key]
-			// Handle different types (e.g., slices)
 			if reflect.TypeOf(val).Kind() == reflect.Slice {
-				// If it's a slice, join all its elements with a delimiter
 				sliceVal := reflect.ValueOf(val)
 				for i := range sliceVal.Len() {
 					combinationValues = append(combinationValues, fmt.Sprintf("%v", sliceVal.Index(i).Interface()))
@@ -252,13 +253,11 @@ func (s *Matrix) generateCombinations(mapData map[string]v1beta1.ParamValue, key
 			}
 		}
 
-		// Join the values using "-" as a delimiter to form the unique key
 		uniqueKey := strings.Join(combinationValues, "-")
 		(*result)[uniqueKey] = combinationCopy
 		return
 	}
 
-	// Get the current key and its corresponding value
 	currentKey := keys[index]
 	value := mapData[currentKey]
 

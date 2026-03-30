@@ -46,9 +46,8 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to open pipeline: %w", err)
 		}
 
-		inheritCtx := ctx.DeepCopy()
-		inheritCtx.NamePrefix = SuffixName(s.stepName, ctx.NamePrefix)
-		inheritCtx = inheritCtx.WithTag(Tag{
+		inheritCtx := ctx.DeepCopy().WithNamespace(s.stepName)
+		inheritCtx.Tags.Add(Tag{
 			Key:   "pipeline",
 			Value: pipe.Name,
 		})
@@ -65,7 +64,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		s.mergeContext(outputContext, ctx)
-		maps.Copy(ctx.OutputVars, outputs)
+		maps.Copy(ctx.OutputVars.OutputVars, outputs)
 
 		return next(ctx)
 	}, nil
@@ -81,7 +80,7 @@ func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValu
 }
 
 func (s *Inherit) mergeContext(from, to StepContext) {
-	maps.Copy(to.Envs, from.Envs)
+	maps.Copy(to.EnvVars.Envs, from.EnvVars.Envs)
 
 	for k, v := range from.Steps {
 		to.Steps[SuffixName(k, s.stepName)] = v

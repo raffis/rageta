@@ -37,20 +37,28 @@ type Output struct {
 	decouple      bool
 }
 
+type StreamsContext struct {
+	Stdin            io.Reader
+	Stdout           io.Writer
+	Stderr           io.Writer
+	AdditionalStdout []io.Writer
+	AdditionalStderr []io.Writer
+}
+
 func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		if ctx.HasTag("pipeline") && !s.decouple {
+		if ctx.Tags.Has("pipeline") && !s.decouple {
 			return next(ctx)
 		}
 
 		stdout, stderr, close := s.outputFactory(ctx, s.stepName, s.short)
 
-		if ctx.Stdout != io.Discard {
-			ctx.Stdout = stdout
+		if ctx.Streams.Stdout != io.Discard {
+			ctx.Streams.Stdout = stdout
 		}
 
-		if ctx.Stderr != io.Discard {
-			ctx.Stderr = stderr
+		if ctx.Streams.Stderr != io.Discard {
+			ctx.Streams.Stderr = stderr
 		}
 
 		ctx, err := next(ctx)
@@ -58,8 +66,8 @@ func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ctx.Stderr = nil
-		ctx.Stdout = nil
+		ctx.Streams.Stderr = nil
+		ctx.Streams.Stdout = nil
 
 		return ctx, err
 	}, nil

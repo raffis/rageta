@@ -21,16 +21,20 @@ type Template struct {
 	stepTemplate   *v1beta1.Template
 }
 
+type TemplateContext struct {
+	Template *v1beta1.Template
+}
+
 func (s *Template) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		originTemplate := ctx.Template
 
-		if ctx.Template == nil {
-			ctx.Template = &s.globalTemplate
+		if ctx.Template.Template == nil {
+			ctx.Template.Template = &s.globalTemplate
 		}
 
 		if s.stepTemplate != nil {
-			if err := mergeTemplate(ctx.Template, s.stepTemplate); err != nil {
+			if err := mergeTemplate(ctx.Template.Template, s.stepTemplate); err != nil {
 				return ctx, err
 			}
 		}

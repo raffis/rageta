@@ -3,7 +3,7 @@ package processor
 import (
 	"errors"
 	"os"
-	"path/filepath"
+	"path"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -22,7 +22,7 @@ type TmpDir struct {
 
 func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		dataDir := filepath.Join(ctx.Dir, SuffixName(s.stepName, ctx.NamePrefix), "_data")
+		dataDir := path.Join(ctx.ContextDir, ctx.UniqueID, "data")
 
 		if _, err := os.Stat(dataDir); errors.Is(err, os.ErrNotExist) {
 			err := os.MkdirAll(dataDir, 0700)
@@ -31,7 +31,6 @@ func (s *TmpDir) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		ctx.DataDir = dataDir
 		ctx, err := next(ctx)
 		return ctx, err
 	}, nil

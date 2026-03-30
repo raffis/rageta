@@ -61,10 +61,10 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			copyCtx := ctx.DeepCopy()
 
 			if len(steps) == i+1 {
-				copyCtx.Stdin = stdout
+				copyCtx.Streams.Stdin = stdout
 			} else {
 				if !s.tee {
-					copyCtx.Stdout = io.Discard
+					copyCtx.Streams.Stdout = io.Discard
 				}
 
 				r, w := io.Pipe()
@@ -72,10 +72,10 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				stepEntrypoints[i].w = w
 
 				if stdout != nil {
-					copyCtx.Stdin = stdout
+					copyCtx.Streams.Stdin = stdout
 				}
 
-				copyCtx.AdditionalStdout = append(copyCtx.AdditionalStdout, w)
+				copyCtx.Streams.AdditionalStdout = append(copyCtx.Streams.AdditionalStdout, w)
 				stdout = r
 			}
 

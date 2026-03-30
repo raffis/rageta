@@ -52,12 +52,12 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			return ctx, err
 		}
 
-		stdout := ctx.Stdout
-		stderr := ctx.Stderr
+		stdout := ctx.Streams.Stdout
+		stderr := ctx.Streams.Stderr
 
 		if streams.Stdout != nil {
 			if !s.tee {
-				ctx.Stdout = io.Discard
+				ctx.Streams.Stdout = io.Discard
 			}
 
 			outFile, err := os.OpenFile(streams.Stdout.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
@@ -68,13 +68,13 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			defer func() {
 				_ = outFile.Close()
 			}()
-			ctx.AdditionalStdout = append(ctx.AdditionalStdout, outFile)
+			ctx.Streams.AdditionalStdout = append(ctx.Streams.AdditionalStdout, outFile)
 			stdoutRedirect = outFile
 		}
 
 		if streams.Stderr != nil {
 			if !s.tee {
-				ctx.Stdout = io.Discard
+				ctx.Streams.Stdout = io.Discard
 			}
 
 			outFile, err := os.OpenFile(streams.Stderr.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
@@ -85,20 +85,20 @@ func (s *StdioRedirect) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			defer func() {
 				_ = outFile.Close()
 			}()
-			ctx.AdditionalStderr = append(ctx.AdditionalStderr, outFile)
+			ctx.Streams.AdditionalStderr = append(ctx.Streams.AdditionalStderr, outFile)
 			stderrRedirect = outFile
 		}
 
 		ctx, err := next(ctx)
-		ctx.AdditionalStdout = slices.DeleteFunc(ctx.AdditionalStdout, func(w io.Writer) bool {
+		ctx.Streams.AdditionalStdout = slices.DeleteFunc(ctx.Streams.AdditionalStdout, func(w io.Writer) bool {
 			return w == stdoutRedirect
 		})
-		ctx.AdditionalStderr = slices.DeleteFunc(ctx.AdditionalStderr, func(w io.Writer) bool {
+		ctx.Streams.AdditionalStderr = slices.DeleteFunc(ctx.Streams.AdditionalStderr, func(w io.Writer) bool {
 			return w == stderrRedirect
 		})
 
-		ctx.Stdout = stdout
-		ctx.Stderr = stderr
+		ctx.Streams.Stdout = stdout
+		ctx.Streams.Stderr = stderr
 
 		return ctx, err
 	}, nil

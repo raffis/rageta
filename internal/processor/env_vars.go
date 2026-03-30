@@ -3,6 +3,7 @@ package processor
 import (
 	"maps"
 	"os"
+	"path"
 
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -20,18 +21,29 @@ type EnvVars struct {
 	env map[string]string
 }
 
+type EnvVarsContext struct {
+	Envs       map[string]string
+	OutputPath string
+}
+
+func newEnvVarsContext() EnvVarsContext {
+	return EnvVarsContext{
+		Envs: make(map[string]string),
+	}
+}
+
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		originEnvs := make(map[string]string, len(ctx.Envs))
-		maps.Copy(originEnvs, ctx.Envs)
-		maps.Copy(ctx.Envs, s.env)
+		originEnvs := make(map[string]string, len(ctx.EnvVars.Envs))
+		maps.Copy(originEnvs, ctx.EnvVars.Envs)
+		maps.Copy(ctx.EnvVars.Envs, s.env)
 		if err := substitute.Substitute(ctx.ToV1Beta1(),
-			ctx.Envs,
+			ctx.EnvVars.Envs,
 		); err != nil {
 			return ctx, err
 		}
 
-		envTmp, err := os.CreateTemp(ctx.Dir, "env")
+		envTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID), "env")
 		if err != nil {
 			return ctx, err
 		}
@@ -42,7 +54,7 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			_ = os.Remove(envTmp.Name())
 		}()
 
-		ctx.Env = envTmp.Name()
+		ctx.EnvVars.OutputPath = envTmp.Name()
 		ctx, nextErr = next(ctx)
 		if syncErr := envTmp.Sync(); syncErr != nil {
 			nextErr = syncErr
@@ -54,7 +66,8 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		maps.Copy(originEnvs, envs)
-		ctx.Envs = originEnvs
+		ctx.EnvVars.Envs = originEnvs
+		ctx.EnvVars.OutputPath = ""
 
 		return ctx, nextErr
 

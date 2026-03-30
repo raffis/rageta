@@ -112,9 +112,9 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	contextDir := e.tmpDir
 
-	if pipeline.Name != "" {
+	/*if pipeline.Name != "" {
 		contextDir = filepath.Join(contextDir, pipeline.Name)
-	}
+	}*/
 
 	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.Dir = contextDir
@@ -160,12 +160,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 		entrypoint: command.Entrypoint,
 	}
 
-	steps, err := resolveExtends(command.Steps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve step extends: %w", err)
-	}
-
-	for _, spec := range steps {
+	for _, spec := range command.Steps {
 		name := spec.Name
 		origName := name
 		processors := e.stepBuilder(spec)

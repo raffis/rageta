@@ -35,14 +35,14 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		logger := s.logger
 
-		if ctx.Stderr != nil && ctx.Stderr != io.Discard && !s.detached {
+		if ctx.Streams.Stderr != nil && ctx.Streams.Stderr != io.Discard && !s.detached {
 			var err error
-			logger, err = s.logBuilder(ctx.Stderr)
+			logger, err = s.logBuilder(ctx.Streams.Stderr)
 			if err != nil {
 				return ctx, err
 			}
 
-			for _, tag := range ctx.Tags() {
+			for _, tag := range ctx.Tags.Tags() {
 				logger = logger.WithValues(tag.Key, tag.Value)
 			}
 		}

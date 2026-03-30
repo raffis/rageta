@@ -46,11 +46,11 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			parentCtx := NewContext()
-			parentCtx.Dir = ctx.Dir
-			parentCtx.Template = ctx.Template.DeepCopy()
+			parentCtx.ContextDir = ctx.ContextDir
+			parentCtx.Template.Template = ctx.Template.Template.DeepCopy()
 
 			outCtx, err := next(parentCtx)
-			outCtx.Inputs = ctx.Inputs
+			outCtx.InputVars = ctx.InputVars
 			ctx.Merge(outCtx)
 
 			if err != nil {

@@ -26,6 +26,16 @@ type InputVars struct {
 	inputs []v1beta1.InputParam
 }
 
+type InputVarsContext struct {
+	Inputs map[string]v1beta1.ParamValue
+}
+
+func newInputVarsContext() InputVarsContext {
+	return InputVarsContext{
+		Inputs: make(map[string]v1beta1.ParamValue),
+	}
+}
+
 func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		expr := make(map[string]cel.Program)
@@ -46,8 +56,8 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		originInputs := make(map[string]v1beta1.ParamValue, len(ctx.Inputs))
-		maps.Copy(originInputs, ctx.Inputs)
+		originInputs := make(map[string]v1beta1.ParamValue, len(ctx.InputVars.Inputs))
+		maps.Copy(originInputs, ctx.ctx.InputVars.Inputs)
 
 		vars := ctx.ToV1Beta1()
 		for _, input := range s.inputs {
@@ -62,15 +72,15 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 				switch v := value.Value().(type) {
 				case string:
-					ctx.Inputs[input.Name] = v1beta1.ParamValue{
+					ctx.InputVars.Inputs[input.Name] = v1beta1.ParamValue{
 						StringVal: v,
 						Type:      v1beta1.ParamTypeString,
 					}
 				}
 
 			case input.Default != nil:
-				if _, ok := ctx.Inputs[input.Name]; !ok {
-					ctx.Inputs[input.Name] = *input.Default
+				if _, ok := ctx.InputVars.Inputs[input.Name]; !ok {
+					ctx.InputVars.Inputs[input.Name] = *input.Default
 				}
 			default:
 				return ctx, fmt.Errorf("invalid input param given `%s`", input.Name)
@@ -78,7 +88,7 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		ctx, err := next(ctx)
-		ctx.Inputs = originInputs
+		ctx.InputVars.Inputs = originInputs
 		return ctx, err
 	}, nil
 }

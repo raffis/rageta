@@ -78,6 +78,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithNeeds(),
 			processor.WithStdioRedirect(false),
 			processor.WithMaxConcurrent(pool),
+			processor.WithContainerLogs(true),
 			processor.WithRun(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Output.Factory, rc.Teardown.Teardown),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 			processor.WithAnd(),

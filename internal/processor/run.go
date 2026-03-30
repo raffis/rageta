@@ -249,14 +249,14 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
 }
 
 func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Stdin,
-		io.MultiWriter(append(ctx.AdditionalStdout, ctx.Stdout)...),
-		io.MultiWriter(append(ctx.AdditionalStderr, ctx.Stderr)...),
+	await, err := s.driver.CreatePod(ctx, pod, ctx.Streams.Stdin,
+		io.MultiWriter(append(ctx.Streams.AdditionalStdout, ctx.Streams.Stdout)...),
+		io.MultiWriter(append(ctx.Streams.AdditionalStderr, ctx.Streams.Stderr)...),
 	)
 
 	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
 		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
-		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events, []byte("$ ")))
+		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))
 		w.Write([]byte(cmd))
 	}
 
