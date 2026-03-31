@@ -32,7 +32,7 @@ func (r *markdown) Finalize() error {
 
 	for i, step := range r.store.Ordered() {
 		var tags []string
-		for _, tag := range step.result.Tags() {
+		for _, tag := range step.result.Tags.Tags() {
 			tags = append(tags, fmt.Sprintf("`%s: %s`", tag.Key, tag.Value))
 		}
 

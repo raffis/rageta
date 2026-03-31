@@ -46,7 +46,7 @@ func (c StepContext) UniqueID() string {
 }
 
 func (c StepContext) UniqueName() string {
-	return c.uniqueID
+	return c.uniqueName
 }
 
 func (c StepContext) WithNamespace(name string) StepContext {
@@ -76,38 +76,41 @@ func NewContext() StepContext {
 
 func (c StepContext) DeepCopy() StepContext {
 	copy := NewContext()
+	copy.uniqueID = c.uniqueID
+	copy.uniqueName = c.uniqueName
+	copy.namespace = c.namespace
 	copy.Context = c.Context
-	copy.NamePrefix = c.NamePrefix
-	copy.Dir = c.Dir
-	copy.DataDir = c.DataDir
-	copy.Stdout = c.Stdout
-	copy.Stderr = c.Stderr
-	copy.Stdin = c.Stdin
-	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
-	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
-	copy.Outputs = append(copy.Outputs, c.Outputs...)
-	copy.OutputVars = maps.Clone(c.OutputVars)
+	copy.ContextDir = c.ContextDir
+	copy.Streams.Stdout = c.Streams.Stdout
+	copy.Streams.Stderr = c.Streams.Stderr
+	copy.Streams.Stdin = c.Streams.Stdin
+	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
+	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
+	copy.OutputVars.Outputs = append(copy.OutputVars.Outputs, c.OutputVars.Outputs...)
+	copy.OutputVars.OutputVars = maps.Clone(c.OutputVars.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
-	copy.tags = append(copy.tags, c.tags...)
-	copy.Inputs = maps.Clone(c.Inputs)
-	copy.Envs = maps.Clone(c.Envs)
-	copy.Secrets = maps.Clone(c.Secrets)
+	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
+	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
+	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
+	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
 	copy.Containers = maps.Clone(c.Containers)
-	copy.Matrix = maps.Clone(c.Matrix)
-	if c.Template != nil {
-		copy.Template = c.Template.DeepCopy()
+	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
+	if c.Template.Template != nil {
+		copy.Template.Template = c.Template.Template.DeepCopy()
 	}
 
 	return copy
 }
 
 func (t StepContext) Merge(c StepContext) StepContext {
-	maps.Copy(t.Envs, c.Envs)
-	maps.Copy(t.Secrets, c.Secrets)
-	maps.Copy(t.Inputs, c.Inputs)
+	maps.Copy(t.EnvVars.Envs, c.EnvVars.Envs)
+	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
+	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Steps, c.Steps)
 	maps.Copy(t.Containers, c.Containers)
-	_ = mergeTemplate(t.Template, c.Template)
+	if t.Template.Template != nil && c.Template.Template != nil {
+		_ = mergeTemplate(t.Template.Template, c.Template.Template)
+	}
 
 	return t
 }
@@ -162,8 +165,14 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
-			Outputs: make(map[string]v1beta1.ParamValue),
-			TmpDir:  path.Join(v.ContextDir, v.UniqueID(), "data"),
+			Outputs:   make(map[string]v1beta1.ParamValue),
+			TmpDir:    path.Join(v.ContextDir, v.UniqueID(), "data"),
+			StartedAt: v.StartedAt,
+			EndedAt:   v.EndedAt,
+		}
+
+		if v.Error != nil {
+			vars.Steps[k].Error = v.Error.Error()
 		}
 
 		maps.Copy(vars.Steps[k].Outputs, v.OutputVars.OutputVars)

@@ -57,7 +57,7 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		originInputs := make(map[string]v1beta1.ParamValue, len(ctx.InputVars.Inputs))
-		maps.Copy(originInputs, ctx.ctx.InputVars.Inputs)
+		maps.Copy(originInputs, ctx.InputVars.Inputs)
 
 		vars := ctx.ToV1Beta1()
 		for _, input := range s.inputs {

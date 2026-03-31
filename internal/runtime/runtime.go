@@ -12,7 +12,7 @@ type Interface interface {
 }
 
 type Await interface {
-	Wait() error
+	Wait(ctx context.Context) error
 }
 
 type Pod struct {

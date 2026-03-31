@@ -74,7 +74,7 @@ func (t TagsContext) Has(key string) bool {
 	return false
 }
 
-func (t TagsContext) Add(tag Tag) {
+func (t *TagsContext) Add(tag Tag) {
 	tagMutex.Lock()
 	defer tagMutex.Unlock()
 
@@ -93,7 +93,7 @@ func (t TagsContext) Add(tag Tag) {
 	for i, v := range t.tags {
 		if v.Key == tag.Key {
 			t.tags[i] = tag
-			return t
+			return
 		}
 	}
 

@@ -65,5 +65,5 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		}()
 	}*/
 
-	return status.Wait()
+	return status.Wait(rc)
 }

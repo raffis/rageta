@@ -48,7 +48,7 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		maps.Copy(originSecrets, ctx.SecretVars.Secrets)
 
 		maps.Copy(ctx.SecretVars.Secrets, s.secret)
-		secretTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID), "secret")
+		secretTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "secret")
 		if err != nil {
 			return ctx, err
 		}

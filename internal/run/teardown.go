@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -16,6 +17,12 @@ type TeardownOptions struct {
 func (s *TeardownOptions) BindFlags(flags *pflag.FlagSet) {
 	flags.BoolVarP(&s.Disabled, "skip-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
 	flags.DurationVarP(&s.GracePeriod, "grace-period", "", s.GracePeriod, "Maximum time to wait for termination and cleanup of steps.")
+}
+
+func NewTeardownOptions() TeardownOptions {
+	return TeardownOptions{
+		GracePeriod: time.Second * 10,
+	}
 }
 
 func (s TeardownOptions) Build() Step {
@@ -35,24 +42,25 @@ func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
 	rc.Teardown.Teardown = teardown
 	rc.Teardown.Enabled = !s.opts.Disabled
-	teardownDone := make(chan struct{})
+	wg := &sync.WaitGroup{}
 
 	defer func() {
-		close(teardown)
-		<-teardownDone
+		wg.Wait()
 	}()
 
 	go func() {
-		s.runTeardown(rc)
-		teardownDone <- struct{}{}
+		s.runTeardown(rc, wg)
 	}()
 
 	return next(rc)
 }
 
-func (s *Teardown) runTeardown(rc *RunContext) {
+func (s *Teardown) runTeardown(rc *RunContext, wg *sync.WaitGroup) {
 	for fn := range rc.Teardown.Teardown {
 		go func(fn processor.Teardown) {
+			wg.Add(1)
+			defer wg.Done()
+
 			teardownCtx := context.TODO()
 			if s.opts.GracePeriod > 0 {
 				ctx, cancel := context.WithTimeout(teardownCtx, s.opts.GracePeriod)

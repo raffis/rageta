@@ -1,10 +1,7 @@
 package pipeline
 
 import (
-	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/runtime"
@@ -117,19 +114,18 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 	}*/
 
 	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
-		stepCtx.Dir = contextDir
-		stepCtx.DataDir = filepath.Join(contextDir, "_data")
+		stepCtx.ContextDir = contextDir
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
 		stepCtx.Steps = make(map[string]*processor.StepContext)
-		stepCtx.Inputs = mappedInputs
+		stepCtx.InputVars.Inputs = mappedInputs
 		outputs := make(map[string]v1beta1.ParamValue)
 
-		if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
+		/*if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
 			err := os.MkdirAll(stepCtx.DataDir, 0700)
 			if err != nil {
 				return stepCtx, outputs, fmt.Errorf("failed to create context dir: %w", err)
 			}
-		}
+		}*/
 
 		stepCtx, pipelineErr := entrypoint(stepCtx)
 
@@ -143,7 +139,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 				from = pipelineOutput.From
 			}
 
-			if output, ok := stepCtx.OutputVars[from]; ok {
+			if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
 				outputs[pipelineOutput.Name] = output
 			}
 		}

@@ -3,11 +3,15 @@ package v1beta1
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type StepResult struct {
-	Outputs map[string]ParamValue `cel:"outputs"`
-	TmpDir  string                `cel:"tmpDir"`
+	Outputs   map[string]ParamValue `cel:"outputs"`
+	TmpDir    string                `cel:"tmpDir"`
+	Error     string                `cel:"error"`
+	StartedAt time.Time             `cel:"startedAt"`
+	EndedAt   time.Time             `cel:"endedAt"`
 }
 
 type ContainerStatus struct {
@@ -88,6 +92,9 @@ func (v *Context) Index() map[string]string {
 
 	for k, v := range v.Steps {
 		vars[fmt.Sprintf("context.steps.%s.tmpDir", k)] = v.TmpDir
+		vars[fmt.Sprintf("context.steps.%s.error", k)] = v.Error
+		vars[fmt.Sprintf("context.steps.%s.startedAt", k)] = fmt.Sprintf("%d", v.StartedAt.Unix())
+		vars[fmt.Sprintf("context.steps.%s.endedAt", k)] = fmt.Sprintf("%d", v.EndedAt.Unix())
 		for outputName, v := range v.Outputs {
 			switch v.Type {
 			case ParamTypeString:

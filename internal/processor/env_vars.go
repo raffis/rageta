@@ -43,7 +43,7 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		envTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID), "env")
+		envTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "env")
 		if err != nil {
 			return ctx, err
 		}

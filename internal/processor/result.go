@@ -53,7 +53,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		hasher := sha1.New()
-		hasher.Write([]byte(ctx.uniqueName))
+		hasher.Write([]byte(ctx.UniqueName()))
 		b := hasher.Sum(nil)
 		ctx.uniqueID = fmt.Sprintf("%x", b)
 

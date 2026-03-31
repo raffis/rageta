@@ -10,26 +10,32 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithContainerLogs(enabled bool) ProcessorBuilder {
+func WithContainerLogs(enabled bool, wrap secretMaskWrapper) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if !enabled {
+		if !enabled || spec.Run == nil {
 			return nil
 		}
 
 		logs := &ContainerLogs{
 			stepName: spec.Name,
+			wrap:     wrap,
 		}
 		return logs
 	}
 }
 
+type secretMaskWrapper interface {
+	Writer(io.Writer) io.Writer
+}
+
 type ContainerLogs struct {
 	stepName string
+	wrap     secretMaskWrapper
 }
 
 func (s *ContainerLogs) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		stdoutPath := path.Join(ctx.ContextDir, ctx.UniqueID, "0.out")
+		stdoutPath := path.Join(ctx.ContextDir, ctx.UniqueID(), "stdout.out")
 
 		stdout, err := os.OpenFile(stdoutPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 		if err != nil {
@@ -40,9 +46,10 @@ func (s *ContainerLogs) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			_ = stdout.Close()
 		}()
 
-		ctx.Streams.AdditionalStdout = append(ctx.Streams.AdditionalStdout, stdout)
+		maskedStdout := s.wrap.Writer(stdout)
+		ctx.Streams.AdditionalStdout = append(ctx.Streams.AdditionalStdout, maskedStdout)
 
-		stderrPath := path.Join(ctx.ContextDir, ctx.UniqueID, "1.out")
+		stderrPath := path.Join(ctx.ContextDir, ctx.UniqueID(), "stderr.out")
 
 		stderr, err := os.OpenFile(stderrPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 		if err != nil {
@@ -53,14 +60,15 @@ func (s *ContainerLogs) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error)
 			_ = stderr.Close()
 		}()
 
-		ctx.Streams.AdditionalStderr = append(ctx.Streams.AdditionalStderr, stderr)
+		maskedStderr := s.wrap.Writer(stderr)
+		ctx.Streams.AdditionalStderr = append(ctx.Streams.AdditionalStderr, maskedStderr)
 
 		ctx, err = next(ctx)
 		ctx.Streams.AdditionalStdout = slices.DeleteFunc(ctx.Streams.AdditionalStdout, func(w io.Writer) bool {
-			return w == stdout
+			return w == maskedStdout
 		})
 		ctx.Streams.AdditionalStderr = slices.DeleteFunc(ctx.Streams.AdditionalStderr, func(w io.Writer) bool {
-			return w == stderr
+			return w == maskedStderr
 		})
 
 		return ctx, err

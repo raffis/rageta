@@ -18,17 +18,13 @@ import (
 	"github.com/raffis/rageta/internal/processor"
 )
 
-// Panel represents which panel is currently active
 type Panel int8
 
 const (
-	// PanelList represents the left list panel
 	PanelList Panel = iota
-	// PanelDetails represents the right details panel
 	PanelDetails
 )
 
-// UI dimensions and layout constants
 const (
 	ListWidthPercentage       = 30.0
 	LayoutAreaHeight          = 3
@@ -37,7 +33,6 @@ const (
 	AlignHorizontalBreakpoint = 130
 )
 
-// Keyboard shortcuts
 const (
 	KeyFilter = "/"
 	KeyEscape = "esc"
@@ -47,7 +42,6 @@ const (
 	KeyQ      = "q"
 )
 
-// UI represents the main tui model
 type UI struct {
 	list         list.Model
 	loader       spinner.Model
@@ -62,16 +56,13 @@ type UI struct {
 	lastSelected list.Item
 }
 
-// TickMsg represents a tick message for animations
 type TickMsg time.Time
 
-// PipelineDoneMsg represents a message when the pipeline is complete
 type PipelineDoneMsg struct {
 	Status StepStatus
 	Error  error
 }
 
-// NewUI creates a new UI instance with the given logger
 func NewUI(logger logr.Logger) UI {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
@@ -228,6 +219,10 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handlePipelineDone handles pipeline completion
 func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
+	if m.status == StepStatusWaiting {
+		return []tea.Cmd{tea.Quit}
+	}
+
 	m.status = msg.Status
 	m.exitErr = msg.Error
 

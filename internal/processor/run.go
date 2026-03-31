@@ -35,7 +35,7 @@ func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface
 }
 
 const (
-	defaultScriptHeader = "#!/bin/sh\nset -euo pipefail\n"
+	defaultShell = "/bin/sh"
 )
 
 type Run struct {
@@ -50,7 +50,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
 		pod := &runtime.Pod{
-			Name: fmt.Sprintf("%s-%s-%s", SuffixName(s.stepName, ctx.NamePrefix), pipeline.ID(), utils.RandString(5)),
+			Name: fmt.Sprintf("rageta-%s-%s-%s", pipeline.ID(), ctx.UniqueID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 
@@ -59,13 +59,14 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		envs := make(map[string]string)
-		maps.Copy(envs, ctx.Envs)
-		maps.Copy(envs, ctx.Secrets)
+		maps.Copy(envs, ctx.EnvVars.Envs)
+		maps.Copy(envs, ctx.SecretVars.Secrets)
 
 		command, args := s.commandArgs(run)
+
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
-			Stdin:           ctx.Stdin != nil || run.Stdin,
+			Stdin:           ctx.Streams.Stdin != nil || run.Stdin,
 			TTY:             run.TTY,
 			Image:           run.Image,
 			ImagePullPolicy: s.defaultPullPolicy,
@@ -94,12 +95,12 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			})
 		}
 
-		if ctx.Template != nil {
-			if err := substitute.Substitute(ctx.ToV1Beta1(), ctx.Template.Guid, ctx.Template.Uid); err != nil {
+		if ctx.Template.Template != nil {
+			if err := substitute.Substitute(ctx.ToV1Beta1(), ctx.Template.Template.Guid, ctx.Template.Template.Uid); err != nil {
 				return ctx, err
 			}
 
-			ContainerSpec(&container, ctx.Template)
+			ContainerSpec(&container, ctx.Template.Template)
 		}
 
 		subst := []any{
@@ -126,13 +127,13 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			container.Volumes[i].HostPath = srcPath
 		}
 
-		if run.Stdin && ctx.Stdin == nil {
-			ctx.Stdin = os.Stdin
+		if run.Stdin && ctx.Streams.Stdin == nil {
+			ctx.Streams.Stdin = os.Stdin
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
 
-		_, _ = ctx.Events.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
+		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
 		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
@@ -227,38 +228,46 @@ func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template)
 	}
 }
 
-func (s *Run) commandArgs(run *v1beta1.RunStep) ([]string, []string) {
+func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 	script := strings.TrimSpace(run.Script)
-	args := run.Args
+	args = run.Args
 
 	if script == "" {
 		return run.Command, run.Args
 	}
 
 	hasShebang := strings.HasPrefix(script, "#!")
+	if hasShebang {
+		lines := strings.Split(script, "\n")
+		header := lines[0]
+		shebang := strings.Split(header, "#!")
+		cmd = []string{shebang[1]}
+		args = append(args, "-e", "-c", strings.Join(lines[1:], "\n"))
+	} else {
+		if len(run.Command) == 0 {
+			cmd = []string{defaultShell}
+		} else {
+			cmd = run.Command
+		}
 
-	if !hasShebang {
-		script = defaultScriptHeader + script
+		args = append(args, "-e", "-c", script)
 	}
 
-	header := strings.Split(script, "\n")[0]
-	shebang := strings.Split(header, "#!")
-	command := []string{shebang[1]}
-
-	return command, append(args, "-c", script)
+	return
 }
 
 func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Streams.Stdin,
-		io.MultiWriter(append(ctx.Streams.AdditionalStdout, ctx.Streams.Stdout)...),
-		io.MultiWriter(append(ctx.Streams.AdditionalStderr, ctx.Streams.Stderr)...),
-	)
-
 	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
 		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
 		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))
 		w.Write([]byte(cmd))
+		w.Flush()
 	}
+
+	await, err := s.driver.CreatePod(ctx, pod, ctx.Streams.Stdin,
+		io.MultiWriter(append(ctx.Streams.AdditionalStdout, ctx.Streams.Stdout)...),
+		io.MultiWriter(append(ctx.Streams.AdditionalStderr, ctx.Streams.Stderr)...),
+	)
 
 	if err != nil {
 		return ctx, err
@@ -271,7 +280,7 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	if s.step.Await == v1beta1.AwaitStatusReady {
 		done := make(chan error)
 		go func() {
-			if err := await.Wait(); err != nil {
+			if err := await.Wait(ctx); err != nil {
 				done <- err
 			}
 
@@ -298,7 +307,7 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 			return <-done
 		}
 	} else {
-		if err := await.Wait(); err != nil {
+		if err := await.Wait(ctx); err != nil {
 			return ctx, err
 		}
 	}

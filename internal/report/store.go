@@ -34,10 +34,10 @@ func (s *store) Ordered() []stepResult {
 
 	sort.Slice(s.steps, func(i, j int) bool {
 		var iTags, jTags []string
-		for _, tag := range s.steps[i].result.Tags() {
+		for _, tag := range s.steps[i].result.Tags.Tags() {
 			iTags = append(iTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
 		}
-		for _, tag := range s.steps[j].result.Tags() {
+		for _, tag := range s.steps[j].result.Tags.Tags() {
 			jTags = append(jTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
 		}
 

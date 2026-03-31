@@ -57,13 +57,13 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		outputContext, outputs, err := cmd()
+		_, outputs, err := cmd()
 
 		if err != nil {
 			return ctx, fmt.Errorf("failed to execute pipeline: %w", err)
 		}
 
-		s.mergeContext(outputContext, ctx)
+		//s.mergeContext(outputContext, ctx)
 		maps.Copy(ctx.OutputVars.OutputVars, outputs)
 
 		return next(ctx)
@@ -79,6 +79,7 @@ func (s *Inherit) mapInputs(inputs []v1beta1.Param) map[string]v1beta1.ParamValu
 	return m
 }
 
+/*
 func (s *Inherit) mergeContext(from, to StepContext) {
 	maps.Copy(to.EnvVars.Envs, from.EnvVars.Envs)
 
@@ -89,4 +90,4 @@ func (s *Inherit) mergeContext(from, to StepContext) {
 	for k, v := range from.Containers {
 		to.Containers[SuffixName(k, s.stepName)] = v
 	}
-}
+}*/

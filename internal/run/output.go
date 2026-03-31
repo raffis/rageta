@@ -1,7 +1,6 @@
 package run
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -66,6 +65,7 @@ func electDefaultOutput() string {
 type Output struct {
 	opts    OutputOptions
 	tuiApp  *tea.Program
+	model   tui.UI
 	tuiDone chan struct{}
 }
 
@@ -99,10 +99,6 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 	err = next(rc)
 	if s.tuiApp == nil {
 		return err
-	}
-
-	if err != nil && !errors.Is(err, PipelineExecutionError) {
-		s.tuiApp.Quit()
 	}
 
 	if err != nil {
@@ -163,6 +159,7 @@ func (s *Output) uiOutput(rc *RunContext) *tea.Program {
 		tea.WithOutput(xio.NewFDWrapper(rc.Output.Stdout, os.Stdout)),
 		tea.WithEnvironment(bubbleTeaProgramEnv()),
 	)
+	s.model = model
 
 	go func() {
 		for c := range time.Tick(100 * time.Millisecond) {

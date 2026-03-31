@@ -48,7 +48,7 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		outputs := make(map[string]*os.File, len(s.outputs))
 
 		for _, output := range s.outputs {
-			outputTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID), "output")
+			outputTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "output")
 			if err != nil {
 				return ctx, err
 			}
