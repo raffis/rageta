@@ -2,6 +2,7 @@ package processor
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"time"
 
@@ -43,6 +44,29 @@ func (e *stepError) Context() StepContext {
 	return e.context
 }
 
+type multiStepError struct {
+	parents        []error
+	stepName       string
+	uniqueStepName string
+	context        StepContext
+}
+
+func (e *multiStepError) Error() string {
+	return fmt.Sprintf("step %s failed: %s", e.stepName, errors.Join(e.parents...).Error())
+}
+
+func (e *multiStepError) Unwrap() []error {
+	return e.parents
+}
+
+func (e *multiStepError) StepName() string {
+	return e.stepName
+}
+
+func (e *multiStepError) Context() StepContext {
+	return e.context
+}
+
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
@@ -59,17 +83,26 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		ctx, err := next(ctx)
 		ctx.EndedAt = time.Now()
+		ctx.Error = nil
 
 		if err != nil {
-			err = &stepError{
-				parent:   err,
-				stepName: s.stepName,
-				//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
-				context: ctx,
+			if uw, ok := err.(interface{ Unwrap() []error }); ok {
+				err = &multiStepError{
+					parents:  uw.Unwrap(),
+					stepName: s.stepName,
+					//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
+					context: ctx,
+				}
+			} else {
+				err = &stepError{
+					parent:   err,
+					stepName: s.stepName,
+					//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
+					context: ctx,
+				}
 			}
+
 			ctx.Error = err
-		} else {
-			ctx.Error = nil
 		}
 
 		ctx.Steps[s.stepName] = &ctx

@@ -306,11 +306,9 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 
 			return <-done
 		}
-	} else {
-		if err := await.Wait(ctx); err != nil {
-			return ctx, err
-		}
+		return ctx, err
 	}
 
+	err = await.Wait(ctx)
 	return ctx, err
 }

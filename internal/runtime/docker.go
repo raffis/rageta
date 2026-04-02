@@ -265,19 +265,18 @@ type await struct {
 
 func (a *await) Wait(ctx context.Context) error {
 	defer a.streams.Close()
-	done := make(chan struct{})
+	done := make(chan error)
 
 	go func() {
-		a.wg.Wait()
-		close(done)
+		done <- a.wg.Wait()
 	}()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 
-	case <-done:
-		return nil
+	case err := <-done:
+		return err
 	}
 }
 

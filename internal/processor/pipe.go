@@ -107,11 +107,14 @@ func (s *Pipe) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		var done int
+
 	WAIT:
 		for res := range results {
 			done++
 			ctx = ctx.Merge(res.ctx)
+
 			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
 			case res.err != nil && AbortOnError(res.err):
 				errs = append(errs, res.err)
 				cancel()

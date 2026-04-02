@@ -81,7 +81,8 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 	rc.Report.Factory = reportFactory
 	err = next(rc)
 
-	if reportFactory != nil && (errors.Is(err, PipelineExecutionError) || err == nil) {
+	var pipelineExecError *pipelineExecutionError
+	if reportFactory != nil && (errors.As(err, &pipelineExecError) || err == nil) {
 		if reportErr := reportFactory.Finalize(); reportErr != nil {
 			err = errors.Join(reportErr, err)
 		}

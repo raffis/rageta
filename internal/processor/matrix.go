@@ -159,12 +159,15 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				ctx.OutputVars.OutputVars[paramKey] = param
 			}
 
-			if res.err != nil && AbortOnError(res.err) {
+			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
+			case res.err != nil && AbortOnError(res.err):
 				errs = append(errs, res.err)
 
 				if s.failFast {
 					cancel()
 				}
+			default:
 			}
 
 			if done == len(matrixes) {

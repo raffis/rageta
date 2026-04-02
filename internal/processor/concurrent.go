@@ -68,12 +68,15 @@ func (s *Concurrent) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for res := range results {
 			done++
 			ctx = ctx.Merge(res.ctx)
-			if res.err != nil && AbortOnError(res.err) {
+			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
+			case res.err != nil && AbortOnError(res.err):
 				errs = append(errs, res.err)
 
 				if s.failFast {
 					cancel()
 				}
+			default:
 			}
 
 			if done == len(steps) {
