@@ -115,8 +115,8 @@ func TestEnvVarsBootstrap(t *testing.T) {
 				"ANOTHER_VAR": "another_value",
 			},
 			inputCtx: StepContext{
-				Dir:  "/tmp",
-				Envs: map[string]string{},
+				ContextDir: "/tmp",
+				EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 			},
 			nextError:   nil,
 			expectError: false,
@@ -127,10 +127,10 @@ func TestEnvVarsBootstrap(t *testing.T) {
 				"NEW_VAR": "new_value",
 			},
 			inputCtx: StepContext{
-				Dir: "/tmp",
-				Envs: map[string]string{
+				ContextDir: "/tmp",
+				EnvVars: EnvVarsContext{Envs: map[string]string{
 					"EXISTING_VAR": "existing_value",
-				},
+				}},
 			},
 			nextError:   nil,
 			expectError: false,
@@ -141,8 +141,8 @@ func TestEnvVarsBootstrap(t *testing.T) {
 				"TEST_VAR": "test_value",
 			},
 			inputCtx: StepContext{
-				Dir:  "/tmp",
-				Envs: map[string]string{},
+				ContextDir: "/tmp",
+				EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 			},
 			nextError:   assert.AnError,
 			expectError: true,
@@ -159,7 +159,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 				nextCalled = true
 				// Verify that env vars are set during execution
 				for k, v := range tt.env {
-					assert.Equal(t, v, ctx.Envs[k], "Env var %s should be set", k)
+					assert.Equal(t, v, ctx.EnvVars.Envs[k], "Env var %s should be set", k)
 				}
 				return ctx, tt.nextError
 			}
@@ -197,8 +197,8 @@ func TestEnvVarsFileCreation(t *testing.T) {
 	next := func(ctx StepContext) (StepContext, error) {
 		nextCalled = true
 		// Verify that env file is created
-		assert.NotEmpty(t, ctx.Env, "Env file path should be set")
-		_, err := os.Stat(ctx.Env)
+		assert.NotEmpty(t, ctx.EnvVars.OutputPath, "Env file path should be set")
+		_, err := os.Stat(ctx.EnvVars.OutputPath)
 		assert.NoError(t, err, "Env file should exist")
 		return ctx, nil
 	}
@@ -208,14 +208,14 @@ func TestEnvVarsFileCreation(t *testing.T) {
 	require.NotNil(t, nextFunc)
 
 	inputCtx := StepContext{
-		Dir:  "/tmp",
-		Envs: map[string]string{},
+		ContextDir: "/tmp",
+		EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 	}
 	resultCtx, resultErr := nextFunc(inputCtx)
 
 	assert.True(t, nextCalled)
 	assert.NoError(t, resultErr)
-	assert.NotEmpty(t, resultCtx.Env, "Result context should have env file path")
+	assert.Empty(t, resultCtx.EnvVars.OutputPath, "Env file path should be cleared after execution")
 }
 
 // Helper function to create string pointers

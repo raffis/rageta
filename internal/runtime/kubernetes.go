@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"time"
 
@@ -149,9 +148,8 @@ type kubeWait struct {
 	watchStream watch.Interface
 }
 
-func (w *kubeWait) Wait() error {
+func (w *kubeWait) Wait(ctx context.Context) error {
 	for event := range w.watchStream.ResultChan() {
-		fmt.Printf("event %#v\n", event)
 		switch event.Type {
 		case watch.Error:
 			return &Result{

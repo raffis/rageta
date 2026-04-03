@@ -16,18 +16,17 @@ type sender interface {
 
 func UI(sender sender) processor.OutputFactory {
 	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
-		uniqueName := processor.SuffixName(stepName, ctx.NamePrefix)
 		displayName := stepName
 		if short != "" {
 			displayName = short
 		}
 
+		uniqueName := ctx.UniqueName()
 		step := tui.NewStep()
 		step.Name = uniqueName
 		step.DisplayName = displayName
-		step.Tags = ctx.Tags()
+		step.Tags = ctx.Tags.Tags()
 		step.Status = tui.StepStatusRunning
-
 		sender.Send(step)
 
 		return step, step, func(err error) error {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -26,12 +27,28 @@ type OutputVars struct {
 	outputs  []v1beta1.StepOutputParam
 }
 
+type OutputParam struct {
+	Name string
+	Path string
+}
+
+type OutputVarsContext struct {
+	Outputs    []OutputParam
+	OutputVars map[string]v1beta1.ParamValue
+}
+
+func newOutputVarsContext() OutputVarsContext {
+	return OutputVarsContext{
+		OutputVars: make(map[string]v1beta1.ParamValue),
+	}
+}
+
 func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		outputs := make(map[string]*os.File, len(s.outputs))
 
 		for _, output := range s.outputs {
-			outputTmp, err := os.CreateTemp(ctx.Dir, "output")
+			outputTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "output")
 			if err != nil {
 				return ctx, err
 			}
@@ -41,7 +58,7 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				_ = os.Remove(f.Name())
 			}(outputTmp)
 
-			ctx.Outputs = append(ctx.Outputs, OutputParam{
+			ctx.OutputVars.Outputs = append(ctx.OutputVars.Outputs, OutputParam{
 				Name: output.Name,
 				Path: outputTmp.Name(),
 			})
@@ -67,7 +84,7 @@ func (s *OutputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return ctx, fmt.Errorf("param output failed: %w", err)
 			}
 
-			ctx.OutputVars[name] = value
+			ctx.OutputVars.OutputVars[name] = value
 		}
 
 		return ctx, err

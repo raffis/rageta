@@ -242,18 +242,14 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 	}
 
 	wg.Go(func() error {
-		select {
-		case <-ctx.Done():
-			return nil
-		case await := <-waitC:
-			if await.StatusCode > 0 {
-				return &Result{
-					exitCode: int(await.StatusCode),
-				}
+		await := <-waitC
+		if await.StatusCode > 0 {
+			return &Result{
+				exitCode: int(await.StatusCode),
 			}
-
-			return nil
 		}
+
+		return nil
 	})
 
 	return &await{
@@ -267,10 +263,21 @@ type await struct {
 	wg      *errgroup.Group
 }
 
-func (a *await) Wait() error {
+func (a *await) Wait(ctx context.Context) error {
 	defer a.streams.Close()
-	return a.wg.Wait()
+	done := make(chan error)
 
+	go func() {
+		done <- a.wg.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+
+	case err := <-done:
+		return err
+	}
 }
 
 type Result struct {

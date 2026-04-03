@@ -3,15 +3,14 @@ package processor
 import (
 	"context"
 	"fmt"
-	"io"
 	"maps"
 	"os"
+	"path"
 	"runtime"
 	"sync"
 	"time"
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
-	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -21,132 +20,97 @@ var (
 )
 
 type StepContext struct {
-	context.Context  `json:"-"`
-	Dir              string
-	DataDir          string
-	Matrix           map[string]string
-	Inputs           map[string]v1beta1.ParamValue
-	Steps            map[string]*StepContext `json:"-"`
-	Envs             map[string]string
-	Secrets          map[string]string
-	Containers       map[string]cruntime.ContainerStatus
-	tags             []Tag
-	NamePrefix       string
-	Secret           string
-	Env              string
-	Outputs          []OutputParam
-	Stdin            io.Reader
-	Stdout           io.Writer
-	Stderr           io.Writer
-	AdditionalStdout []io.Writer
-	AdditionalStderr []io.Writer
-	Events           io.Writer
-	Template         *v1beta1.Template
-	StartedAt        time.Time
-	EndedAt          time.Time
-	OutputVars       map[string]v1beta1.ParamValue
-	Error            error
+	context.Context `json:"-"`
+	uniqueID        string
+	uniqueName      string
+	namespace       string
+	Error           error
+	StartedAt       time.Time
+	EndedAt         time.Time
+	ContextDir      string
+	Steps           map[string]*StepContext `json:"-"`
+	Containers      map[string]cruntime.ContainerStatus
+	Tags            TagsContext
+	Streams         StreamsContext
+	OutputVars      OutputVarsContext
+	EnvVars         EnvVarsContext
+	SecretVars      SecretVarsContext
+	InputVars       InputVarsContext
+	Template        TemplateContext
+	Matrix          MatrixContext
+	Events          EventsContext
 }
 
-type Tag struct {
-	Key   string
-	Value string
-	Color string
+func (c StepContext) UniqueID() string {
+	return c.uniqueID
 }
 
-type OutputParam struct {
-	Name string
-	Path string
+func (c StepContext) UniqueName() string {
+	return c.uniqueName
+}
+
+func (c StepContext) WithNamespace(name string) StepContext {
+	copy := c
+
+	if copy.namespace == "" {
+		copy.namespace = name
+		return copy
+	}
+
+	copy.namespace = fmt.Sprintf("%s-%s", copy.namespace, name)
+	return copy
 }
 
 func NewContext() StepContext {
 	return StepContext{
-		Envs:       make(map[string]string),
-		Secrets:    make(map[string]string),
+		EnvVars:    newEnvVarsContext(),
+		SecretVars: newSecretVarsContext(),
+		InputVars:  newInputVarsContext(),
+		Matrix:     newMatrixContext(),
+		OutputVars: newOutputVarsContext(),
+		Events:     newEventsContext(),
 		Steps:      make(map[string]*StepContext),
-		Inputs:     make(map[string]v1beta1.ParamValue),
 		Containers: make(map[string]cruntime.ContainerStatus),
-		Matrix:     make(map[string]string),
-		OutputVars: make(map[string]v1beta1.ParamValue),
-		Events:     io.Discard,
 	}
 }
 
 func (c StepContext) DeepCopy() StepContext {
 	copy := NewContext()
+	copy.uniqueID = c.uniqueID
+	copy.uniqueName = c.uniqueName
+	copy.namespace = c.namespace
 	copy.Context = c.Context
-	copy.NamePrefix = c.NamePrefix
-	copy.Dir = c.Dir
-	copy.DataDir = c.DataDir
-	copy.Stdout = c.Stdout
-	copy.Stderr = c.Stderr
-	copy.Stdin = c.Stdin
-	copy.AdditionalStdout = append(copy.AdditionalStdout, c.AdditionalStdout...)
-	copy.AdditionalStderr = append(copy.AdditionalStderr, c.AdditionalStderr...)
-	copy.Outputs = append(copy.Outputs, c.Outputs...)
-	copy.OutputVars = maps.Clone(c.OutputVars)
+	copy.ContextDir = c.ContextDir
+	copy.Streams.Stdout = c.Streams.Stdout
+	copy.Streams.Stderr = c.Streams.Stderr
+	copy.Streams.Stdin = c.Streams.Stdin
+	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
+	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
+	copy.OutputVars.Outputs = append(copy.OutputVars.Outputs, c.OutputVars.Outputs...)
+	copy.OutputVars.OutputVars = maps.Clone(c.OutputVars.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
-	copy.tags = append(copy.tags, c.tags...)
-	copy.Inputs = maps.Clone(c.Inputs)
-	copy.Envs = maps.Clone(c.Envs)
-	copy.Secrets = maps.Clone(c.Secrets)
+	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
+	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
+	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
+	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
 	copy.Containers = maps.Clone(c.Containers)
-	copy.Matrix = maps.Clone(c.Matrix)
-	if c.Template != nil {
-		copy.Template = c.Template.DeepCopy()
+	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
+	if c.Template.Template != nil {
+		copy.Template.Template = c.Template.Template.DeepCopy()
 	}
 
 	return copy
 }
 
-func (t StepContext) Tags() []Tag {
-	return t.tags
-}
-
-func (t StepContext) HasTag(key string) bool {
-	for _, v := range t.tags {
-		if v.Key == key {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (t StepContext) WithTag(tag Tag) StepContext {
-	tagMutex.Lock()
-	defer tagMutex.Unlock()
-
-	if v, ok := tagColors[tag]; ok {
-		tag.Color = v
-	} else {
-		if tag.Color == "" {
-			color := styles.RandHEXColor(0, 255)
-			tagColors[tag] = color
-			tag.Color = color
-		} else {
-			tagColors[tag] = tag.Color
-		}
-	}
-
-	for i, v := range t.tags {
-		if v.Key == tag.Key {
-			t.tags[i] = tag
-			return t
-		}
-	}
-
-	t.tags = append(t.tags, tag)
-	return t
-}
-
 func (t StepContext) Merge(c StepContext) StepContext {
-	maps.Copy(t.Envs, c.Envs)
-	maps.Copy(t.Secrets, c.Secrets)
-	maps.Copy(t.Inputs, c.Inputs)
+	maps.Copy(t.EnvVars.Envs, c.EnvVars.Envs)
+	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
+	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Steps, c.Steps)
 	maps.Copy(t.Containers, c.Containers)
-	_ = mergeTemplate(t.Template, c.Template)
+	if t.Template.Template != nil && c.Template.Template != nil {
+		_ = mergeTemplate(t.Template.Template, c.Template.Template)
+	}
 
 	return t
 }
@@ -172,15 +136,15 @@ func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
 
 func (t StepContext) ToV1Beta1() *v1beta1.Context {
 	vars := &v1beta1.Context{
-		TmpDir:     t.DataDir,
+		TmpDir:     path.Join(t.ContextDir, t.UniqueID(), "data"),
 		Steps:      make(map[string]*v1beta1.StepResult),
 		Containers: make(map[string]*v1beta1.ContainerStatus),
-		Matrix:     maps.Clone(t.Matrix),
-		Envs:       maps.Clone(t.Envs),
-		Secrets:    maps.Clone(t.Secrets),
-		Inputs:     maps.Clone(t.Inputs),
-		Env:        t.Env,
-		Secret:     t.Secret,
+		Matrix:     maps.Clone(t.Matrix.Params),
+		Envs:       maps.Clone(t.EnvVars.Envs),
+		Secrets:    maps.Clone(t.SecretVars.Secrets),
+		Inputs:     maps.Clone(t.InputVars.Inputs),
+		Env:        t.EnvVars.OutputPath,
+		Secret:     t.SecretVars.OutputPath,
 		Outputs:    make(map[string]*v1beta1.Output),
 		Os:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
@@ -201,14 +165,20 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
-			Outputs: make(map[string]v1beta1.ParamValue),
-			TmpDir:  v.DataDir,
+			Outputs:   make(map[string]v1beta1.ParamValue),
+			TmpDir:    path.Join(v.ContextDir, v.UniqueID(), "data"),
+			StartedAt: v.StartedAt,
+			EndedAt:   v.EndedAt,
 		}
 
-		maps.Copy(vars.Steps[k].Outputs, v.OutputVars)
+		if v.Error != nil {
+			vars.Steps[k].Error = v.Error.Error()
+		}
+
+		maps.Copy(vars.Steps[k].Outputs, v.OutputVars.OutputVars)
 	}
 
-	for _, v := range t.Outputs {
+	for _, v := range t.OutputVars.Outputs {
 		vars.Outputs[v.Name] = &v1beta1.Output{
 			Path: v.Path,
 		}

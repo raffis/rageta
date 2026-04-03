@@ -33,7 +33,7 @@ func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx.Context, span = s.tracer.Start(ctx, s.stepName, trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
-		for _, tag := range ctx.Tags() {
+		for _, tag := range ctx.Tags.Tags() {
 			span.SetAttributes(attribute.String(tag.Key, tag.Value))
 		}
 

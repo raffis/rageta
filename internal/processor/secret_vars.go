@@ -3,6 +3,7 @@ package processor
 import (
 	"maps"
 	"os"
+	"path"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -30,13 +31,24 @@ type SecretVars struct {
 	secretWriter secretWriter
 }
 
+type SecretVarsContext struct {
+	Secrets    map[string]string
+	OutputPath string
+}
+
+func newSecretVarsContext() SecretVarsContext {
+	return SecretVarsContext{
+		Secrets: make(map[string]string),
+	}
+}
+
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		originSecrets := make(map[string]string, len(ctx.Secrets))
-		maps.Copy(originSecrets, ctx.Secrets)
+		originSecrets := make(map[string]string, len(ctx.SecretVars.Secrets))
+		maps.Copy(originSecrets, ctx.SecretVars.Secrets)
 
-		maps.Copy(ctx.Secrets, s.secret)
-		secretTmp, err := os.CreateTemp(ctx.Dir, "secret")
+		maps.Copy(ctx.SecretVars.Secrets, s.secret)
+		secretTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "secret")
 		if err != nil {
 			return ctx, err
 		}
@@ -47,7 +59,7 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			_ = os.Remove(secretTmp.Name())
 		}()
 
-		ctx.Secret = secretTmp.Name()
+		ctx.SecretVars.OutputPath = secretTmp.Name()
 		ctx, nextErr = next(ctx)
 		if syncErr := secretTmp.Sync(); syncErr != nil {
 			nextErr = syncErr
@@ -63,7 +75,8 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		maps.Copy(originSecrets, secrets)
-		ctx.Secrets = originSecrets
+		ctx.SecretVars.Secrets = originSecrets
+		ctx.SecretVars.OutputPath = ""
 
 		return ctx, nextErr
 

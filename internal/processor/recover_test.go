@@ -161,8 +161,8 @@ func TestRecoverContextPreservation(t *testing.T) {
 	next := func(ctx StepContext) (StepContext, error) {
 		nextCalled = true
 		// Modify context
-		ctx.Dir = "/modified"
-		ctx.Envs["MODIFIED"] = "true"
+		ctx.ContextDir = "/modified"
+		ctx.EnvVars.Envs["MODIFIED"] = "true"
 		return ctx, nil
 	}
 
@@ -171,16 +171,16 @@ func TestRecoverContextPreservation(t *testing.T) {
 	require.NotNil(t, nextFunc)
 
 	inputCtx := StepContext{
-		Dir: "/original",
-		Envs: map[string]string{
+		ContextDir: "/original",
+		EnvVars: EnvVarsContext{Envs: map[string]string{
 			"ORIGINAL": "true",
-		},
+		}},
 	}
 	resultCtx, resultErr := nextFunc(inputCtx)
 
 	assert.True(t, nextCalled)
 	assert.NoError(t, resultErr)
-	assert.Equal(t, "/modified", resultCtx.Dir)
-	assert.Equal(t, "true", resultCtx.Envs["MODIFIED"])
-	assert.Equal(t, "true", resultCtx.Envs["ORIGINAL"])
+	assert.Equal(t, "/modified", resultCtx.ContextDir)
+	assert.Equal(t, "true", resultCtx.EnvVars.Envs["MODIFIED"])
+	assert.Equal(t, "true", resultCtx.EnvVars.Envs["ORIGINAL"])
 }

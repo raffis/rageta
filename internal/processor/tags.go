@@ -3,6 +3,7 @@ package processor
 import (
 	"slices"
 
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -24,6 +25,10 @@ type Tags struct {
 	globalTags []Tag
 }
 
+type TagsContext struct {
+	tags []Tag
+}
+
 func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	var tags []Tag
 	for _, tag := range s.tags {
@@ -37,14 +42,60 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	tags = append(tags, s.globalTags...)
 
 	return func(ctx StepContext) (StepContext, error) {
-		originTags := slices.Clone(ctx.tags)
+		originTags := slices.Clone(ctx.Tags.tags)
 
 		for _, tag := range tags {
-			ctx = ctx.WithTag(tag)
+			ctx.Tags.Add(tag)
 		}
 
 		ctx, err := next(ctx)
-		ctx.tags = originTags
+		ctx.Tags.tags = originTags
 		return ctx, err
 	}, nil
+}
+
+type Tag struct {
+	Key   string
+	Value string
+	Color string
+}
+
+func (t TagsContext) Tags() []Tag {
+	return t.tags
+}
+
+func (t TagsContext) Has(key string) bool {
+	for _, v := range t.tags {
+		if v.Key == key {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (t *TagsContext) Add(tag Tag) {
+	tagMutex.Lock()
+	defer tagMutex.Unlock()
+
+	if v, ok := tagColors[tag]; ok {
+		tag.Color = v
+	} else {
+		if tag.Color == "" {
+			color := styles.RandHEXColor(0, 255)
+			tagColors[tag] = color
+			tag.Color = color
+		} else {
+			tagColors[tag] = tag.Color
+		}
+	}
+
+	for i, v := range t.tags {
+		if v.Key == tag.Key {
+			t.tags[i] = tag
+			return
+		}
+	}
+
+	t.tags = append(t.tags, tag)
 }

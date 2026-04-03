@@ -153,11 +153,11 @@ func TestNeedsBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			inputCtx := StepContext{
-				Steps:    tt.existingSteps,
-				Dir:      "/tmp",
-				Template: &v1beta1.Template{},
-			}
+		inputCtx := StepContext{
+			Steps:      tt.existingSteps,
+			ContextDir: "/tmp",
+			Template:   TemplateContext{Template: &v1beta1.Template{}},
+		}
 			resultCtx, resultErr := nextFunc(inputCtx)
 
 			if tt.expectError {
@@ -184,12 +184,12 @@ func TestNeedsContextMerging(t *testing.T) {
 			"step1": {
 				entrypointError: nil,
 				outputCtx: StepContext{
-					Envs: map[string]string{
+					EnvVars: EnvVarsContext{Envs: map[string]string{
 						"STEP1_VAR": "step1_value",
-					},
-					Secrets: map[string]string{
+					}},
+					SecretVars: SecretVarsContext{Secrets: map[string]string{
 						"STEP1_SECRET": "step1_secret",
-					},
+					}},
 				},
 			},
 		},
@@ -204,25 +204,25 @@ func TestNeedsContextMerging(t *testing.T) {
 	require.NotNil(t, nextFunc)
 
 	inputCtx := StepContext{
-		Steps:    map[string]*StepContext{},
-		Dir:      "/tmp",
-		Template: &v1beta1.Template{},
-		Envs: map[string]string{
+		Steps:      map[string]*StepContext{},
+		ContextDir: "/tmp",
+		Template:   TemplateContext{Template: &v1beta1.Template{}},
+		EnvVars: EnvVarsContext{Envs: map[string]string{
 			"INPUT_VAR": "input_value",
-		},
-		Secrets: map[string]string{
+		}},
+		SecretVars: SecretVarsContext{Secrets: map[string]string{
 			"INPUT_SECRET": "input_secret",
-		},
+		}},
 	}
 
 	resultCtx, resultErr := nextFunc(inputCtx)
 
 	assert.NoError(t, resultErr)
 	// Verify that contexts were merged
-	assert.Equal(t, "input_value", resultCtx.Envs["INPUT_VAR"])
-	assert.Equal(t, "step1_value", resultCtx.Envs["STEP1_VAR"])
-	assert.Equal(t, "input_secret", resultCtx.Secrets["INPUT_SECRET"])
-	assert.Equal(t, "step1_secret", resultCtx.Secrets["STEP1_SECRET"])
+	assert.Equal(t, "input_value", resultCtx.EnvVars.Envs["INPUT_VAR"])
+	assert.Equal(t, "step1_value", resultCtx.EnvVars.Envs["STEP1_VAR"])
+	assert.Equal(t, "input_secret", resultCtx.SecretVars.Secrets["INPUT_SECRET"])
+	assert.Equal(t, "step1_secret", resultCtx.SecretVars.Secrets["STEP1_SECRET"])
 }
 
 // Mock pipeline with steps for testing
@@ -273,8 +273,8 @@ func (m *mockStep) Entrypoint() (Next, error) {
 	}
 	return func(ctx StepContext) (StepContext, error) {
 		// Ensure the output context has a template to avoid nil pointer
-		if m.outputCtx.Template == nil {
-			m.outputCtx.Template = &v1beta1.Template{}
+		if m.outputCtx.Template.Template == nil {
+			m.outputCtx.Template.Template = &v1beta1.Template{}
 		}
 		return m.outputCtx, nil
 	}, nil

@@ -12,14 +12,13 @@ import (
 
 func Prefix(stdout, stderr io.Writer) processor.OutputFactory {
 	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
-		uniqueName := processor.SuffixName(stepName, ctx.NamePrefix)
 		style := lipgloss.NewStyle().Foreground(styles.RandAdaptiveColor())
 
-		stdoutWrapper := xio.NewLineWriter(xio.NewPrefixWriter(stdout, fmt.Appendf(nil, "%s ", style.Render(uniqueName))))
+		stdoutWrapper := xio.NewLineWriter(xio.NewPrefixWriter(stdout, fmt.Appendf(nil, "%s ", style.Render(ctx.UniqueName()))))
 		stderrWrapper := stdoutWrapper
 
 		if stdout != stderr {
-			stderrWrapper = xio.NewLineWriter(xio.NewPrefixWriter(stderr, fmt.Appendf(nil, "%s ", style.Render(uniqueName))))
+			stderrWrapper = xio.NewLineWriter(xio.NewPrefixWriter(stderr, fmt.Appendf(nil, "%s ", style.Render(ctx.UniqueName()))))
 		}
 
 		return stdoutWrapper, stderrWrapper, func(err error) error {

@@ -2,7 +2,7 @@ package run
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -32,7 +32,17 @@ type ExecutionContext struct {
 	StepContext processor.StepContext
 }
 
-var PipelineExecutionError = errors.New("pipeline execution failed")
+type pipelineExecutionError struct {
+	parent error
+}
+
+func (e *pipelineExecutionError) Error() string {
+	return fmt.Sprintf("pipeline execution failed: %s", e.parent.Error())
+}
+
+func (e *pipelineExecutionError) Unwrap() error {
+	return e.parent
+}
 
 func (s *Execute) Run(rc *RunContext, next Next) error {
 	rc.Execution.StepContext.Context = rc.Context
@@ -42,25 +52,29 @@ func (s *Execute) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	err = s.retryRun(rc.Context, pipelineCmd)
+	err = s.retryRun(rc, pipelineCmd)
 	if err != nil {
-		return errors.Join(PipelineExecutionError, err)
+		return &pipelineExecutionError{err}
 	}
 
 	return next(rc)
 }
 
-func (s *Execute) retryRun(ctx context.Context, pipelineCmd processor.Executable) error {
+func (s *Execute) retryRun(rc *RunContext, pipelineCmd processor.Executable) error {
 	var inner retry.Backoff = retry.BackoffFunc(func() (time.Duration, bool) { return 0, true })
 	if s.opts.MaxRetries > 0 {
 		inner = retry.NewConstant(time.Second)
 	}
 	b := retry.WithMaxRetries(s.opts.MaxRetries, inner)
-	return retry.Do(ctx, b, func(ctx context.Context) error {
-		_, _, err := pipelineCmd()
+
+	return retry.Do(rc.Context, b, func(ctx context.Context) error {
+		stepCtx, _, err := pipelineCmd()
+		rc.Execution.StepContext = stepCtx
+
 		if err != nil {
 			return retry.RetryableError(err)
 		}
+
 		return nil
 	})
 }
