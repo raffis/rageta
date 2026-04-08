@@ -355,8 +355,6 @@ spec:
                       items:
                         type: string
                       type: array
-                    await:
-                      type: string
                     command:
                       items:
                         type: string
@@ -404,6 +402,50 @@ spec:
                         type: string
                     type: object
                   type: array
+                service:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    image:
+                      type: string
+                    restartPolicy:
+                      type: string
+                    script:
+                      type: string
+                    stdin:
+                      type: boolean
+                    tty:
+                      type: boolean
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    volumeMounts:
+                      items:
+                        properties:
+                          hostPath:
+                            type: string
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                        type: object
+                      type: array
+                    workingDir:
+                      type: string
+                  type: object
                 short:
                   type: string
                 sources:

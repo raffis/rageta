@@ -12,6 +12,7 @@ import (
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -167,8 +168,8 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 		vars.Steps[k] = &v1beta1.StepResult{
 			Outputs:   make(map[string]v1beta1.ParamValue),
 			TmpDir:    path.Join(v.ContextDir, v.UniqueID(), "data"),
-			StartedAt: v.StartedAt,
-			EndedAt:   v.EndedAt,
+			StartedAt: metav1.Time{Time: v.StartedAt},
+			EndedAt:   metav1.Time{Time: v.EndedAt},
 		}
 
 		if v.Error != nil {

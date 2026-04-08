@@ -58,6 +58,7 @@ type Options struct {
 	EventsOptions           EventsOptions
 	ForkOptions             ForkOptions
 	ContainerRuntimeOptions ContainerRuntimeOptions
+	BuildkitOptions         BuildkitOptions
 	LifecycleOptions        LifecycleOptions
 	OtelOptions             OtelOptions
 	LoggingOptions          LoggingOptions
@@ -82,6 +83,7 @@ func (s *Options) BindFlags(flags *pflag.FlagSet) {
 	s.TeardownOptions.BindFlags(flags)
 	s.EventsOptions.BindFlags(flags)
 	s.ForkOptions.BindFlags(flags)
+	s.BuildkitOptions.BindFlags(flags)
 	s.ContainerRuntimeOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
@@ -122,6 +124,7 @@ func (o Options) Build() *Runner {
 		o.EventsOptions.Build(),
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
+		o.BuildkitOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),
 		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),

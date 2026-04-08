@@ -1,50 +1,50 @@
 package processor
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/internal/utils"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
 	"github.com/moby/buildkit/client"
-	"github.com/moby/buildkit/client/llb"
 )
 
-func WithRun(defaultPullPolicy runtime.PullImagePolicy, buildkit *client.Client, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, buildkit *client.Client, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Run == nil {
+		if spec.Service == nil {
 			return nil
 		}
 
-		return &Run{
-			step:              *spec.Run,
+		return &Service{
+			step:              *spec.Service,
 			stepName:          spec.Name,
-			buildkit:          buildkit,
+			driver:            driver,
 			defaultPullPolicy: defaultPullPolicy,
 			teardown:          teardown,
 		}
 	}
 }
 
-const (
-	defaultShell = "/bin/sh"
-)
-
-type Run struct {
+type Service struct {
 	stepName          string
-	step              v1beta1.RunStep
-	buildkit          *client.Client
+	step              v1beta1.ServiceStep
+	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
 }
 
-func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
 		pod := &runtime.Pod{
@@ -133,52 +133,7 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
 		fmt.Println(strings.Join(append(command, args...), " "))
-
-		src := llb.Local("src")
-		runr := llb.Image("ubuntu:latest").
-			Run(
-				llb.AddMount("/src", src),
-				llb.Shlex("/bin/sh -c 'echo >> 1 /src/kind.yaml'"),
-			)
-
-		out := runr.Root()
-
-		def, err := out.Marshal(ctx)
-		if err != nil {
-			return ctx, err
-		}
-
-		ch := make(chan *client.SolveStatus)
-
-		go func() {
-
-			_, err = s.buildkit.Solve(ctx, def, client.SolveOpt{
-				Exports: []client.ExportEntry{
-					{
-						Type:      client.ExporterLocal,
-						OutputDir: "./src",
-					},
-				},
-			}, ch)
-		}()
-
-		for status := range ch {
-			for _, msg := range status.Logs {
-				//fmt.Printf("%#v\n", msg)
-				if msg.Stream == 1 {
-					ctx.Streams.Stdout.Write(msg.Data)
-				} else {
-					ctx.Streams.Stderr.Write(msg.Data)
-				}
-			}
-
-		}
-
-		if err != nil {
-			return ctx, err
-		}
-
-		/*ctx, err := s.exec(ctx, pod)
+		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
 			var exitCode int
@@ -193,86 +148,13 @@ func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				exitCode:      exitCode,
 				err:           err,
 			}
-		}*/
+		}
 
 		return next(ctx)
 	}, nil
 }
 
-type ContainerError struct {
-	containerName string
-	image         string
-	exitCode      int
-	err           error
-}
-
-func (e *ContainerError) Error() string {
-	return fmt.Sprintf("container failed: %s", e.err.Error())
-}
-
-func (e *ContainerError) Unwrap() error {
-	return e.err
-}
-
-func (e *ContainerError) ContainerName() string {
-	return e.containerName
-}
-
-func (e *ContainerError) ExitCode() int {
-	return e.exitCode
-}
-
-func (e *ContainerError) Image() string {
-	return e.image
-}
-
-func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
-	if len(container.Args) == 0 {
-		container.Args = template.Args
-	}
-
-	if len(container.Command) == 0 {
-		container.Command = template.Command
-	}
-
-	if container.PWD == "" {
-		container.PWD = template.WorkingDir
-	}
-
-	if container.Image == "" {
-		container.Image = template.Image
-	}
-
-	if container.Uid == nil && template.Uid != nil {
-		uid := template.Uid.IntValue()
-		container.Uid = &uid
-	}
-
-	if container.Guid == nil && template.Guid != nil {
-		guid := template.Guid.IntValue()
-		container.Uid = &guid
-	}
-
-	for _, templateVol := range template.VolumeMounts {
-		hasVolume := false
-		for _, containerVol := range container.Volumes {
-			if templateVol.Name == containerVol.Name {
-				hasVolume = true
-				break
-			}
-		}
-
-		if !hasVolume {
-			container.Volumes = append(container.Volumes, runtime.Volume{
-				Name:     templateVol.Name,
-				HostPath: templateVol.HostPath,
-				Path:     templateVol.MountPath,
-			})
-		}
-	}
-}
-
-func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
+func (s *Service) commandArgs(run *v1beta1.ServiceStep) (cmd []string, args []string) {
 	script := strings.TrimSpace(run.Script)
 	args = run.Args
 
@@ -300,8 +182,7 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 	return
 }
 
-/*
-func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
+func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
 		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
 		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))
@@ -322,7 +203,34 @@ func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 		ctx.Containers[v.Name] = v
 	}
 
-	err = await.Wait(ctx)
+	done := make(chan error)
+	go func() {
+		if err := await.Wait(ctx); err != nil {
+			done <- err
+		}
+
+		done <- nil
+	}()
+
+	s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
+		//In case of Await == v1beta1.AwaitStatusReady we need to delete the container here
+		//otherwise we end up with orphaned running containers
+		//And in addition if the container here is not deleted the done channel will never be fulfilled as there is nothing which will stop
+		//the containers otherwise if the app was started with --no-gc (skip pod deletion)
+		if containerStatus, ok := ctx.Containers[s.stepName]; ok {
+			err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
+				Status: runtime.PodStatus{
+					Containers: []runtime.ContainerStatus{containerStatus},
+				},
+			}, timeout)
+
+			if err != nil {
+				return err
+			}
+		}
+
+		return <-done
+	}
+
 	return ctx, err
 }
-*/

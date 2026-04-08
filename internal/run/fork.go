@@ -47,17 +47,17 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		Env:             rc.Envs.Envs,
 		ImagePullPolicy: rc.ImagePolicy.PullPolicy,
 	}
-	pod := cruntime.Pod{
+	_ = cruntime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
 		Spec: cruntime.PodSpec{
 			Containers: []cruntime.ContainerSpec{container},
 		},
 	}
 
-	status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
+	/*status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
 	if err != nil {
 		return err
-	}
+	}*/
 
 	/*if !s.noGC {
 		defer func() {
@@ -65,5 +65,6 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		}()
 	}*/
 
-	return status.Wait(rc)
+	return nil
+	//return status.Wait(rc)
 }

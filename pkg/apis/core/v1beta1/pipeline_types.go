@@ -123,6 +123,7 @@ type Step struct {
 	And         *AndStep        `json:"and,omitempty"`
 	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
 	Run         *RunStep        `json:"run,omitempty"`
+	Service     *ServiceStep    `json:"service,omitempty"`
 	Inherit     *InheritStep    `json:"inherit,omitempty"`
 }
 
@@ -145,7 +146,10 @@ type PipeStep struct {
 }
 
 type RunStep struct {
-	Await     AwaitStatus `json:"await,omitempty"`
+	Container `json:",inline"`
+}
+
+type ServiceStep struct {
 	Container `json:",inline"`
 }
 

@@ -9,6 +9,7 @@ import (
 type RunContext struct {
 	context.Context
 	CEL              CELContext
+	Buildkit         BuildkitContext
 	ContainerRuntime ContainerRuntimeContext
 	ContextDir       ContextDirContext
 	Envs             EnvsContext

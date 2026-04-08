@@ -3,15 +3,16 @@ package v1beta1
 import (
 	"encoding/json"
 	"fmt"
-	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type StepResult struct {
 	Outputs   map[string]ParamValue `cel:"outputs"`
 	TmpDir    string                `cel:"tmpDir"`
 	Error     string                `cel:"error"`
-	StartedAt time.Time             `cel:"startedAt"`
-	EndedAt   time.Time             `cel:"endedAt"`
+	StartedAt metav1.Time           `cel:"startedAt"`
+	EndedAt   metav1.Time           `cel:"endedAt"`
 }
 
 type ContainerStatus struct {
