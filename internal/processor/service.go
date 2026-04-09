@@ -16,11 +16,9 @@ import (
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-
-	"github.com/moby/buildkit/client"
 )
 
-func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, buildkit *client.Client, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Service == nil {
 			return nil
@@ -72,7 +70,6 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			Args:            args,
 			Env:             envs,
 			PWD:             run.WorkingDir,
-			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
 		}
 
 		if run.Guid != nil {
@@ -90,6 +87,8 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				Name:     vol.Name,
 				HostPath: vol.HostPath,
 				Path:     vol.MountPath,
+				ReadOnly: vol.ReadOnly,
+				Output:   vol.Output,
 			})
 		}
 
@@ -117,6 +116,9 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		for i, vol := range container.Volumes {
+			if vol.HostPath == "" {
+				continue
+			}
 			srcPath, err := filepath.Abs(vol.HostPath)
 			if err != nil {
 				return ctx, fmt.Errorf("failed to get absolute path: %w", err)
@@ -213,10 +215,6 @@ func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	}()
 
 	s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
-		//In case of Await == v1beta1.AwaitStatusReady we need to delete the container here
-		//otherwise we end up with orphaned running containers
-		//And in addition if the container here is not deleted the done channel will never be fulfilled as there is nothing which will stop
-		//the containers otherwise if the app was started with --no-gc (skip pod deletion)
 		if containerStatus, ok := ctx.Containers[s.stepName]; ok {
 			err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
 				Status: runtime.PodStatus{

@@ -404,9 +404,10 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	mounts := []mount.Mount{}
 	for _, volume := range container.Volumes {
 		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: volume.HostPath,
-			Target: volume.Path,
+			Type:     mount.TypeBind,
+			Source:   volume.HostPath,
+			Target:   volume.Path,
+			ReadOnly: volume.ReadOnly,
 		})
 	}
 

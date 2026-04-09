@@ -52,8 +52,6 @@ type StepOptions struct {
 	Template     *Template         `json:"template,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []StepOutputParam `json:"outputs,omitempty"`
-	Generates    []Generate        `json:"generates,omitempty"`
-	Sources      []Source          `json:"sources,omitempty"`
 	Needs        []StepReference   `json:"needs,omitempty"`
 	Streams      *Streams          `json:"streams,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
@@ -106,14 +104,6 @@ type Retry struct {
 	MaxRetries  int             `json:"maxRetries,omitempty"`
 }
 
-type Source struct {
-	Match string `json:"match,omitempty"`
-}
-
-type Generate struct {
-	Path string `json:"path,omitempty"`
-}
-
 type Step struct {
 	Name        string `json:"name,omitempty"`
 	Short       string `json:"short,omitempty"`
@@ -145,6 +135,17 @@ type PipeStep struct {
 	Refs []StepReference `json:"refs,omitempty"`
 }
 
+// CacheMount is a BuildKit persistent cache directory (equivalent to RUN --mount=type=cache).
+type CacheMount struct {
+	// ID is the cache namespace. May contain substitution expressions.
+	ID string `json:"id,omitempty"`
+	// Path is the mount point inside the container.
+	Path string `json:"path,omitempty"`
+	// Sharing controls concurrent access: "shared" (default), "private", or "locked".
+	// +optional
+	Sharing string `json:"sharing,omitempty"`
+}
+
 type RunStep struct {
 	Container `json:",inline"`
 }
@@ -156,39 +157,30 @@ type ServiceStep struct {
 type Template Container
 
 type Container struct {
-	Stdin         bool                `json:"stdin,omitempty"`
-	TTY           bool                `json:"tty,omitempty"`
-	Image         string              `json:"image,omitempty"`
-	Command       []string            `json:"command,omitempty"`
-	Args          []string            `json:"args,omitempty"`
-	Script        string              `json:"script,omitempty"`
-	WorkingDir    string              `json:"workingDir,omitempty"`
-	RestartPolicy RestartPolicy       `json:"restartPolicy,omitempty"`
-	VolumeMounts  []VolumeMount       `json:"volumeMounts,omitempty"`
-	Uid           *intstr.IntOrString `json:"uid,omitempty"`
-	Guid          *intstr.IntOrString `json:"guid,omitempty"`
+	Stdin        bool                `json:"stdin,omitempty"`
+	TTY          bool                `json:"tty,omitempty"`
+	Image        string              `json:"image,omitempty"`
+	Command      []string            `json:"command,omitempty"`
+	Args         []string            `json:"args,omitempty"`
+	Script       string              `json:"script,omitempty"`
+	WorkingDir   string              `json:"workingDir,omitempty"`
+	VolumeMounts []VolumeMount       `json:"volumeMounts,omitempty"`
+	Caches       []CacheMount        `json:"caches,omitempty"`
+	Uid          *intstr.IntOrString `json:"uid,omitempty"`
+	Guid         *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type VolumeMount struct {
 	Name      string `json:"name,omitempty"`
 	MountPath string `json:"mountPath,omitempty"`
 	HostPath  string `json:"hostPath,omitempty"`
+	// ReadOnly mounts the host path read-only in the container.
+	// +optional
+	ReadOnly bool `json:"readOnly,omitempty"`
+	// Output, when true, writes the mount contents back to HostPath after the step (BuildKit run steps only).
+	// +optional
+	Output bool `json:"output,omitempty"`
 }
-
-type AwaitStatus string
-
-var (
-	AwaitStatusReady AwaitStatus = "Ready"
-	AwaitStatusExit  AwaitStatus = "Exit"
-)
-
-type RestartPolicy string
-
-var (
-	RestartPolicyNever     RestartPolicy = "Never"
-	RestartPolicyOnFailure RestartPolicy = "OnFailure"
-	RestartPolicyAlways    RestartPolicy = "Always"
-)
 
 type InheritStep struct {
 	Pipeline   string  `json:"pipeline,omitempty"`
