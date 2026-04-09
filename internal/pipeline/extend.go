@@ -32,7 +32,7 @@ func resolveStep(name string, stepMap map[string]v1beta1.Step, visiting map[stri
 		return v1beta1.Step{}, fmt.Errorf("unknown step %q", name)
 	}
 
-	if step.Extends == nil {
+	if len(step.Extends) == 0 {
 		return step, nil
 	}
 
@@ -42,32 +42,34 @@ func resolveStep(name string, stepMap map[string]v1beta1.Step, visiting map[stri
 
 	visiting[name] = true
 	defer delete(visiting, name)
-
-	template, err := resolveStep(step.Extends.Name, stepMap, visiting)
-	if err != nil {
-		return v1beta1.Step{}, fmt.Errorf("step %q extends %q: %w", name, step.Extends.Name, err)
-	}
-
-	base, err := json.Marshal(template)
-	if err != nil {
-		return v1beta1.Step{}, fmt.Errorf("failed to marshal template step %q: %w", template.Name, err)
-	}
-
-	overlay := step
-	overlay.Extends = nil
-	patch, err := json.Marshal(overlay)
-	if err != nil {
-		return v1beta1.Step{}, fmt.Errorf("failed to marshal step %q: %w", name, err)
-	}
-
-	merged, err := jsonpatch.MergePatch(base, patch)
-	if err != nil {
-		return v1beta1.Step{}, fmt.Errorf("failed to merge step %q with template %q: %w", name, template.Name, err)
-	}
-
 	var mergedStep v1beta1.Step
-	if err := json.Unmarshal(merged, &mergedStep); err != nil {
-		return v1beta1.Step{}, fmt.Errorf("failed to unmarshal merged step %q: %w", name, err)
+
+	for _, extend := range step.Extends {
+		template, err := resolveStep(extend.Name, stepMap, visiting)
+		if err != nil {
+			return v1beta1.Step{}, fmt.Errorf("step %q extends %q: %w", name, extend.Name, err)
+		}
+
+		base, err := json.Marshal(template)
+		if err != nil {
+			return v1beta1.Step{}, fmt.Errorf("failed to marshal template step %q: %w", template.Name, err)
+		}
+
+		overlay := step
+		overlay.Extends = nil
+		patch, err := json.Marshal(overlay)
+		if err != nil {
+			return v1beta1.Step{}, fmt.Errorf("failed to marshal step %q: %w", name, err)
+		}
+
+		merged, err := jsonpatch.MergePatch(base, patch)
+		if err != nil {
+			return v1beta1.Step{}, fmt.Errorf("failed to merge step %q with template %q: %w", name, template.Name, err)
+		}
+
+		if err := json.Unmarshal(merged, &mergedStep); err != nil {
+			return v1beta1.Step{}, fmt.Errorf("failed to unmarshal merged step %q: %w", name, err)
+		}
 	}
 
 	return mergedStep, nil

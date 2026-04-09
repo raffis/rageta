@@ -16,6 +16,8 @@ import (
 
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/client/llb/imagemetaresolver"
+	"github.com/moby/buildkit/util/progress/progressui"
 )
 
 func WithRun(buildkit *client.Client, outputFactory OutputFactory) ProcessorBuilder {
@@ -262,12 +264,10 @@ func mergeTemplateCaches(run *v1beta1.RunStep, tmpl *v1beta1.Template) {
 }
 
 func (s *Run) solveWithBuildKit(ctx StepContext, container runtime.ContainerSpec, run *v1beta1.RunStep) error {
-	if s.buildkit == nil {
-		return fmt.Errorf("buildkit client is nil")
-	}
 	if container.Image == "" {
 		return fmt.Errorf("run step %q: image is required", s.stepName)
 	}
+
 	cmdline := append(append([]string(nil), container.Command...), container.Args...)
 	if len(cmdline) == 0 {
 		return fmt.Errorf("run step %q: command, args, or script is required", s.stepName)
@@ -328,7 +328,8 @@ func (s *Run) solveWithBuildKit(ctx StepContext, container runtime.ContainerSpec
 	}
 	runOpts = append(runOpts, llb.Args(cmdline))
 
-	exec := llb.Image(container.Image).Run(runOpts...)
+	// Without image config (PATH, WORKDIR, ENV), e.g. golang images lack /usr/local/go/bin on PATH → exit 127.
+	exec := llb.Image(container.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
 	type outputMount struct {
 		mountPath, hostPath string
@@ -376,18 +377,31 @@ func (s *Run) solveWithBuildKit(ctx StepContext, container runtime.ContainerSpec
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, solveErr = s.buildkit.Solve(ctx, def, opt, ch)
+		x, e := s.buildkit.Solve(ctx, def, opt, ch)
+		solveErr = e
+
+		fmt.Printf("x: %#v\n", x)
 	}()
 
-	for status := range ch {
-		for _, msg := range status.Logs {
-			if msg.Stream == 1 {
-				_, _ = ctx.Streams.Stdout.Write(msg.Data)
-			} else {
-				_, _ = ctx.Streams.Stderr.Write(msg.Data)
-			}
-		}
+	d, err := progressui.NewDisplay(ctx.Streams.Stderr, progressui.TtyMode)
+	if err != nil {
+		// If an error occurs while attempting to create the tty display,
+		// fallback to using plain mode on stdout (in contrast to stderr).
+		d, _ = progressui.NewDisplay(ctx.Streams.Stderr, progressui.PlainMode)
 	}
+	// not using shared context to not disrupt display but let is finish reporting errors
+	_, err = d.UpdateFrom(ctx, ch)
+
+	//for status := range ch {
+
+	/*for _, msg := range status.Logs {
+		if msg.Stream == 1 {
+			_, _ = ctx.Streams.Stdout.Write(msg.Data)
+		} else {
+			_, _ = ctx.Streams.Stderr.Write(msg.Data)
+		}
+	}*/
+	//}
 
 	<-done
 	if solveErr != nil {

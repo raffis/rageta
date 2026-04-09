@@ -777,8 +777,8 @@ func (in *StepOptions) DeepCopyInto(out *StepOptions) {
 	*out = *in
 	if in.Extends != nil {
 		in, out := &in.Extends, &out.Extends
-		*out = new(StepReference)
-		**out = **in
+		*out = make([]StepReference, len(*in))
+		copy(*out, *in)
 	}
 	if in.If != nil {
 		in, out := &in.If, &out.If

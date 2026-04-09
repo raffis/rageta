@@ -155,10 +155,12 @@ spec:
                 expose:
                   type: boolean
                 extends:
-                  properties:
-                    name:
-                      type: string
-                  type: object
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
                 if:
                   items:
                     properties:

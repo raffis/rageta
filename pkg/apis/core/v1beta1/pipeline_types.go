@@ -43,7 +43,7 @@ func (p Pipeline) SetDefaults() {
 }
 
 type StepOptions struct {
-	Extends      *StepReference    `json:"extends,omitempty"`
+	Extends      []StepReference   `json:"extends,omitempty"`
 	If           []IfCondition     `json:"if,omitempty"`
 	Expose       bool              `json:"expose,omitempty"`
 	Inputs       []InputParam      `json:"inputs,omitempty"`
