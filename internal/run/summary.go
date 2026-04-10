@@ -9,15 +9,15 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/styles"
-	"github.com/spf13/pflag"
 )
 
 type SummaryOptions struct {
 	SkipSummary bool
 }
 
-func (s *SummaryOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *SummaryOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.SkipSummary, "skip-summary", "", s.SkipSummary, "Do not print an execution summary at the end of the pipeline execution.")
 }
 

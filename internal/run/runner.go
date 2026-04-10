@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type Step interface {
@@ -73,7 +73,7 @@ type Options struct {
 	StepContextOptions      StepContextOptions
 }
 
-func (s *Options) BindFlags(flags *pflag.FlagSet) {
+func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
 	s.StepContextOptions.BindFlags(flags)

@@ -12,6 +12,7 @@ import (
 	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/go-logr/logr"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/spf13/pflag"
 )
@@ -69,7 +70,7 @@ type Options struct {
 }
 
 // InstallFlags adds flags for the common options on the FlagSet
-func (o *Options) BindFlags(flags *pflag.FlagSet) {
+func (o *Options) BindFlags(flags flagset.Interface) {
 	configDir := config.Dir()
 	if dockerCertPath == "" {
 		dockerCertPath = configDir

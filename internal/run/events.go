@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type EventsOptions struct {
@@ -15,7 +15,7 @@ type EventsOptions struct {
 	WaitUpdateInterval time.Duration
 }
 
-func (s *EventsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *EventsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.EventsOutput, "events-output", "", s.EventsOutput, "Destination for the events. By default this depends on the output (-o) set.")
 	flags.DurationVarP(&s.WaitUpdateInterval, "events-interval", "", s.WaitUpdateInterval, "Print event for a running step at intervals.")
 	flags.BoolVarP(&s.Disabled, "skip-events", "", s.Disabled, "Do not emit events")

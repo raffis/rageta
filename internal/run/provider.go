@@ -10,9 +10,10 @@ import (
 	"sync"
 
 	"github.com/gofrs/flock"
-	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/provider"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/pflag"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
@@ -25,7 +26,7 @@ type ProviderOptions struct {
 	DBPath string
 }
 
-func (s *ProviderOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ProviderOptions) BindFlags(flags flagset.Interface) {
 	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
 	s.OCI.BindFlags(ociFlags)
 	flags.AddFlagSet(ociFlags)

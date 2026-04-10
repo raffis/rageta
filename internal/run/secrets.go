@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/raffis/rageta/internal/mask"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"golang.org/x/term"
 )
 
@@ -12,7 +12,7 @@ type SecretsOptions struct {
 	Secrets []string
 }
 
-func (s *SecretsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *SecretsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Secrets, "secret", "s", s.Secrets, "Pass secrets to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
 }
 

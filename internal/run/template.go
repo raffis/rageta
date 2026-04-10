@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -17,7 +17,7 @@ type TemplateOptions struct {
 	User    string
 }
 
-func (s *TemplateOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *TemplateOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Volumes, "bind", "b", s.Volumes, "Bind directory as volume to the pipeline.")
 	flags.StringVarP(&s.User, "user", "u", s.User, "Username or UID (format: <name|uid>[:<group|gid>])")
 }

@@ -2,21 +2,31 @@ package run
 
 import (
 	"github.com/moby/buildkit/client"
+	"github.com/raffis/rageta/internal/setup/buildkitsetup"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 )
 
-func NewBuildkitOptions() BuildkitOptions {
-	return BuildkitOptions{}
-}
-
 type BuildkitOptions struct {
+	BuildkitOptions buildkitsetup.Options
+	CacheImports    []string
+	CacheExports    []string
+	NoCache         bool
 }
 
 func (s BuildkitOptions) Build() Step {
-	return &Buildkit{}
+	return &Buildkit{
+		opts: s,
+	}
 }
 
-func (s BuildkitOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *BuildkitOptions) BindFlags(flags flagset.Interface) {
+	buildkitFlags := pflag.NewFlagSet("buildkit", pflag.ExitOnError)
+	s.BuildkitOptions.BindFlags(buildkitFlags)
+	buildkitFlags.StringSliceVarP(&s.CacheImports, "cache-from", "", s.CacheImports, "Import build cache, e.g. --import-cache type=registry,ref=example.com/foo/bar, or --import-cache type=local,src=path/to/dir")
+	buildkitFlags.StringSliceVarP(&s.CacheExports, "cache-to", "", s.CacheExports, "Export build cache, e.g. --export-cache type=registry,ref=example.com/foo/bar, or --export-cache type=local,dest=path/to/dir")
+	buildkitFlags.BoolVar(&s.NoCache, "no-cache", s.NoCache, "Disable cache for all the vertices")
+	flags.AddFlagSet(buildkitFlags)
 }
 
 type Buildkit struct {
@@ -24,15 +34,32 @@ type Buildkit struct {
 }
 
 type BuildkitContext struct {
-	Client *client.Client
+	Client       *client.Client
+	CacheImports []client.CacheOptionsEntry
+	CacheExports []client.CacheOptionsEntry
+	NoCache      bool
 }
 
 func (s *Buildkit) Run(rc *RunContext, next Next) error {
-	c, err := client.New(rc, "tcp://172.17.0.2:1234")
+	c, err := s.opts.BuildkitOptions.Build(rc)
+	if err != nil {
+		return err
+	}
+
+	cacheImports, err := buildkitsetup.ParseImportCache(s.opts.CacheImports)
+	if err != nil {
+		return err
+	}
+
+	cacheExports, err := buildkitsetup.ParseExportCache(s.opts.CacheExports)
 	if err != nil {
 		return err
 	}
 
 	rc.Buildkit.Client = c
+	rc.Buildkit.CacheImports = cacheImports
+	rc.Buildkit.CacheExports = cacheExports
+	rc.Buildkit.NoCache = s.opts.NoCache
+
 	return next(rc)
 }

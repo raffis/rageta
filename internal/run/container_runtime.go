@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/raffis/rageta/internal/dockersetup"
-	"github.com/raffis/rageta/internal/kubesetup"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/dockersetup"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 )
 
@@ -30,7 +30,6 @@ func NewContainerRuntimeOptions() ContainerRuntimeOptions {
 type ContainerRuntimeOptions struct {
 	ContainerRuntime string
 	DockerOptions    dockersetup.Options
-	KubeOptions      *kubesetup.Options
 	DockerQuiet      bool
 }
 
@@ -40,7 +39,7 @@ func (s ContainerRuntimeOptions) Build() Step {
 	}
 }
 
-func (s ContainerRuntimeOptions) BindFlags(flags *pflag.FlagSet) {
+func (s ContainerRuntimeOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. Only docker is supported.")
 
 	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)

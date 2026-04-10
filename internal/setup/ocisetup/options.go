@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type Options struct {
@@ -29,8 +29,8 @@ func DefaultOptions() *Options {
 	}
 }
 
-// BindFlags will parse the given pflag.FlagSet
-func (o *Options) BindFlags(fs *pflag.FlagSet) {
+// BindFlags registers OCI client flags on the given flag set.
+func (o *Options) BindFlags(fs flagset.Interface) {
 	fs.StringVar(&o.Creds, "creds", o.Creds, "credentials for OCI registry in the format <username>[:<password>] if --provider is generic")
 	fs.StringVar(&o.Provider, "provider", o.Provider, "OCI provider type")
 }

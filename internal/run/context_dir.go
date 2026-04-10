@@ -6,7 +6,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type ContextDirOptions struct {
@@ -20,7 +20,7 @@ func (s ContextDirOptions) Build() Step {
 	}
 }
 
-func (s *ContextDirOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ContextDirOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ContextDir, "context-dir", "", s.ContextDir, "Use a static context directory. If any context is found it attempts to recover it.")
 	flags.BoolVarP(&s.SkipContextGC, "skip-context-gc", "", s.SkipContextGC, "Do not keep the context directory after the pipeline execution.")
 }

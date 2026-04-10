@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/run"
 	"github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
@@ -124,16 +124,14 @@ func printHelpCommand(cmd *cobra.Command) {
 		}
 	}
 
-	if cmd == runCmd && len(runFlagGroups) > 0 {
-		// Run has grouped flag sets (Execution, Pipeline, etc.)
-		for _, group := range runFlagGroups {
-			flagBlocks := formatFlagSetStyle(group.Set)
+	if cmd == runCmd && runFlags != nil {
+		for _, set := range runFlags.FlagSets() {
+			flagBlocks := formatFlagSetStyle(set)
 			if len(flagBlocks) > 0 {
-				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+				sections = append(sections, styles.HelpSection.Render("\n\n"+set.Name()), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
 		}
 	} else {
-		// Generic: show this command's flags, then global (inherited) flags
 		localBlocks := formatFlagSetStyle(cmd.NonInheritedFlags())
 		if len(localBlocks) > 0 {
 			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(localBlocks, "\n\n"))
@@ -204,10 +202,10 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 		sections = append(sections, styles.HelpSection.Render("\n\nInputs:"), styles.HelpBody.Render("\n\n"), strings.Join(inputBlocks, "\n\n"))
 	}
 
-	if full {
-		for _, group := range runFlagGroups {
+	if full && runFlags != nil {
+		for _, set := range runFlags.FlagSets() {
 			var flagBlocks []string
-			group.Set.VisitAll(func(f *pflag.Flag) {
+			set.VisitAll(func(f *pflag.Flag) {
 				name := "--" + f.Name
 				if f.Shorthand != "" {
 					name = "-" + string(f.Shorthand) + ", " + name
@@ -224,7 +222,7 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 			})
 
 			if len(flagBlocks) > 0 {
-				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+				sections = append(sections, styles.HelpSection.Render("\n\n"+set.Name()), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
 		}
 	}

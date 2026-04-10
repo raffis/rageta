@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"os"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type Options struct {
@@ -46,8 +46,8 @@ func (o *Options) getTLSConfig() (*tls.Config, error) {
 	return &tlsConfig, nil
 }
 
-// BindFlags will parse the given pflag.FlagSet
-func (o *Options) BindFlags(fs *pflag.FlagSet) {
+// BindFlags registers OpenTelemetry-related flags on the given flag set.
+func (o *Options) BindFlags(fs flagset.Interface) {
 	fs.StringVar(&o.ServiceName, "otel-service-name", "rageta", "Opentelemetry service name")
 	fs.BoolVar(&o.Stdout, "otel-stdout", false, "Dump telemetry data to stdout")
 	fs.StringVar(&o.Endpoint, "otel-endpoint", "", "Opentelemetry gRPC endpoint (without protocol)")

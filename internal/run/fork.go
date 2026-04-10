@@ -6,8 +6,8 @@ import (
 	"slices"
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/utils"
-	"github.com/spf13/pflag"
 )
 
 type ForkOptions struct {
@@ -20,7 +20,7 @@ func (s ForkOptions) Build() Step {
 	}
 }
 
-func (s *ForkOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ForkOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Fork, "fork", "", s.Fork, "Creates a controller container which handles this pipeline and exit.")
 }
 

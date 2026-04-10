@@ -18,7 +18,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Service == nil {
 			return nil
@@ -154,6 +154,52 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		return next(ctx)
 	}, nil
+}
+
+func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
+	if len(container.Args) == 0 {
+		container.Args = template.Args
+	}
+
+	if len(container.Command) == 0 {
+		container.Command = template.Command
+	}
+
+	if container.PWD == "" {
+		container.PWD = template.WorkingDir
+	}
+
+	if container.Image == "" {
+		container.Image = template.Image
+	}
+
+	if container.Uid == nil && template.Uid != nil {
+		uid := template.Uid.IntValue()
+		container.Uid = &uid
+	}
+
+	if container.Guid == nil && template.Guid != nil {
+		guid := template.Guid.IntValue()
+		container.Uid = &guid
+	}
+
+	for _, templateVol := range template.VolumeMounts {
+		hasVolume := false
+		for _, containerVol := range container.Volumes {
+			if templateVol.Name == containerVol.Name {
+				hasVolume = true
+				break
+			}
+		}
+
+		if !hasVolume {
+			container.Volumes = append(container.Volumes, runtime.Volume{
+				Name:     templateVol.Name,
+				HostPath: templateVol.HostPath,
+				Path:     templateVol.MountPath,
+			})
+		}
+	}
 }
 
 func (s *Service) commandArgs(run *v1beta1.ServiceStep) (cmd []string, args []string) {
