@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type PullImage string
@@ -35,7 +35,7 @@ func (s ImagePolicyOptions) Build() Step {
 	}
 }
 
-func (s *ImagePolicyOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ImagePolicyOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.Policy, "pull", "", s.Policy, "Pull image before running. one of [always, missing, never].")
 }
 

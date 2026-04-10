@@ -88,7 +88,22 @@ func mergeTemplate(to *v1beta1.Template, from *v1beta1.Template) error {
 				Name:      templateVol.Name,
 				HostPath:  hostPath,
 				MountPath: templateVol.MountPath,
+				ReadOnly:  templateVol.ReadOnly,
+				Output:    templateVol.Output,
 			})
+		}
+	}
+
+	for _, c := range from.Caches {
+		dup := false
+		for _, ex := range to.Caches {
+			if ex.ID == c.ID && ex.Path == c.Path {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			to.Caches = append(to.Caches, c)
 		}
 	}
 

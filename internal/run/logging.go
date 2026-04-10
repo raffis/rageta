@@ -9,7 +9,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -25,7 +25,7 @@ func (s LoggingOptions) Build() Step {
 	}
 }
 
-func (s *LoggingOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *LoggingOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Detached, "log-detached", "", s.Detached, "Detach logs.")
 }
 

@@ -30,6 +30,8 @@ type Volume struct {
 	Name     string
 	Path     string
 	HostPath string
+	ReadOnly bool
+	Output   bool
 }
 
 type PodStatus struct {

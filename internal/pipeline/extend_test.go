@@ -39,7 +39,7 @@ func TestResolveExtends_SimpleExtends(t *testing.T) {
 	Extendsing := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: &v1beta1.StepReference{Name: "base"},
+			Extends: []v1beta1.StepReference{{Name: "base"}},
 			Env: []v1beta1.EnvVar{
 				{Name: "EXTRA", Value: strPtr("val")},
 			},
@@ -71,7 +71,7 @@ func TestResolveExtends_OverrideFields(t *testing.T) {
 	Extendsing := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: &v1beta1.StepReference{Name: "base"},
+			Extends: []v1beta1.StepReference{{Name: "base"}},
 		},
 		Run: &v1beta1.RunStep{
 			Container: v1beta1.Container{Image: "ubuntu"},
@@ -99,7 +99,7 @@ func TestResolveExtends_ChainedExtends(t *testing.T) {
 	parent := v1beta1.Step{
 		Name: "parent",
 		StepOptions: v1beta1.StepOptions{
-			Extends: &v1beta1.StepReference{Name: "grandparent"},
+			Extends: []v1beta1.StepReference{{Name: "grandparent"}},
 			Env:     []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("parent")}},
 		},
 	}
@@ -107,7 +107,7 @@ func TestResolveExtends_ChainedExtends(t *testing.T) {
 	child := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: &v1beta1.StepReference{Name: "parent"},
+			Extends: []v1beta1.StepReference{{Name: "parent"}},
 			Env:     []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}},
 		},
 	}
@@ -128,7 +128,7 @@ func TestResolveExtends_UnknownTemplate(t *testing.T) {
 		{
 			Name: "child",
 			StepOptions: v1beta1.StepOptions{
-				Extends: &v1beta1.StepReference{Name: "nonexistent"},
+				Extends: []v1beta1.StepReference{{Name: "nonexistent"}},
 			},
 		},
 	}
@@ -142,13 +142,13 @@ func TestResolveExtends_CircularExtends(t *testing.T) {
 		{
 			Name: "a",
 			StepOptions: v1beta1.StepOptions{
-				Extends: &v1beta1.StepReference{Name: "b"},
+				Extends: []v1beta1.StepReference{{Name: "b"}},
 			},
 		},
 		{
 			Name: "b",
 			StepOptions: v1beta1.StepOptions{
-				Extends: &v1beta1.StepReference{Name: "a"},
+				Extends: []v1beta1.StepReference{{Name: "a"}},
 			},
 		},
 	}

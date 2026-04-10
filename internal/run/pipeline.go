@@ -3,8 +3,8 @@ package run
 import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"github.com/spf13/pflag"
 )
 
 type PipelineOptions struct {
@@ -18,7 +18,7 @@ func (s PipelineOptions) Build() Step {
 	return &Pipeline{opts: s}
 }
 
-func (s *PipelineOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVar(&s.SkipDone, "skip-done", s.SkipDone, "Skip already done steps")
 	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
 	flags.IntVar(&s.MaxConcurrent, "max-concurrent", s.MaxConcurrent, "Max concurrent container steps")
@@ -71,7 +71,6 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
 			processor.WithSkipBlacklist(s.opts.SkipSteps),
-			processor.WithGarbageCollector(!rc.Teardown.Enabled, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
 			processor.WithSkipDone(s.opts.SkipDone),
@@ -81,7 +80,8 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithStdioRedirect(false),
 			processor.WithMaxConcurrent(pool),
 			processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
-			processor.WithRun(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Output.Factory, rc.Teardown.Teardown),
+			processor.WithRun(rc.Buildkit.Client, rc.Buildkit.CacheImports, rc.Buildkit.CacheExports, rc.Buildkit.NoCache),
+			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 			processor.WithAnd(),
 			processor.WithConcurrent(),

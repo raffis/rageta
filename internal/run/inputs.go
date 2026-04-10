@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/pipeline"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/pflag"
 )
@@ -20,7 +21,7 @@ func (s InputsOptions) Build() Step {
 	return &Inputs{opts: s}
 }
 
-func (s *InputsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *InputsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringArrayVarP(&s.Args, "input", "i", s.Args, "Pass inputs to the pipeline.")
 }
 

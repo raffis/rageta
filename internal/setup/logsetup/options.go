@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -22,7 +22,7 @@ func DefaultOptions() *Options {
 	return &Options{}
 }
 
-func (o *Options) BindFlags(fs *pflag.FlagSet) {
+func (o *Options) BindFlags(fs flagset.Interface) {
 	fs.Int8VarP(&o.Verbose, "verbose", "v", 0, "Log verbosity level. With `0` no logs visible while 128 is the most verbose level.")
 	fs.StringVar(&o.Log.Encoding, "log-encoding", "json", "Log encoding format")
 }

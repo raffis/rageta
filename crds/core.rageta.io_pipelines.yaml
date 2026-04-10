@@ -155,14 +155,9 @@ spec:
                 expose:
                   type: boolean
                 extends:
-                  properties:
-                    name:
-                      type: string
-                  type: object
-                generates:
                   items:
                     properties:
-                      path:
+                      name:
                         type: string
                     type: object
                   type: array
@@ -355,8 +350,24 @@ spec:
                       items:
                         type: string
                       type: array
-                    await:
-                      type: string
+                    caches:
+                      items:
+                        description: CacheMount is a BuildKit persistent cache directory
+                          (equivalent to RUN --mount=type=cache).
+                        properties:
+                          id:
+                            description: ID is the cache namespace. May contain substitution
+                              expressions.
+                            type: string
+                          path:
+                            description: Path is the mount point inside the container.
+                            type: string
+                          sharing:
+                            description: 'Sharing controls concurrent access: "shared"
+                              (default), "private", or "locked".'
+                            type: string
+                        type: object
+                      type: array
                     command:
                       items:
                         type: string
@@ -367,8 +378,6 @@ spec:
                       - type: string
                       x-kubernetes-int-or-string: true
                     image:
-                      type: string
-                    restartPolicy:
                       type: string
                     script:
                       type: string
@@ -390,6 +399,15 @@ spec:
                             type: string
                           name:
                             type: string
+                          output:
+                            description: Output, when true, writes the mount contents
+                              back to HostPath after the step (BuildKit run steps
+                              only).
+                            type: boolean
+                          readOnly:
+                            description: ReadOnly mounts the host path read-only in
+                              the container.
+                            type: boolean
                         type: object
                       type: array
                     workingDir:
@@ -404,15 +422,77 @@ spec:
                         type: string
                     type: object
                   type: array
+                service:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    caches:
+                      items:
+                        description: CacheMount is a BuildKit persistent cache directory
+                          (equivalent to RUN --mount=type=cache).
+                        properties:
+                          id:
+                            description: ID is the cache namespace. May contain substitution
+                              expressions.
+                            type: string
+                          path:
+                            description: Path is the mount point inside the container.
+                            type: string
+                          sharing:
+                            description: 'Sharing controls concurrent access: "shared"
+                              (default), "private", or "locked".'
+                            type: string
+                        type: object
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    image:
+                      type: string
+                    script:
+                      type: string
+                    stdin:
+                      type: boolean
+                    tty:
+                      type: boolean
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    volumeMounts:
+                      items:
+                        properties:
+                          hostPath:
+                            type: string
+                          mountPath:
+                            type: string
+                          name:
+                            type: string
+                          output:
+                            description: Output, when true, writes the mount contents
+                              back to HostPath after the step (BuildKit run steps
+                              only).
+                            type: boolean
+                          readOnly:
+                            description: ReadOnly mounts the host path read-only in
+                              the container.
+                            type: boolean
+                        type: object
+                      type: array
+                    workingDir:
+                      type: string
+                  type: object
                 short:
                   type: string
-                sources:
-                  items:
-                    properties:
-                      match:
-                        type: string
-                    type: object
-                  type: array
                 streams:
                   properties:
                     stderr:
@@ -454,6 +534,24 @@ spec:
                       items:
                         type: string
                       type: array
+                    caches:
+                      items:
+                        description: CacheMount is a BuildKit persistent cache directory
+                          (equivalent to RUN --mount=type=cache).
+                        properties:
+                          id:
+                            description: ID is the cache namespace. May contain substitution
+                              expressions.
+                            type: string
+                          path:
+                            description: Path is the mount point inside the container.
+                            type: string
+                          sharing:
+                            description: 'Sharing controls concurrent access: "shared"
+                              (default), "private", or "locked".'
+                            type: string
+                        type: object
+                      type: array
                     command:
                       items:
                         type: string
@@ -464,8 +562,6 @@ spec:
                       - type: string
                       x-kubernetes-int-or-string: true
                     image:
-                      type: string
-                    restartPolicy:
                       type: string
                     script:
                       type: string
@@ -487,6 +583,15 @@ spec:
                             type: string
                           name:
                             type: string
+                          output:
+                            description: Output, when true, writes the mount contents
+                              back to HostPath after the step (BuildKit run steps
+                              only).
+                            type: boolean
+                          readOnly:
+                            description: ReadOnly mounts the host path read-only in
+                              the container.
+                            type: boolean
                         type: object
                       type: array
                     workingDir:

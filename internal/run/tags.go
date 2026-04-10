@@ -4,14 +4,14 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type TagsOptions struct {
 	Tags []string
 }
 
-func (s *TagsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *TagsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Tags, "tags", "", s.Tags, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
 }
 

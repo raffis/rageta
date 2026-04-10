@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/go-logr/logr"
-	"github.com/raffis/rageta/internal/logsetup"
+	"github.com/raffis/rageta/internal/setup/logsetup"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

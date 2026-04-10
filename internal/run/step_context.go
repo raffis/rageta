@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"github.com/spf13/pflag"
 )
 
 type StepContextOptions struct {
@@ -22,7 +22,7 @@ func (s StepContextOptions) Build() Step {
 	}
 }
 
-func (s *StepContextOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *StepContextOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.RecoverFrom, "recover", "", s.RecoverFrom, "Recover from previous execution. Path to context directory.")
 }
 

@@ -3,8 +3,9 @@ package run
 import (
 	"context"
 
-	"github.com/raffis/rageta/internal/logbridge"
-	"github.com/raffis/rageta/internal/otelsetup"
+	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/raffis/rageta/internal/setup/logbridge"
+	"github.com/raffis/rageta/internal/setup/otelsetup"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
@@ -20,7 +21,7 @@ type OtelOptions struct {
 	ZapConfig zap.Config
 }
 
-func (s *OtelOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *OtelOptions) BindFlags(flags flagset.Interface) {
 	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
 	s.OtelOpts.BindFlags(otelFlags)
 	flags.AddFlagSet(otelFlags)

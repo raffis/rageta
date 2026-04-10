@@ -2,23 +2,19 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 
 	"github.com/go-logr/logr"
-	"github.com/raffis/rageta/internal/dockersetup"
-	"github.com/raffis/rageta/internal/kubesetup"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/dockersetup"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
-	"k8s.io/client-go/kubernetes"
 )
 
 type containerRuntime string
 
 var (
-	containerRuntimeDocker     containerRuntime = "docker"
-	containerRuntimeKubernetes containerRuntime = "kubernetes"
+	containerRuntimeDocker containerRuntime = "docker"
 )
 
 func (d containerRuntime) String() string {
@@ -27,15 +23,13 @@ func (d containerRuntime) String() string {
 
 func NewContainerRuntimeOptions() ContainerRuntimeOptions {
 	return ContainerRuntimeOptions{
-		ContainerRuntime: electDefaultContainerRuntime().String(),
-		KubeOptions:      kubesetup.DefaultOptions(),
+		ContainerRuntime: containerRuntimeDocker.String(),
 	}
 }
 
 type ContainerRuntimeOptions struct {
 	ContainerRuntime string
 	DockerOptions    dockersetup.Options
-	KubeOptions      *kubesetup.Options
 	DockerQuiet      bool
 }
 
@@ -45,38 +39,13 @@ func (s ContainerRuntimeOptions) Build() Step {
 	}
 }
 
-func electDefaultContainerRuntime() containerRuntime {
-	docker, _ := isPossiblyInsideDocker()
-
-	switch {
-	case docker:
-		return containerRuntimeDocker
-		//case isPossiblyInsideKube():
-		//		return containerRuntimeKubernetes
-	}
-
-	return containerRuntimeDocker
-}
-
-func isPossiblyInsideDocker() (bool, error) {
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		return true, nil
-	} else {
-		return false, err
-	}
-}
-
-func (s ContainerRuntimeOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. One of [docker].")
+func (s ContainerRuntimeOptions) BindFlags(flags flagset.Interface) {
+	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. Only docker is supported.")
 
 	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
 	dockerFlags.BoolVarP(&s.DockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
 	s.DockerOptions.BindFlags(dockerFlags)
 	flags.AddFlagSet(dockerFlags)
-
-	kubeFlags := pflag.NewFlagSet("kube", pflag.ExitOnError)
-	s.KubeOptions.BindFlags(kubeFlags)
-	flags.AddFlagSet(kubeFlags)
 }
 
 type ContainerRuntime struct {
@@ -112,19 +81,6 @@ func (s *ContainerRuntime) createContainerRuntime(ctx context.Context, logger lo
 			cruntime.WithHidePullOutput(s.opts.DockerQuiet),
 			cruntime.WithLogger(logger),
 		), nil
-	case containerRuntimeKubernetes.String():
-		if s.opts.KubeOptions == nil {
-			return nil, errors.New("kubernetes options not set")
-		}
-		config, err := s.opts.KubeOptions.ToRESTConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kube client: %w", err)
-		}
-		clientset, err := kubernetes.NewForConfig(config)
-		if err != nil {
-			return nil, err
-		}
-		return cruntime.NewKubernetes(clientset.CoreV1()), nil
 	default:
 		return nil, fmt.Errorf("unknown container runtime: %s", s.opts.ContainerRuntime)
 	}

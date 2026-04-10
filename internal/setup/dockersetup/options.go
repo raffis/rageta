@@ -12,7 +12,7 @@ import (
 	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/go-logr/logr"
-	"github.com/moby/moby/client"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/http/middleware"
 	"github.com/spf13/pflag"
 )
@@ -53,8 +53,8 @@ Refer to https://docs.docker.com/go/formatting/ for more information about forma
 )
 
 var (
-	dockerCertPath  = os.Getenv(client.EnvOverrideCertPath)
-	dockerTLSVerify = os.Getenv(client.EnvTLSVerify) != ""
+	dockerCertPath  = os.Getenv(dockerclient.EnvOverrideCertPath)
+	dockerTLSVerify = os.Getenv(dockerclient.EnvTLSVerify) != ""
 	dockerTLS       = os.Getenv(EnvEnableTLS) != ""
 )
 
@@ -70,7 +70,7 @@ type Options struct {
 }
 
 // InstallFlags adds flags for the common options on the FlagSet
-func (o *Options) BindFlags(flags *pflag.FlagSet) {
+func (o *Options) BindFlags(flags flagset.Interface) {
 	configDir := config.Dir()
 	if dockerCertPath == "" {
 		dockerCertPath = configDir
@@ -92,7 +92,7 @@ func (o *Options) BindFlags(flags *pflag.FlagSet) {
 
 	flags.StringSliceVarP(&o.Hosts, "docker-host", "", []string{dockerclient.DefaultDockerHost}, "Daemon socket to connect to")
 	flags.StringVarP(&o.Context, "docker-context", "", "",
-		`Name of the context to use to connect to the daemon (overrides `+client.EnvOverrideHost+` env var and default context set with "docker context use")`)
+		`Name of the context to use to connect to the daemon (overrides `+dockerclient.EnvOverrideHost+` env var and default context set with "docker context use")`)
 }
 
 // SetDefaultOptions sets default values for options after flag parsing is

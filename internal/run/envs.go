@@ -4,14 +4,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type EnvsOptions struct {
 	Envs []string
 }
 
-func (s *EnvsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *EnvsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Envs, "env", "e", s.Envs, "Pass envs to the pipeline.")
 }
 

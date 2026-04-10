@@ -20,10 +20,10 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/docker/registry"
 	"github.com/go-logr/logr"
-	"github.com/moby/moby/pkg/jsonmessage"
-	"github.com/moby/moby/registry"
 	"github.com/moby/term"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/utils/strings/slices"
@@ -404,9 +404,10 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	mounts := []mount.Mount{}
 	for _, volume := range container.Volumes {
 		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: volume.HostPath,
-			Target: volume.Path,
+			Type:     mount.TypeBind,
+			Source:   volume.HostPath,
+			Target:   volume.Path,
+			ReadOnly: volume.ReadOnly,
 		})
 	}
 
