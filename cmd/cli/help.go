@@ -148,7 +148,7 @@ func printHelpCommand(cmd *cobra.Command) {
 func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 	var sections []string
 
-	title := styles.HelpTitle.Render(fmt.Sprintf("● %s ●\n", command.Name))
+	title := styles.HelpTitle.Render(fmt.Sprintf("%s\n", command.Name))
 	sections = append(sections, title)
 
 	if command.ShortDescription != "" {

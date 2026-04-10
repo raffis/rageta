@@ -15,6 +15,7 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/client/llb/imagemetaresolver"
+	gatewaypb "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progressui"
@@ -327,6 +328,18 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		<-done
 		if solveErr != nil {
+
+			var exitErr *gatewaypb.ExitError
+			if errors.As(solveErr, &exitErr) {
+				return ctx, &ContainerError{
+					containerName: s.stepName,
+					image:         run.Image,
+					exitCode:      int(exitErr.ExitCode),
+					err:           solveErr,
+				}
+			}
+
+			fmt.Printf("solveErr: %#v", solveErr)
 			return ctx, solveErr
 		}
 
