@@ -20,16 +20,19 @@ import (
 	"github.com/moby/buildkit/util/progress/progressui"
 )
 
-func WithRun(buildkit *client.Client) ProcessorBuilder {
+func WithRun(buildkit *client.Client, cacheImports []client.CacheOptionsEntry, cacheExports []client.CacheOptionsEntry, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil || buildkit == nil {
 			return nil
 		}
 
 		return &Run{
-			step:     *spec.Run,
-			stepName: spec.Name,
-			buildkit: buildkit,
+			step:         *spec.Run,
+			stepName:     spec.Name,
+			buildkit:     buildkit,
+			cacheImports: cacheImports,
+			cacheExports: cacheExports,
+			noCache:      noCache,
 		}
 	}
 }
@@ -39,9 +42,12 @@ const (
 )
 
 type Run struct {
-	stepName string
-	step     v1beta1.RunStep
-	buildkit *client.Client
+	stepName     string
+	step         v1beta1.RunStep
+	buildkit     *client.Client
+	cacheImports []client.CacheOptionsEntry
+	cacheExports []client.CacheOptionsEntry
+	noCache      bool
 }
 
 /*
@@ -238,6 +244,10 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			runOpts = append(runOpts, llb.Dir(run.WorkingDir))
 		}
 
+		if s.noCache {
+			runOpts = append(runOpts, llb.IgnoreCache)
+		}
+
 		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
 		type outputMount struct {
@@ -268,7 +278,9 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		ch := make(chan *client.SolveStatus)
 		opt := client.SolveOpt{
-			LocalDirs: localDirs,
+			LocalDirs:    localDirs,
+			CacheImports: s.cacheImports,
+			CacheExports: s.cacheExports,
 			Session: []session.Attachable{
 				secretsprovider.FromMap(secrets),
 			}}

@@ -17,6 +17,7 @@ func parseImportCacheCSV(s string) (client.CacheOptionsEntry, error) {
 	if err != nil {
 		return im, err
 	}
+
 	for _, field := range fields {
 		key, value, ok := strings.Cut(field, "=")
 		if !ok {
@@ -31,7 +32,7 @@ func parseImportCacheCSV(s string) (client.CacheOptionsEntry, error) {
 		}
 	}
 	if im.Type == "" {
-		return im, errors.New("--import-cache requires type=<type>")
+		return im, errors.New("requires type=<type>")
 	}
 	if im.Type == "gha" {
 		return loadGithubEnv(im)

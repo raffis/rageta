@@ -80,7 +80,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithStdioRedirect(false),
 			processor.WithMaxConcurrent(pool),
 			processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
-			processor.WithRun(rc.Buildkit.Client),
+			processor.WithRun(rc.Buildkit.Client, rc.Buildkit.CacheImports, rc.Buildkit.CacheExports, rc.Buildkit.NoCache),
 			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 			processor.WithAnd(),

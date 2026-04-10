@@ -22,10 +22,10 @@ func (s BuildkitOptions) Build() Step {
 
 func (s *BuildkitOptions) BindFlags(flags flagset.Interface) {
 	buildkitFlags := pflag.NewFlagSet("buildkit", pflag.ExitOnError)
-	s.BuildkitOptions.BindFlags(buildkitFlags)
-	buildkitFlags.StringSliceVarP(&s.CacheImports, "cache-from", "", s.CacheImports, "Import build cache, e.g. --import-cache type=registry,ref=example.com/foo/bar, or --import-cache type=local,src=path/to/dir")
-	buildkitFlags.StringSliceVarP(&s.CacheExports, "cache-to", "", s.CacheExports, "Export build cache, e.g. --export-cache type=registry,ref=example.com/foo/bar, or --export-cache type=local,dest=path/to/dir")
+	buildkitFlags.StringArrayVarP(&s.CacheImports, "cache-from", "", s.CacheImports, "Import build cache, e.g. type=registry,ref=example.com/foo/bar, or type=local,src=path/to/dir")
+	buildkitFlags.StringArrayVarP(&s.CacheExports, "cache-to", "", s.CacheExports, "Export build cache, e.g. type=registry,ref=example.com/foo/bar, or type=local,dest=path/to/dir")
 	buildkitFlags.BoolVar(&s.NoCache, "no-cache", s.NoCache, "Disable cache for all the vertices")
+	s.BuildkitOptions.BindFlags(buildkitFlags)
 	flags.AddFlagSet(buildkitFlags)
 }
 

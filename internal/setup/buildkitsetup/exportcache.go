@@ -17,6 +17,7 @@ func parseExportCacheCSV(s string) (client.CacheOptionsEntry, error) {
 	if err != nil {
 		return ex, err
 	}
+
 	for _, field := range fields {
 		key, value, ok := strings.Cut(field, "=")
 		if !ok {
@@ -31,7 +32,7 @@ func parseExportCacheCSV(s string) (client.CacheOptionsEntry, error) {
 		}
 	}
 	if ex.Type == "" {
-		return ex, errors.New("--export-cache requires type=<type>")
+		return ex, errors.New("requires type=<type>")
 	}
 	if _, ok := ex.Attrs["mode"]; !ok {
 		ex.Attrs["mode"] = "min"
