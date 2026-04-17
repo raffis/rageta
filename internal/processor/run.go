@@ -145,19 +145,64 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			switch {
 			case source.Local != nil:
 				if source.Local.Path == "" {
-					source.Local.Path = "./*"
+					source.Local.Path = "."
 				}
-				if source.Local.To == "" {
 
+				var (
+					baseDir         string
+					includePatterns []string
+					isGlob          = strings.ContainsAny(source.Local.Path, "*?[")
+				)
+
+				if isGlob {
+					baseDir, _ = splitGlobPath(source.Local.Path)
+					matches, err := filepath.Glob(source.Local.Path)
+					if err != nil {
+						return ctx, fmt.Errorf("run step %q: source[%d]: invalid glob: %w", s.stepName, i, err)
+					}
+					if len(matches) == 0 {
+						return ctx, fmt.Errorf("run step %q: source[%d]: no files match %q", s.stepName, i, source.Local.Path)
+					}
+					for _, match := range matches {
+						rel, err := filepath.Rel(baseDir, match)
+						if err != nil {
+							return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+						}
+						includePatterns = append(includePatterns, rel)
+					}
+				} else if info, statErr := os.Stat(source.Local.Path); statErr == nil && !info.IsDir() {
+					// Single file: base is parent dir, filter by filename
+					baseDir = filepath.Dir(source.Local.Path)
+					includePatterns = []string{filepath.Base(source.Local.Path)}
+				} else {
+					// Plain directory: no filter, mount preserves dir name
+					baseDir = filepath.Clean(source.Local.Path)
 				}
+
+				// For a plain directory, fall back to the dir itself so `to: ./`
+				// preserves the directory name rather than flattening its contents.
+				// For files and globs the user's `to` is used as-is.
+				mountTo := source.Local.To
+				if filepath.Clean(mountTo) == "." && len(includePatterns) == 0 {
+					mountTo = baseDir
+				}
+
 				localName := fmt.Sprintf("local-src-%d", i)
-				fs, err := fsutil.NewFS(source.Local.Path)
+				srcFS, err := fsutil.NewFS(baseDir)
 				if err != nil {
-					return ctx, fmt.Errorf("invalid source path: %w", err)
+					return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+				}
+				if len(includePatterns) > 0 {
+					srcFS, err = fsutil.NewFilterFS(srcFS, &fsutil.FilterOpt{
+						IncludePatterns: includePatterns,
+					})
+					if err != nil {
+						return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+					}
 				}
 
-				localMounts[localName] = fs
-				runOpts = append(runOpts, llb.AddMount(source.Local.To, llb.Local(localName)))
+				localMounts[localName] = srcFS
+				runOpts = append(runOpts, llb.AddMount(mountTo, llb.Local(localName)))
 			default:
 				return ctx, errors.New("no source type given")
 			}
@@ -168,11 +213,18 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		}
 		var outputs []outputMount
 
-		for _, artifact := range run.Artifacts {
+		for i, artifact := range run.Artifacts {
 			switch {
 			case artifact.Local != nil:
-				if artifact.Local.Path == "" {
-					artifact.Local.Path = "."
+				mountPath := artifact.Local.Path
+				if filepath.Clean(mountPath) == "." {
+					// "." is not a valid absolute mount selector in LLB; resolve it
+					// to the step's workingDir so the scratch overlay sits exactly
+					// where the script writes its output.
+					if run.WorkingDir == "" {
+						return ctx, fmt.Errorf("run step %q: artifact[%d]: path %q requires workingDir to be set", s.stepName, i, artifact.Local.Path)
+					}
+					mountPath = run.WorkingDir
 				}
 
 				hostPath := artifact.Local.To
@@ -180,15 +232,14 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					hostPath = artifact.Local.Path
 				}
 				outputs = append(outputs, outputMount{
-					mountPath: artifact.Local.Path,
+					mountPath: mountPath,
 					hostPath:  hostPath,
 				})
-				runOpts = append(runOpts, llb.AddMount(artifact.Local.Path, llb.Scratch()))
+				runOpts = append(runOpts, llb.AddMount(mountPath, llb.Scratch()))
 			}
 		}
 
-		runOpts = append(runOpts, llb.Args([]string{"sh", "-c", "ls -l"}))
-		//runOpts = append(runOpts, llb.Args(cmdline))
+		runOpts = append(runOpts, llb.Args(cmdline))
 		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
 		var export llb.State
@@ -370,6 +421,22 @@ func copyRegularFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// splitGlobPath splits a path like "dir/sub/*.go" into ("dir/sub", "*.go").
+// If there is no glob, the full cleaned path is returned as dir with an empty pattern.
+func splitGlobPath(path string) (dir, pattern string) {
+	cleaned := filepath.Clean(path)
+	parts := strings.Split(cleaned, string(filepath.Separator))
+	for i, part := range parts {
+		if strings.ContainsAny(part, "*?[") {
+			if i == 0 {
+				return ".", filepath.Join(parts...)
+			}
+			return filepath.Join(parts[:i]...), filepath.Join(parts[i:]...)
+		}
+	}
+	return cleaned, ""
 }
 
 func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {

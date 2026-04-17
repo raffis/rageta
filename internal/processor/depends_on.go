@@ -1,6 +1,9 @@
 package processor
 
 import (
+	"context"
+	"errors"
+
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -22,6 +25,12 @@ type Needs struct {
 
 func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		results := make(chan result)
+		var errs []error
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		for _, needsStepName := range s.refs {
 			stepExecuted := false
 			for stepName := range ctx.Steps {
@@ -48,13 +57,39 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			parentCtx := NewContext()
 			parentCtx.ContextDir = ctx.ContextDir
 			parentCtx.Context = ctx.Context
-			outCtx, err := next(parentCtx)
-			outCtx.InputVars = ctx.InputVars
-			ctx.Merge(outCtx)
 
-			if err != nil {
-				return ctx, err
+			go func() {
+				t, err := next(parentCtx)
+				results <- result{t, err}
+			}()
+		}
+
+		var done int
+	WAIT:
+		for res := range results {
+			done++
+
+			res.ctx.InputVars = ctx.InputVars
+			ctx.Merge(res.ctx)
+
+			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
+			case res.err != nil && AbortOnError(res.err):
+				errs = append(errs, res.err)
+
+				//if s.failFast {
+				//	cancel()
+				//}
+			default:
 			}
+
+			if done == len(s.refs) {
+				break WAIT
+			}
+		}
+
+		if len(errs) > 0 {
+			return ctx, errors.Join(errs...)
 		}
 
 		return next(ctx)
