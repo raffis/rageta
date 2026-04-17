@@ -145,16 +145,17 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			switch {
 			case source.Local != nil:
 				if source.Local.Path == "" {
-					source.Local.Path = "."
+					source.Local.Path = "./*"
 				}
 				if source.Local.To == "" {
-					source.Local.To = source.Local.Path
+
 				}
 				localName := fmt.Sprintf("local-src-%d", i)
 				fs, err := fsutil.NewFS(source.Local.Path)
 				if err != nil {
-					return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+					return ctx, fmt.Errorf("invalid source path: %w", err)
 				}
+
 				localMounts[localName] = fs
 				runOpts = append(runOpts, llb.AddMount(source.Local.To, llb.Local(localName)))
 			default:
@@ -186,7 +187,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		runOpts = append(runOpts, llb.Args([]string{"sh", "-c", "pwd; ls -hals"}))
+		runOpts = append(runOpts, llb.Args([]string{"sh", "-c", "ls -l"}))
 		//runOpts = append(runOpts, llb.Args(cmdline))
 		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
