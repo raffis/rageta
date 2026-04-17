@@ -50,11 +50,6 @@ func UI(sender sender) processor.OutputFactory {
 					Name:   uniqueName,
 					Status: tui.StepStatusSkipped,
 				})
-			case errors.Is(err, processor.ErrSkipDone):
-				sender.Send(tui.StepMsg{
-					Name:   uniqueName,
-					Status: tui.StepStatusSkipped,
-				})
 			default:
 				sender.Send(tui.StepMsg{
 					Name:   uniqueName,

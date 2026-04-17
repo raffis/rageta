@@ -19,6 +19,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/moby/buildkit/util/progress/progressui"
+	"github.com/tonistiigi/fsutil"
 )
 
 func WithRun(buildkit *client.Client, cacheImports []client.CacheOptionsEntry, cacheExports []client.CacheOptionsEntry, noCache bool) ProcessorBuilder {
@@ -51,102 +52,6 @@ type Run struct {
 	noCache      bool
 }
 
-/*
-
-	if err := substitute.Substitute(ctx.ToV1Beta1(), run.Guid, run.Uid); err != nil {
-		return ctx, err
-	}
-
-	envs := make(map[string]string)
-	maps.Copy(envs, ctx.EnvVars.Envs)
-	maps.Copy(envs, ctx.SecretVars.Secrets)
-
-	command, args := s.commandArgs(run)
-
-	spec := StepContainerFields{
-		Image:   run.Image,
-		Command: command,
-		Args:    args,
-		Env:     envs,
-		PWD:     run.WorkingDir,
-	}
-
-	if run.Guid != nil {
-		guid := run.Guid.IntValue()
-		spec.Guid = &guid
-	}
-
-	if run.Uid != nil {
-		uid := run.Uid.IntValue()
-		spec.Uid = &uid
-	}
-
-	for _, vol := range run.VolumeMounts {
-		spec.Volumes = append(spec.Volumes, StepVolumeMount{
-			Name:      vol.Name,
-			HostPath:  vol.HostPath,
-			MountPath: vol.MountPath,
-			ReadOnly:  vol.ReadOnly,
-			Output:    vol.Output,
-		})
-	}
-
-	if ctx.Template.Template != nil {
-		if err := substitute.Substitute(ctx.ToV1Beta1(), ctx.Template.Template.Guid, ctx.Template.Template.Uid); err != nil {
-			return ctx, err
-		}
-
-		ApplyTemplateToStepFields(&spec, ctx.Template.Template)
-		mergeTemplateCaches(run, ctx.Template.Template)
-	}
-
-	subst := []any{
-		&spec.Image,
-		spec.Args,
-		spec.Command,
-		&spec.PWD,
-	}
-
-	for i := range spec.Volumes {
-		subst = append(subst, &spec.Volumes[i].HostPath, &spec.Volumes[i].MountPath)
-	}
-
-	for i := range run.Caches {
-		subst = append(subst, &run.Caches[i].ID, &run.Caches[i].Path)
-	}
-
-	if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
-		return ctx, err
-	}
-
-	for i := range spec.Volumes {
-		if spec.Volumes[i].ReadOnly {
-			spec.Volumes[i].Output = false
-		}
-	}
-
-	for i, vol := range spec.Volumes {
-		if vol.HostPath == "" {
-			continue
-		}
-		srcPath, err := filepath.Abs(vol.HostPath)
-		if err != nil {
-			return ctx, fmt.Errorf("failed to get absolute path: %w", err)
-		}
-
-		spec.Volumes[i].HostPath = srcPath
-	}
-
-	if run.Stdin && ctx.Streams.Stdin == nil {
-		ctx.Streams.Stdin = os.Stdin
-	}
-
-	_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", spec.Image) + "\n"))
-	fmt.Println(strings.Join(append(command, args...), " "))
-
-
-*/
-
 func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
@@ -161,12 +66,26 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			run.Uid,
 		}
 
-		/*for i := range run.VolumeMounts {
-			subst = append(subst, &spec.Volumes[i].HostPath, &spec.Volumes[i].MountPath)
-		}*/
+		for _, cache := range run.Caches {
+			subst = append(subst, &cache.ID, &cache.Path)
+		}
 
-		for i := range run.Caches {
-			subst = append(subst, &run.Caches[i].ID, &run.Caches[i].Path)
+		for _, source := range run.Sources {
+			switch {
+			case source.Local != nil:
+				subst = append(subst, &source.Local.Path, &source.Local.To)
+			default:
+				return ctx, errors.New("no source type given")
+			}
+		}
+
+		for _, artifact := range run.Artifacts {
+			switch {
+			case artifact.Local != nil:
+				subst = append(subst, &artifact.Local.Path, &artifact.Local.To)
+			default:
+				return ctx, errors.New("no artifact type given")
+			}
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -184,34 +103,6 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, errors.New("command, args, or script is required")
 		}
 
-		runOpts = append(runOpts, llb.Args(cmdline))
-		localDirs := make(map[string]string)
-
-		for i, vol := range run.VolumeMounts {
-			if vol.HostPath == "" {
-				if vol.Output {
-					return ctx, fmt.Errorf("volume %q: output requires hostPath", vol.Name)
-				}
-				if vol.MountPath != "" {
-					return ctx, fmt.Errorf("volume %q: hostPath is required for bind mounts", vol.Name)
-				}
-				continue
-			}
-			if vol.Output && vol.ReadOnly {
-				return ctx, fmt.Errorf("volume %q: output and readOnly are mutually exclusive", vol.Name)
-			}
-
-			key := fmt.Sprintf("mount-%d", i)
-			localDirs[key] = vol.HostPath
-			src := llb.Local(key)
-
-			var mo []llb.MountOption
-			if vol.ReadOnly {
-				mo = append(mo, llb.Readonly)
-			}
-			runOpts = append(runOpts, llb.AddMount(vol.MountPath, src, mo...))
-		}
-
 		for _, c := range run.Caches {
 			if c.ID == "" || c.Path == "" {
 				return ctx, errors.New("cache mount requires id and path")
@@ -224,7 +115,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			case "locked":
 				sharing = llb.CacheMountLocked
 			default:
-				return ctx, fmt.Errorf("run step %q: cache sharing %q: want shared, private, or locked", s.stepName, c.Sharing)
+				return ctx, fmt.Errorf("cache sharing %q: want shared, private, or locked", c.Sharing)
 			}
 			runOpts = append(runOpts,
 				llb.AddMount(c.Path, llb.Scratch(), llb.AsPersistentCacheDir(c.ID, sharing)),
@@ -249,17 +140,55 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			runOpts = append(runOpts, llb.IgnoreCache)
 		}
 
-		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
+		localMounts := make(map[string]fsutil.FS)
+		for i, source := range run.Sources {
+			switch {
+			case source.Local != nil:
+				if source.Local.Path == "" {
+					source.Local.Path = "."
+				}
+				if source.Local.To == "" {
+					source.Local.To = source.Local.Path
+				}
+				localName := fmt.Sprintf("local-src-%d", i)
+				fs, err := fsutil.NewFS(source.Local.Path)
+				if err != nil {
+					return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+				}
+				localMounts[localName] = fs
+				runOpts = append(runOpts, llb.AddMount(source.Local.To, llb.Local(localName)))
+			default:
+				return ctx, errors.New("no source type given")
+			}
+		}
 
 		type outputMount struct {
 			mountPath, hostPath string
 		}
 		var outputs []outputMount
-		for _, vol := range run.VolumeMounts {
-			if vol.Output && vol.HostPath != "" && !vol.ReadOnly {
-				outputs = append(outputs, outputMount{vol.MountPath, vol.HostPath})
+
+		for _, artifact := range run.Artifacts {
+			switch {
+			case artifact.Local != nil:
+				if artifact.Local.Path == "" {
+					artifact.Local.Path = "."
+				}
+
+				hostPath := artifact.Local.To
+				if hostPath == "" {
+					hostPath = artifact.Local.Path
+				}
+				outputs = append(outputs, outputMount{
+					mountPath: artifact.Local.Path,
+					hostPath:  hostPath,
+				})
+				runOpts = append(runOpts, llb.AddMount(artifact.Local.Path, llb.Scratch()))
 			}
 		}
+
+		runOpts = append(runOpts, llb.Args([]string{"sh", "-c", "pwd; ls -hals"}))
+		//runOpts = append(runOpts, llb.Args(cmdline))
+		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
 		var export llb.State
 		if len(outputs) == 0 {
@@ -279,7 +208,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		ch := make(chan *client.SolveStatus)
 		opt := client.SolveOpt{
-			LocalDirs:    localDirs,
+			LocalMounts:  localMounts,
 			CacheImports: s.cacheImports,
 			CacheExports: s.cacheExports,
 			Session: []session.Attachable{
@@ -381,21 +310,6 @@ func (e *ContainerError) Image() string {
 	return e.image
 }
 
-func mergeTemplateCaches(run *v1beta1.RunStep, tmpl *v1beta1.Template) {
-	for _, c := range tmpl.Caches {
-		dup := false
-		for _, ex := range run.Caches {
-			if ex.ID == c.ID && ex.Path == c.Path {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			run.Caches = append(run.Caches, c)
-		}
-	}
-}
-
 func syncExportDirToHost(exported, host string) error {
 	if err := os.RemoveAll(host); err != nil {
 		return fmt.Errorf("clear host path: %w", err)
@@ -459,11 +373,6 @@ func copyRegularFile(src, dst string) error {
 
 func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 	script := strings.TrimSpace(run.Script)
-	args = run.Args
-
-	if script == "" {
-		return run.Command, run.Args
-	}
 
 	hasShebang := strings.HasPrefix(script, "#!")
 	if hasShebang {
@@ -473,13 +382,7 @@ func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 		cmd = []string{shebang[1]}
 		args = append(args, "-e", "-c", strings.Join(lines[1:], "\n"))
 	} else {
-		if len(run.Command) == 0 {
-			cmd = []string{defaultShell}
-		} else {
-			cmd = run.Command
-		}
-
-		args = append(args, "-e", "-c", script)
+		args = append([]string{defaultShell}, "-e", "-c", script)
 	}
 
 	return

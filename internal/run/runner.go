@@ -53,7 +53,6 @@ type Options struct {
 	ImagePolicyOptions      ImagePolicyOptions
 	OutputOptions           OutputOptions
 	ReportOptions           ReportOptions
-	TemplateOptions         TemplateOptions
 	TeardownOptions         TeardownOptions
 	EventsOptions           EventsOptions
 	ForkOptions             ForkOptions
@@ -79,7 +78,6 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.StepContextOptions.BindFlags(flags)
 	s.OutputOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
-	s.TemplateOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
 	s.EventsOptions.BindFlags(flags)
 	s.ForkOptions.BindFlags(flags)
@@ -119,7 +117,6 @@ func (o Options) Build() *Runner {
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
 		o.ImagePolicyOptions.Build(),
-		o.TemplateOptions.Build(),
 		o.TeardownOptions.Build(),
 		o.EventsOptions.Build(),
 		o.CELOptions.Build(),

@@ -91,8 +91,8 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 
 		for _, tag := range innerStepErr.Context().Tags.Tags() {
 			tags = append(tags, styles.TagLabel.
-				Background(lipgloss.Color(tag.Color)).
-				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+				Background(lipgloss.Color(tag.HEXColor)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
 				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
 			)
 		}

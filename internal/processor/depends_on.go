@@ -4,14 +4,14 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithNeeds() ProcessorBuilder {
+func WithDependsOn() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if len(spec.Needs) == 0 {
+		if len(spec.DependsOn) == 0 {
 			return nil
 		}
 
 		return &Needs{
-			refs: refSlice(spec.Needs),
+			refs: refSlice(spec.DependsOn),
 		}
 	}
 }
@@ -47,8 +47,7 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 			parentCtx := NewContext()
 			parentCtx.ContextDir = ctx.ContextDir
-			parentCtx.Template.Template = ctx.Template.Template.DeepCopy()
-
+			parentCtx.Context = ctx.Context
 			outCtx, err := next(parentCtx)
 			outCtx.InputVars = ctx.InputVars
 			ctx.Merge(outCtx)

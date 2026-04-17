@@ -37,7 +37,6 @@ type StepContext struct {
 	EnvVars         EnvVarsContext
 	SecretVars      SecretVarsContext
 	InputVars       InputVarsContext
-	Template        TemplateContext
 	Matrix          MatrixContext
 	Events          EventsContext
 }
@@ -96,9 +95,6 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
 	copy.Containers = maps.Clone(c.Containers)
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
-	if c.Template.Template != nil {
-		copy.Template.Template = c.Template.Template.DeepCopy()
-	}
 
 	return copy
 }
@@ -109,9 +105,6 @@ func (t StepContext) Merge(c StepContext) StepContext {
 	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Steps, c.Steps)
 	maps.Copy(t.Containers, c.Containers)
-	if t.Template.Template != nil && c.Template.Template != nil {
-		_ = mergeTemplate(t.Template.Template, c.Template.Template)
-	}
 
 	return t
 }

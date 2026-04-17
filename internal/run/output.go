@@ -11,8 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/output"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/xio"
 	"golang.org/x/term"
 )
@@ -84,11 +84,8 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	if s.opts.Output != RenderOutputUI.String() {
-		rc.Logging.Logger, err = rc.Logging.Builder(rc.Output.Stderr)
-		if err != nil {
-			return err
-		}
+	if s.opts.Output == RenderOutputUI.String() {
+		rc.Logging.Logger = rc.Logging.FileLogger
 	}
 
 	rc.Output.Factory = outputFactory

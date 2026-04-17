@@ -7,15 +7,15 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithIf(celEnv *cel.Env) ProcessorBuilder {
+func WithWhen(celEnv *cel.Env) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if len(spec.If) == 0 {
+		if len(spec.When) == 0 {
 			return nil
 		}
 
 		return &If{
 			celEnv:     celEnv,
-			conditions: spec.If,
+			conditions: spec.When,
 		}
 	}
 }
@@ -28,22 +28,22 @@ var ErrConditionFalse = &pipelineError{
 
 type If struct {
 	celEnv     *cel.Env
-	conditions []v1beta1.IfCondition
+	conditions []v1beta1.Condition
 }
 
 func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	expr := make([]cel.Program, len(s.conditions))
 
 	for i, condition := range s.conditions {
-		if condition.CelExpression != nil {
-			ast, issues := s.celEnv.Compile(*condition.CelExpression)
+		if condition.CEL != nil {
+			ast, issues := s.celEnv.Compile(*condition.CEL)
 			if issues != nil && issues.Err() != nil {
-				return nil, fmt.Errorf("if expression compilation `%s` failed: %w", *condition.CelExpression, issues.Err())
+				return nil, fmt.Errorf("if expression compilation `%s` failed: %w", *condition.CEL, issues.Err())
 			}
 
 			prg, err := s.celEnv.Program(ast)
 			if err != nil {
-				return nil, fmt.Errorf("if expression ast `%s` failed: %w", *condition.CelExpression, err)
+				return nil, fmt.Errorf("if expression ast `%s` failed: %w", *condition.CEL, err)
 			}
 
 			expr[i] = prg
@@ -54,13 +54,13 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		vars := ctx.ToV1Beta1()
 		for i, condition := range s.conditions {
 			switch {
-			case condition.CelExpression != nil:
+			case condition.CEL != nil:
 				value, _, err := expr[i].ContextEval(ctx, map[string]any{
 					"context": vars,
 				})
 
 				if err != nil {
-					return ctx, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CelExpression, err)
+					return ctx, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CEL, err)
 				}
 
 				// if expression evaluates to false the next step is called in the pipeline without calling the

@@ -89,10 +89,6 @@ func debugProfile(opts *run.Options) error {
 		opts.ImagePolicyOptions.Policy = run.PullImageAlways.String()
 	}
 
-	if !runCmd.Flags().Changed("skip-done") {
-		opts.PipelineOptions.SkipDone = false
-	}
-
 	if !runCmd.Flags().Changed("no-gc") {
 		opts.TeardownOptions.Disabled = true
 	}
@@ -100,7 +96,7 @@ func debugProfile(opts *run.Options) error {
 	if !runCmd.Root().PersistentFlags().Changed("verbose") {
 		rootArgs.logOptions.Verbose = 10
 		var err error
-		logger, zapConfig, err = rootArgs.logOptions.Build()
+		_, zapConfig, err = rootArgs.logOptions.Build()
 		if err != nil {
 			return err
 		}

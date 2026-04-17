@@ -26,7 +26,6 @@ type RunContext struct {
 	Teardown         TeardownContext
 	Provider         ProviderContext
 	Pipeline         PipelineContext
-	Template         TemplateContext
 	Execution        ExecutionContext
 }
 

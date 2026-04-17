@@ -8,9 +8,7 @@ import (
 )
 
 type PipelineOptions struct {
-	SkipDone          bool
 	SkipContainerLogs bool
-	MaxConcurrent     int
 	SkipSteps         []string
 }
 
@@ -19,9 +17,7 @@ func (s PipelineOptions) Build() Step {
 }
 
 func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
-	flags.BoolVar(&s.SkipDone, "skip-done", s.SkipDone, "Skip already done steps")
 	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
-	flags.IntVar(&s.MaxConcurrent, "max-concurrent", s.MaxConcurrent, "Max concurrent container steps")
 	flags.StringSliceVar(&s.SkipSteps, "skip-steps", s.SkipSteps, "Skip steps")
 }
 
@@ -46,12 +42,6 @@ func (s *Pipeline) Run(rc *RunContext, next Next) error {
 }
 
 func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuilder) pipeline.StepBuilder {
-	var pool chan struct{}
-
-	if s.opts.MaxConcurrent > 0 {
-		pool = make(chan struct{}, s.opts.MaxConcurrent)
-	}
-
 	return func(spec v1beta1.Step) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
@@ -73,19 +63,12 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithSkipBlacklist(s.opts.SkipSteps),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
-			processor.WithSkipDone(s.opts.SkipDone),
-			processor.WithIf(rc.CEL.Env),
-			processor.WithTemplate(rc.Template.Container),
-			processor.WithNeeds(),
-			processor.WithStdioRedirect(false),
-			processor.WithMaxConcurrent(pool),
+			processor.WithWhen(rc.CEL.Env),
+			processor.WithDependsOn(),
 			processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
 			processor.WithRun(rc.Buildkit.Client, rc.Buildkit.CacheImports, rc.Buildkit.CacheExports, rc.Buildkit.NoCache),
 			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
-			processor.WithAnd(),
-			processor.WithConcurrent(),
-			processor.WithPipe(false),
 		)
 
 		return processor.WithDebug(rc.Logging.Logger, rc.Logging.Debug, &spec, processors...)

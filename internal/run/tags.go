@@ -43,7 +43,7 @@ func (s *Tags) parseTags(tags []string) []processor.Tag {
 		value := strings.SplitN(v[1], ":", 2)
 		if len(value) == 2 {
 			t.Value = value[0]
-			t.Color = value[1]
+			t.HEXColor = value[1]
 		} else {
 			t.Value = v[1]
 		}

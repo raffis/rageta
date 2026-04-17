@@ -33,9 +33,9 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	var tags []Tag
 	for _, tag := range s.tags {
 		tags = append(tags, Tag{
-			Key:   tag.Name,
-			Value: tag.Value,
-			Color: tag.Color,
+			Key:      tag.Name,
+			Value:    tag.Value,
+			HEXColor: tag.HEXColor,
 		})
 	}
 
@@ -55,9 +55,9 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 }
 
 type Tag struct {
-	Key   string
-	Value string
-	Color string
+	Key      string
+	Value    string
+	HEXColor string
 }
 
 func (t TagsContext) Tags() []Tag {
@@ -79,14 +79,14 @@ func (t *TagsContext) Add(tag Tag) {
 	defer tagMutex.Unlock()
 
 	if v, ok := tagColors[tag]; ok {
-		tag.Color = v
+		tag.HEXColor = v
 	} else {
-		if tag.Color == "" {
+		if tag.HEXColor == "" {
 			color := styles.RandHEXColor(0, 255)
 			tagColors[tag] = color
-			tag.Color = color
+			tag.HEXColor = color
 		} else {
-			tagColors[tag] = tag.Color
+			tagColors[tag] = tag.HEXColor
 		}
 	}
 

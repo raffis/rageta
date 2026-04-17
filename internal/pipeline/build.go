@@ -152,7 +152,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 		entrypoint: command.Entrypoint,
 	}
 
-	steps, err := resolveExtends(command.Steps)
+	steps, err := resolveTemplates(command.Steps, command.Templates)
 	if err != nil {
 		return nil, err
 	}

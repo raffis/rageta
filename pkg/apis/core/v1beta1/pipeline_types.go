@@ -34,6 +34,7 @@ type PipelineSpec struct {
 	Inputs           InputParams  `json:"inputs,omitempty"`
 	Outputs          OutputParams `json:"outputs,omitempty"`
 	Steps            []Step       `json:"steps,omitempty"`
+	Templates        []Step       `json:"templates,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -43,27 +44,54 @@ func (p Pipeline) SetDefaults() {
 }
 
 type StepOptions struct {
-	Extends      []StepReference   `json:"extends,omitempty"`
-	If           []IfCondition     `json:"if,omitempty"`
-	Expose       bool              `json:"expose,omitempty"`
+	Templates    []LocalReference  `json:"templates,omitempty"`
+	When         []Condition       `json:"when,omitempty"`
+	Hide         bool              `json:"expose,omitempty"`
 	Inputs       []InputParam      `json:"inputs,omitempty"`
 	Timeout      metav1.Duration   `json:"timeout"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
-	Template     *Template         `json:"template,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []StepOutputParam `json:"outputs,omitempty"`
-	Needs        []StepReference   `json:"needs,omitempty"`
-	Streams      *Streams          `json:"streams,omitempty"`
+	DependsOn    []LocalReference  `json:"dependsOn,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
 	Tags         []Tag             `json:"tags,omitempty"`
 }
 
+type Source struct {
+	Local *SourceLocal `json:"local,omitempty"`
+	Step  *SourceStep  `json:"step,omitempty"`
+}
+
+type SourceLocal struct {
+	Path string `json:"path,omitempty"`
+	To   string `json:"to,omitempty"`
+}
+
+type SourceStep struct {
+	Name string `json:"name,omitempty"`
+	Path string `json:"path,omitempty"`
+	To   string `json:"to,omitempty"`
+}
+
+type Artifact struct {
+	Local *ArtifactLocal `json:"local,omitempty"`
+	Image *ArtifactImage `json:"image,omitempty"`
+}
+
+type ArtifactLocal struct {
+	Path string `json:"path,omitempty"`
+	To   string `json:"to,omitempty"`
+}
+
+type ArtifactImage struct {
+}
+
 type Tag struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-	Color string `json:"color,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Value    string `json:"value,omitempty"`
+	HEXColor string `json:"hexColor,omitempty"`
 }
 
 type SecretVar struct {
@@ -76,8 +104,8 @@ type EnvVar struct {
 	Value *string `json:"value,omitempty"`
 }
 
-type IfCondition struct {
-	CelExpression *string `json:"celExpression,omitempty"`
+type Condition struct {
+	CEL *string `json:"cel,omitempty"`
 }
 
 type Matrix struct {
@@ -94,8 +122,8 @@ type IncludeParam struct {
 }
 
 type MatrixTag struct {
-	Value string `json:"value,omitempty"`
-	Color string `json:"color,omitempty"`
+	Value    string `json:"value,omitempty"`
+	HEXColor string `json:"hexColor,omitempty"`
 }
 
 type Retry struct {
@@ -109,34 +137,16 @@ type Step struct {
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
 	StepOptions `json:",inline"`
-	Pipe        *PipeStep       `json:"pipe,omitempty"`
-	And         *AndStep        `json:"and,omitempty"`
-	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
-	Run         *RunStep        `json:"run,omitempty"`
-	Service     *ServiceStep    `json:"service,omitempty"`
-	Inherit     *InheritStep    `json:"inherit,omitempty"`
+	Run         *RunStep     `json:"run,omitempty"`
+	Service     *ServiceStep `json:"service,omitempty"`
+	Inherit     *InheritStep `json:"inherit,omitempty"`
 }
 
-type AndStep struct {
-	Refs []StepReference `json:"refs,omitempty"`
-}
-
-type StepReference struct {
+type LocalReference struct {
 	Name string `json:"name,omitempty"`
 }
 
-type ConcurrentStep struct {
-	FailFast      bool            `json:"failFast,omitempty"`
-	MaxConcurrent int             `json:"maxConcurrent,omitempty"`
-	Refs          []StepReference `json:"refs,omitempty"`
-}
-
-type PipeStep struct {
-	Refs []StepReference `json:"refs,omitempty"`
-}
-
-// CacheMount is a BuildKit persistent cache directory (equivalent to RUN --mount=type=cache).
-type CacheMount struct {
+type Cache struct {
 	// ID is the cache namespace. May contain substitution expressions.
 	ID string `json:"id,omitempty"`
 	// Path is the mount point inside the container.
@@ -147,56 +157,29 @@ type CacheMount struct {
 }
 
 type RunStep struct {
-	Container `json:",inline"`
+	Sources    []Source            `json:"sources,omitempty"`
+	Artifacts  []Artifact          `json:"artifacts,omitempty"`
+	Caches     []Cache             `json:"caches,omitempty"`
+	Image      string              `json:"image,omitempty"`
+	Script     string              `json:"script,omitempty"`
+	WorkingDir string              `json:"workingDir,omitempty"`
+	Uid        *intstr.IntOrString `json:"uid,omitempty"`
+	Guid       *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type ServiceStep struct {
-	Container `json:",inline"`
-}
-
-type Template Container
-
-type Container struct {
-	Stdin        bool                `json:"stdin,omitempty"`
-	TTY          bool                `json:"tty,omitempty"`
-	Image        string              `json:"image,omitempty"`
-	Command      []string            `json:"command,omitempty"`
-	Args         []string            `json:"args,omitempty"`
-	Script       string              `json:"script,omitempty"`
-	WorkingDir   string              `json:"workingDir,omitempty"`
-	VolumeMounts []VolumeMount       `json:"volumeMounts,omitempty"`
-	Caches       []CacheMount        `json:"caches,omitempty"`
-	Uid          *intstr.IntOrString `json:"uid,omitempty"`
-	Guid         *intstr.IntOrString `json:"guid,omitempty"`
-}
-
-type VolumeMount struct {
-	Name      string `json:"name,omitempty"`
-	MountPath string `json:"mountPath,omitempty"`
-	HostPath  string `json:"hostPath,omitempty"`
-	// ReadOnly mounts the host path read-only in the container.
-	// +optional
-	ReadOnly bool `json:"readOnly,omitempty"`
-	// Output, when true, writes the mount contents back to HostPath after the step (BuildKit run steps only).
-	// +optional
-	Output bool `json:"output,omitempty"`
+	Image      string              `json:"image,omitempty"`
+	Command    []string            `json:"command,omitempty"`
+	Args       []string            `json:"args,omitempty"`
+	WorkingDir string              `json:"workingDir,omitempty"`
+	Uid        *intstr.IntOrString `json:"uid,omitempty"`
+	Guid       *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type InheritStep struct {
 	Pipeline   string  `json:"pipeline,omitempty"`
 	Entrypoint string  `json:"entrypoint,omitempty"`
 	Inputs     []Param `json:"inputs,omitempty"`
-}
-
-type Streams struct {
-	Stdout *Stream `json:"stdout,omitempty"`
-	Stdin  *Stream `json:"stdin,omitempty"`
-	Stderr *Stream `json:"stderr,omitempty"`
-}
-
-type Stream struct {
-	Path   string `json:"path,omitempty"`
-	Append bool   `json:"append,omitempty"`
 }
 
 // +kubebuilder:object:root=true

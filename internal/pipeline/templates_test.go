@@ -8,18 +8,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveExtends_NoExtends(t *testing.T) {
+func TestResolveTemplates_NoTemplates(t *testing.T) {
 	steps := []v1beta1.Step{
 		{Name: "a", Run: &v1beta1.RunStep{Container: v1beta1.Container{Image: "alpine"}}},
 		{Name: "b", Run: &v1beta1.RunStep{Container: v1beta1.Container{Image: "ubuntu"}}},
 	}
 
-	resolved, err := resolveExtends(steps)
+	resolved, err := resolveTemplates(steps)
 	require.NoError(t, err)
 	assert.Equal(t, steps, resolved)
 }
 
-func TestResolveExtends_SimpleExtends(t *testing.T) {
+func TestResolveTemplates_SimpleTemplates(t *testing.T) {
 	template := v1beta1.Step{
 		Name: "base",
 		Run: &v1beta1.RunStep{
@@ -36,31 +36,31 @@ func TestResolveExtends_SimpleExtends(t *testing.T) {
 		},
 	}
 
-	Extendsing := v1beta1.Step{
+	Templatesing := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: []v1beta1.StepReference{{Name: "base"}},
+			Templates: []v1beta1.LocalReference{{Name: "base"}},
 			Env: []v1beta1.EnvVar{
 				{Name: "EXTRA", Value: strPtr("val")},
 			},
 		},
 	}
 
-	resolved, err := resolveExtends([]v1beta1.Step{template, Extendsing})
+	resolved, err := resolveTemplates([]v1beta1.Step{template, Templatesing})
 	require.NoError(t, err)
 	require.Len(t, resolved, 2)
 
 	child := resolved[1]
 	assert.Equal(t, "child", child.Name)
-	assert.Nil(t, child.Extends, "Extends should be cleared after resolution")
+	assert.Nil(t, child.Templates, "Templates should be cleared after resolution")
 	assert.Equal(t, "alpine", child.Run.Image)
 	assert.Equal(t, "echo base", child.Run.Script)
 	assert.True(t, child.AllowFailure)
-	// Env from the Extendsing step overrides (merge patch replaces arrays)
+	// Env from the Templatesing step overrides (merge patch replaces arrays)
 	assert.Equal(t, []v1beta1.EnvVar{{Name: "EXTRA", Value: strPtr("val")}}, child.Env)
 }
 
-func TestResolveExtends_OverrideFields(t *testing.T) {
+func TestResolveTemplates_OverrideFields(t *testing.T) {
 	template := v1beta1.Step{
 		Name: "base",
 		Run: &v1beta1.RunStep{
@@ -68,26 +68,26 @@ func TestResolveExtends_OverrideFields(t *testing.T) {
 		},
 	}
 
-	Extendsing := v1beta1.Step{
+	Templatesing := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: []v1beta1.StepReference{{Name: "base"}},
+			Templates: []v1beta1.LocalReference{{Name: "base"}},
 		},
 		Run: &v1beta1.RunStep{
 			Container: v1beta1.Container{Image: "ubuntu"},
 		},
 	}
 
-	resolved, err := resolveExtends([]v1beta1.Step{template, Extendsing})
+	resolved, err := resolveTemplates([]v1beta1.Step{template, Templatesing})
 	require.NoError(t, err)
 
 	child := resolved[1]
 	assert.Equal(t, "ubuntu", child.Run.Image)
-	// Script from template is kept since Extendsing step did not set it
+	// Script from template is kept since Templatesing step did not set it
 	assert.Equal(t, "echo template", child.Run.Script)
 }
 
-func TestResolveExtends_ChainedExtends(t *testing.T) {
+func TestResolveTemplates_ChainedTemplates(t *testing.T) {
 	grandparent := v1beta1.Step{
 		Name: "grandparent",
 		Run:  &v1beta1.RunStep{Container: v1beta1.Container{Image: "alpine"}},
@@ -99,61 +99,61 @@ func TestResolveExtends_ChainedExtends(t *testing.T) {
 	parent := v1beta1.Step{
 		Name: "parent",
 		StepOptions: v1beta1.StepOptions{
-			Extends: []v1beta1.StepReference{{Name: "grandparent"}},
-			Env:     []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("parent")}},
+			Templates: []v1beta1.LocalReference{{Name: "grandparent"}},
+			Env:       []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("parent")}},
 		},
 	}
 
 	child := v1beta1.Step{
 		Name: "child",
 		StepOptions: v1beta1.StepOptions{
-			Extends: []v1beta1.StepReference{{Name: "parent"}},
-			Env:     []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}},
+			Templates: []v1beta1.LocalReference{{Name: "parent"}},
+			Env:       []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}},
 		},
 	}
 
-	resolved, err := resolveExtends([]v1beta1.Step{grandparent, parent, child})
+	resolved, err := resolveTemplates([]v1beta1.Step{grandparent, parent, child})
 	require.NoError(t, err)
 
 	childStep := resolved[2]
 	assert.Equal(t, "child", childStep.Name)
-	assert.Nil(t, childStep.Extends)
+	assert.Nil(t, childStep.Templates)
 	assert.Equal(t, "alpine", childStep.Run.Image)
 	assert.True(t, childStep.AllowFailure)
 	assert.Equal(t, []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}}, childStep.Env)
 }
 
-func TestResolveExtends_UnknownTemplate(t *testing.T) {
+func TestResolveTemplates_UnknownTemplate(t *testing.T) {
 	steps := []v1beta1.Step{
 		{
 			Name: "child",
 			StepOptions: v1beta1.StepOptions{
-				Extends: []v1beta1.StepReference{{Name: "nonexistent"}},
+				Templates: []v1beta1.LocalReference{{Name: "nonexistent"}},
 			},
 		},
 	}
 
-	_, err := resolveExtends(steps)
+	_, err := resolveTemplates(steps)
 	assert.ErrorContains(t, err, "nonexistent")
 }
 
-func TestResolveExtends_CircularExtends(t *testing.T) {
+func TestResolveTemplates_CircularTemplates(t *testing.T) {
 	steps := []v1beta1.Step{
 		{
 			Name: "a",
 			StepOptions: v1beta1.StepOptions{
-				Extends: []v1beta1.StepReference{{Name: "b"}},
+				Templates: []v1beta1.LocalReference{{Name: "b"}},
 			},
 		},
 		{
 			Name: "b",
 			StepOptions: v1beta1.StepOptions{
-				Extends: []v1beta1.StepReference{{Name: "a"}},
+				Templates: []v1beta1.LocalReference{{Name: "a"}},
 			},
 		},
 	}
 
-	_, err := resolveExtends(steps)
+	_, err := resolveTemplates(steps)
 	assert.ErrorContains(t, err, "circular")
 }
 

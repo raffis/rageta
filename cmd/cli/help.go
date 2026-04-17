@@ -162,28 +162,18 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 		sections = append(sections, descHeader, descBody)
 	}
 
-	hasTargets := false
+	var targetBlocks []string
 	for _, step := range command.Steps {
-		if step.Expose {
-			hasTargets = true
-			break
+		if step.Hide {
+			continue
 		}
-	}
-
-	if hasTargets {
-		var targetBlocks []string
-		for _, step := range command.Steps {
-			if !step.Expose {
-				continue
-			}
-			block := styles.HelpTargetName.Render(step.Name) + " " + styles.HelpTargetShort.Render(step.Short)
-			if step.Long != "" {
-				block += "\n" + styles.HelpTargetLong.Render(step.Long)
-			}
-			targetBlocks = append(targetBlocks, block)
+		block := styles.HelpTargetName.Render(step.Name) + " " + styles.HelpTargetShort.Render(step.Short)
+		if step.Long != "" {
+			block += "\n" + styles.HelpTargetLong.Render(step.Long)
 		}
-		sections = append(sections, styles.HelpSection.Render("\n\nTargets:"), styles.HelpBody.Render("\n\n"), strings.Join(targetBlocks, "\n\n"))
+		targetBlocks = append(targetBlocks, block)
 	}
+	sections = append(sections, styles.HelpSection.Render("\n\nTargets:"), styles.HelpBody.Render("\n\n"), strings.Join(targetBlocks, "\n\n"))
 
 	if len(command.Inputs) > 0 {
 		var inputBlocks []string

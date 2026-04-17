@@ -119,30 +119,13 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
-                and:
-                  properties:
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
-                concurrent:
-                  properties:
-                    failFast:
-                      type: boolean
-                    maxConcurrent:
-                      type: integer
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
+                dependsOn:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
                 env:
                   items:
                     properties:
@@ -154,20 +137,6 @@ spec:
                   type: array
                 expose:
                   type: boolean
-                extends:
-                  items:
-                    properties:
-                      name:
-                        type: string
-                    type: object
-                  type: array
-                if:
-                  items:
-                    properties:
-                      celExpression:
-                        type: string
-                    type: object
-                  type: array
                 inherit:
                   properties:
                     entrypoint:
@@ -270,7 +239,7 @@ spec:
                             type: array
                           tag:
                             properties:
-                              color:
+                              hexColor:
                                 type: string
                               value:
                                 type: string
@@ -298,13 +267,6 @@ spec:
                   type: object
                 name:
                   type: string
-                needs:
-                  items:
-                    properties:
-                      name:
-                        type: string
-                    type: object
-                  type: array
                 outputs:
                   items:
                     properties:
@@ -322,16 +284,6 @@ spec:
                     - step
                     type: object
                   type: array
-                pipe:
-                  properties:
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
                 retry:
                   properties:
                     constant:
@@ -346,14 +298,22 @@ spec:
                   type: object
                 run:
                   properties:
-                    args:
+                    artifacts:
                       items:
-                        type: string
+                        properties:
+                          image:
+                            type: object
+                          local:
+                            properties:
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                        type: object
                       type: array
                     caches:
                       items:
-                        description: CacheMount is a BuildKit persistent cache directory
-                          (equivalent to RUN --mount=type=cache).
                         properties:
                           id:
                             description: ID is the cache namespace. May contain substitution
@@ -368,10 +328,6 @@ spec:
                             type: string
                         type: object
                       type: array
-                    command:
-                      items:
-                        type: string
-                      type: array
                     guid:
                       anyOf:
                       - type: integer
@@ -381,35 +337,32 @@ spec:
                       type: string
                     script:
                       type: string
-                    stdin:
-                      type: boolean
-                    tty:
-                      type: boolean
+                    sources:
+                      items:
+                        properties:
+                          local:
+                            properties:
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                          step:
+                            properties:
+                              name:
+                                type: string
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                        type: object
+                      type: array
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    volumeMounts:
-                      items:
-                        properties:
-                          hostPath:
-                            type: string
-                          mountPath:
-                            type: string
-                          name:
-                            type: string
-                          output:
-                            description: Output, when true, writes the mount contents
-                              back to HostPath after the step (BuildKit run steps
-                              only).
-                            type: boolean
-                          readOnly:
-                            description: ReadOnly mounts the host path read-only in
-                              the container.
-                            type: boolean
-                        type: object
-                      type: array
                     workingDir:
                       type: string
                   type: object
@@ -428,24 +381,6 @@ spec:
                       items:
                         type: string
                       type: array
-                    caches:
-                      items:
-                        description: CacheMount is a BuildKit persistent cache directory
-                          (equivalent to RUN --mount=type=cache).
-                        properties:
-                          id:
-                            description: ID is the cache namespace. May contain substitution
-                              expressions.
-                            type: string
-                          path:
-                            description: Path is the mount point inside the container.
-                            type: string
-                          sharing:
-                            description: 'Sharing controls concurrent access: "shared"
-                              (default), "private", or "locked".'
-                            type: string
-                        type: object
-                      type: array
                     command:
                       items:
                         type: string
@@ -457,70 +392,20 @@ spec:
                       x-kubernetes-int-or-string: true
                     image:
                       type: string
-                    script:
-                      type: string
-                    stdin:
-                      type: boolean
-                    tty:
-                      type: boolean
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    volumeMounts:
-                      items:
-                        properties:
-                          hostPath:
-                            type: string
-                          mountPath:
-                            type: string
-                          name:
-                            type: string
-                          output:
-                            description: Output, when true, writes the mount contents
-                              back to HostPath after the step (BuildKit run steps
-                              only).
-                            type: boolean
-                          readOnly:
-                            description: ReadOnly mounts the host path read-only in
-                              the container.
-                            type: boolean
-                        type: object
-                      type: array
                     workingDir:
                       type: string
                   type: object
                 short:
                   type: string
-                streams:
-                  properties:
-                    stderr:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdin:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdout:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                  type: object
                 tags:
                   items:
                     properties:
-                      color:
+                      hexColor:
                         type: string
                       name:
                         type: string
@@ -528,16 +413,226 @@ spec:
                         type: string
                     type: object
                   type: array
-                template:
-                  properties:
-                    args:
-                      items:
+                templates:
+                  items:
+                    properties:
+                      name:
                         type: string
+                    type: object
+                  type: array
+                timeout:
+                  type: string
+                when:
+                  items:
+                    properties:
+                      cel:
+                        type: string
+                    type: object
+                  type: array
+              required:
+              - timeout
+              type: object
+            type: array
+          templates:
+            items:
+              properties:
+                allowFailure:
+                  type: boolean
+                dependsOn:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                env:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                expose:
+                  type: boolean
+                inherit:
+                  properties:
+                    entrypoint:
+                      type: string
+                    inputs:
+                      items:
+                        description: Param declares an ParamValues to use for the
+                          parameter called name.
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                    pipeline:
+                      type: string
+                  type: object
+                inputs:
+                  items:
+                    description: |-
+                      InputParam defines arbitrary parameters needed beyond typed inputs (such as
+                      resources). Parameter values are provided by users as inputs on a TaskRun
+                      or PipelineRun.
+                    properties:
+                      celExpression:
+                        type: string
+                      default:
+                        description: |-
+                          Default is the value a parameter takes if no input value is supplied. If
+                          default is set, a Task may be executed without a supplied value for the
+                          parameter.
+                        x-kubernetes-preserve-unknown-fields: true
+                      description:
+                        description: |-
+                          Description is a user-facing description of the parameter that may be
+                          used to populate a UI.
+                        type: string
+                      enum:
+                        description: |-
+                          Enum declares a set of allowed param input values for tasks/pipelines that can be validated.
+                          If Enum is not set, no input validation is performed for the param.
+                        items:
+                          type: string
+                        type: array
+                      name:
+                        description: Name declares the name by which a parameter is
+                          referenced.
+                        type: string
+                      properties:
+                        additionalProperties:
+                          description: PropertySpec defines the struct for object
+                            keys
+                          properties:
+                            type:
+                              description: |-
+                                ParamType indicates the type of an input parameter;
+                                Used to distinguish between a single string and an array of strings.
+                              type: string
+                          type: object
+                        description: Properties is the JSON Schema properties to support
+                          key-value pairs parameter.
+                        type: object
+                      type:
+                        description: |-
+                          Type is the user-specified type of the parameter. The possible types
+                          are currently "string", "array" and "object", and "string" is the default.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
+                long:
+                  type: string
+                matrix:
+                  properties:
+                    failFast:
+                      type: boolean
+                    include:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          params:
+                            items:
+                              description: Param declares an ParamValues to use for
+                                the parameter called name.
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                          tag:
+                            properties:
+                              hexColor:
+                                type: string
+                              value:
+                                type: string
+                            type: object
+                        required:
+                        - tag
+                        type: object
+                      type: array
+                    maxConcurrent:
+                      type: integer
+                    params:
+                      items:
+                        description: Param declares an ParamValues to use for the
+                          parameter called name.
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                  type: object
+                name:
+                  type: string
+                outputs:
+                  items:
+                    properties:
+                      name:
+                        description: Name declares the name by which a parameter is
+                          referenced.
+                        type: string
+                      step:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                    required:
+                    - name
+                    - step
+                    type: object
+                  type: array
+                retry:
+                  properties:
+                    constant:
+                      type: string
+                    exponential:
+                      type: string
+                    maxRetries:
+                      type: integer
+                  required:
+                  - constant
+                  - exponential
+                  type: object
+                run:
+                  properties:
+                    artifacts:
+                      items:
+                        properties:
+                          image:
+                            type: object
+                          local:
+                            properties:
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                        type: object
                       type: array
                     caches:
                       items:
-                        description: CacheMount is a BuildKit persistent cache directory
-                          (equivalent to RUN --mount=type=cache).
                         properties:
                           id:
                             description: ID is the cache namespace. May contain substitution
@@ -552,6 +647,59 @@ spec:
                             type: string
                         type: object
                       type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    image:
+                      type: string
+                    script:
+                      type: string
+                    sources:
+                      items:
+                        properties:
+                          local:
+                            properties:
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                          step:
+                            properties:
+                              name:
+                                type: string
+                              path:
+                                type: string
+                              to:
+                                type: string
+                            type: object
+                        type: object
+                      type: array
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    workingDir:
+                      type: string
+                  type: object
+                secrets:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                service:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
                     command:
                       items:
                         type: string
@@ -563,42 +711,43 @@ spec:
                       x-kubernetes-int-or-string: true
                     image:
                       type: string
-                    script:
-                      type: string
-                    stdin:
-                      type: boolean
-                    tty:
-                      type: boolean
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    volumeMounts:
-                      items:
-                        properties:
-                          hostPath:
-                            type: string
-                          mountPath:
-                            type: string
-                          name:
-                            type: string
-                          output:
-                            description: Output, when true, writes the mount contents
-                              back to HostPath after the step (BuildKit run steps
-                              only).
-                            type: boolean
-                          readOnly:
-                            description: ReadOnly mounts the host path read-only in
-                              the container.
-                            type: boolean
-                        type: object
-                      type: array
                     workingDir:
                       type: string
                   type: object
+                short:
+                  type: string
+                tags:
+                  items:
+                    properties:
+                      hexColor:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                templates:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
                 timeout:
                   type: string
+                when:
+                  items:
+                    properties:
+                      cel:
+                        type: string
+                    type: object
+                  type: array
               required:
               - timeout
               type: object

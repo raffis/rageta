@@ -92,8 +92,6 @@ func (s *Events) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q failed and pipeline is continued [%s]\n", ctx.UniqueName(), duration)
 		case errors.Is(err, ErrConditionFalse):
 			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q condition check did not pass [%s]\n", ctx.UniqueName(), duration)
-		case errors.Is(err, ErrSkipDone):
-			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q skipped as it was marked as done [%s]\n", ctx.UniqueName(), duration)
 		default:
 			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q failed: %q [%s]\n", ctx.UniqueName(), err.Error(), duration)
 		}

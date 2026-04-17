@@ -29,8 +29,8 @@ func TestIfBuilder(t *testing.T) {
 			name: "if conditions present returns If struct",
 			spec: &v1beta1.Step{
 				StepOptions: v1beta1.StepOptions{
-					If: []v1beta1.IfCondition{
-						{CelExpression: stringPtr("context.env.TEST_VAR == 'test'")},
+					When: []v1beta1.Condition{
+						{CEL: stringPtr("context.env.TEST_VAR == 'test'")},
 					},
 				},
 			},
@@ -40,9 +40,9 @@ func TestIfBuilder(t *testing.T) {
 			name: "multiple if conditions",
 			spec: &v1beta1.Step{
 				StepOptions: v1beta1.StepOptions{
-					If: []v1beta1.IfCondition{
-						{CelExpression: stringPtr("context.env.VAR1 == 'value1'")},
-						{CelExpression: stringPtr("context.env.VAR2 == 'value2'")},
+					When: []v1beta1.Condition{
+						{CEL: stringPtr("context.env.VAR1 == 'value1'")},
+						{CEL: stringPtr("context.env.VAR2 == 'value2'")},
 					},
 				},
 			},
@@ -52,7 +52,7 @@ func TestIfBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := WithIf(celEnv)
+			builder := WithWhen(celEnv)
 			bootstraper := builder(tt.spec)
 
 			if tt.expectNil {
@@ -62,7 +62,7 @@ func TestIfBuilder(t *testing.T) {
 				ifProcessor, ok := bootstraper.(*If)
 				assert.True(t, ok)
 				assert.Equal(t, celEnv, ifProcessor.celEnv)
-				assert.Equal(t, tt.spec.If, ifProcessor.conditions)
+				assert.Equal(t, tt.spec.When, ifProcessor.conditions)
 			}
 		})
 	}
