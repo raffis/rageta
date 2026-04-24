@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moby/buildkit/client/llb"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/tonistiigi/fsutil"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -30,6 +32,8 @@ type StepContext struct {
 	EndedAt         time.Time
 	ContextDir      string
 	Steps           map[string]*StepContext `json:"-"`
+	LLBState        *llb.State             `json:"-"`
+	LocalMounts     map[string]fsutil.FS   `json:"-"`
 	Containers      map[string]cruntime.ContainerStatus
 	Tags            TagsContext
 	Streams         StreamsContext
@@ -69,8 +73,9 @@ func NewContext() StepContext {
 		Matrix:     newMatrixContext(),
 		OutputVars: newOutputVarsContext(),
 		Events:     newEventsContext(),
-		Steps:      make(map[string]*StepContext),
-		Containers: make(map[string]cruntime.ContainerStatus),
+		Steps:       make(map[string]*StepContext),
+		Containers:  make(map[string]cruntime.ContainerStatus),
+		LocalMounts: make(map[string]fsutil.FS),
 	}
 }
 
@@ -89,6 +94,8 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.OutputVars.Outputs = append(copy.OutputVars.Outputs, c.OutputVars.Outputs...)
 	copy.OutputVars.OutputVars = maps.Clone(c.OutputVars.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
+	copy.LLBState = c.LLBState
+	copy.LocalMounts = maps.Clone(c.LocalMounts)
 	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
 	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
@@ -105,6 +112,7 @@ func (t StepContext) Merge(c StepContext) StepContext {
 	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Steps, c.Steps)
 	maps.Copy(t.Containers, c.Containers)
+	maps.Copy(t.LocalMounts, c.LocalMounts)
 
 	return t
 }

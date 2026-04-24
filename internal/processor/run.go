@@ -22,16 +22,16 @@ import (
 	"github.com/tonistiigi/fsutil"
 )
 
-func WithRun(buildkit *client.Client, cacheImports []client.CacheOptionsEntry, cacheExports []client.CacheOptionsEntry, noCache bool) ProcessorBuilder {
+func WithRun(buildkit *client.Client, buildContext string, cacheImports []client.CacheOptionsEntry, cacheExports []client.CacheOptionsEntry, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Run == nil || buildkit == nil {
 			return nil
 		}
-
 		return &Run{
 			step:         *spec.Run,
 			stepName:     spec.Name,
 			buildkit:     buildkit,
+			buildContext: buildContext,
 			cacheImports: cacheImports,
 			cacheExports: cacheExports,
 			noCache:      noCache,
@@ -39,14 +39,13 @@ func WithRun(buildkit *client.Client, cacheImports []client.CacheOptionsEntry, c
 	}
 }
 
-const (
-	defaultShell = "/bin/sh"
-)
+const defaultShell = "/bin/sh"
 
 type Run struct {
 	stepName     string
 	step         v1beta1.RunStep
 	buildkit     *client.Client
+	buildContext string
 	cacheImports []client.CacheOptionsEntry
 	cacheExports []client.CacheOptionsEntry
 	noCache      bool
@@ -57,37 +56,25 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		run := s.step.DeepCopy()
 		command, args := s.commandArgs(run)
 
-		subst := []any{
-			&run.Image,
-			args,
-			command,
-			&run.WorkingDir,
-			run.Guid,
-			run.Uid,
+		subst := []any{&run.Image, args, command, &run.WorkingDir, run.Guid, run.Uid}
+		for i := range run.Caches {
+			subst = append(subst, &run.Caches[i].ID, &run.Caches[i].Path)
 		}
-
-		for _, cache := range run.Caches {
-			subst = append(subst, &cache.ID, &cache.Path)
-		}
-
-		for _, source := range run.Sources {
+		for i := range run.Sources {
 			switch {
-			case source.Local != nil:
-				subst = append(subst, &source.Local.Path, &source.Local.To)
+			case run.Sources[i].Local != nil:
+				subst = append(subst, &run.Sources[i].Local.Path, &run.Sources[i].Local.To)
+			case run.Sources[i].Step != nil:
+				subst = append(subst, &run.Sources[i].Step.Name, &run.Sources[i].Step.Path, &run.Sources[i].Step.To)
 			default:
 				return ctx, errors.New("no source type given")
 			}
 		}
-
-		for _, artifact := range run.Artifacts {
-			switch {
-			case artifact.Local != nil:
-				subst = append(subst, &artifact.Local.Path, &artifact.Local.To)
-			default:
-				return ctx, errors.New("no artifact type given")
+		for i := range run.Artifacts {
+			if run.Artifacts[i].Local != nil {
+				subst = append(subst, &run.Artifacts[i].Local.Path, &run.Artifacts[i].Local.To)
 			}
 		}
-
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
@@ -95,13 +82,12 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if run.Image == "" {
 			return ctx, errors.New("image is required")
 		}
-
-		var runOpts []llb.RunOption
-
 		cmdline := append(append([]string(nil), command...), args...)
 		if len(cmdline) == 0 {
 			return ctx, errors.New("command, args, or script is required")
 		}
+
+		var runOpts []llb.RunOption
 
 		for _, c := range run.Caches {
 			if c.ID == "" || c.Path == "" {
@@ -117,9 +103,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			default:
 				return ctx, fmt.Errorf("cache sharing %q: want shared, private, or locked", c.Sharing)
 			}
-			runOpts = append(runOpts,
-				llb.AddMount(c.Path, llb.Scratch(), llb.AsPersistentCacheDir(c.ID, sharing)),
-			)
+			runOpts = append(runOpts, llb.AddMount(c.Path, llb.Scratch(), llb.AsPersistentCacheDir(c.ID, sharing)))
 		}
 
 		for k, v := range ctx.EnvVars.Envs {
@@ -135,74 +119,107 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if run.WorkingDir != "" {
 			runOpts = append(runOpts, llb.Dir(run.WorkingDir))
 		}
-
 		if s.noCache {
 			runOpts = append(runOpts, llb.IgnoreCache)
 		}
 
+		// sourcePaths holds one LLB state per container path, built from sources.
+		// Artifact mounts that share a path inherit this as their initial content
+		// so the scratch overlay doesn't hide source files.
 		localMounts := make(map[string]fsutil.FS)
+		sourcePaths := make(map[string]llb.State)
+
 		for i, source := range run.Sources {
 			switch {
 			case source.Local != nil:
-				if source.Local.Path == "" {
-					source.Local.Path = "."
+				if _, ok := localMounts["context"]; !ok {
+					contextFS, err := fsutil.NewFS(s.buildContext)
+					if err != nil {
+						return ctx, fmt.Errorf("run step %q: build context %q: %w", s.stepName, s.buildContext, err)
+					}
+					localMounts["context"] = contextFS
+				}
+				srcPath := source.Local.Path
+				if srcPath == "" {
+					srcPath = "."
+				}
+				copyTo := source.Local.To
+				if filepath.Clean(copyTo) == "." || copyTo == "" {
+					if run.WorkingDir != "" {
+						copyTo = run.WorkingDir
+					} else {
+						copyTo = "/"
+					}
 				}
 
-				var (
-					baseDir         string
-					includePatterns []string
-					isGlob          = strings.ContainsAny(source.Local.Path, "*?[")
+				var localSrc llb.State
+				var copyFrom string
+				if strings.ContainsAny(srcPath, "*?[") {
+					localSrc = llb.Local("context", llb.IncludePatterns([]string{srcPath}))
+					copyFrom = globBaseDir(srcPath)
+				} else {
+					localSrc = llb.Local("context")
+					copyFrom = srcPath
+				}
+
+				base, ok := sourcePaths[copyTo]
+				if !ok {
+					base = llb.Scratch()
+				}
+				sourcePaths[copyTo] = base.File(
+					llb.Copy(localSrc, copyFrom, "/", &llb.CopyInfo{
+						CreateDestPath:      true,
+						CopyDirContentsOnly: true,
+					}),
+					llb.WithCustomNamef("[%s] copy context:%s → %s", s.stepName, srcPath, copyTo),
 				)
 
-				if isGlob {
-					baseDir, _ = splitGlobPath(source.Local.Path)
-					matches, err := filepath.Glob(source.Local.Path)
-					if err != nil {
-						return ctx, fmt.Errorf("run step %q: source[%d]: invalid glob: %w", s.stepName, i, err)
-					}
-					if len(matches) == 0 {
-						return ctx, fmt.Errorf("run step %q: source[%d]: no files match %q", s.stepName, i, source.Local.Path)
-					}
-					for _, match := range matches {
-						rel, err := filepath.Rel(baseDir, match)
-						if err != nil {
-							return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
-						}
-						includePatterns = append(includePatterns, rel)
-					}
-				} else if info, statErr := os.Stat(source.Local.Path); statErr == nil && !info.IsDir() {
-					// Single file: base is parent dir, filter by filename
-					baseDir = filepath.Dir(source.Local.Path)
-					includePatterns = []string{filepath.Base(source.Local.Path)}
+			case source.Step != nil:
+				stepCtx, ok := ctx.Steps[source.Step.Name]
+				if !ok {
+					return ctx, fmt.Errorf("run step %q: source[%d]: step %q not found", s.stepName, i, source.Step.Name)
+				}
+				if stepCtx.LLBState == nil {
+					return ctx, fmt.Errorf("run step %q: source[%d]: step %q has no LLB state", s.stepName, i, source.Step.Name)
+				}
+				for k, v := range stepCtx.LocalMounts {
+					localMounts[k] = v
+				}
+				srcPath := source.Step.Path
+				if srcPath == "" {
+					srcPath = "/"
+				}
+				to := source.Step.To
+				if to == "" {
+					to = srcPath
+				}
+
+				// LLB mounts are always directories. When `to` is a file path
+				// (no trailing slash), mount at the parent and copy under the
+				// base name so the file appears at the right path in the container.
+				var mountDir, dstInScratch string
+				if to == "/" || strings.HasSuffix(to, "/") {
+					mountDir = filepath.Clean(to)
+					dstInScratch = "/"
 				} else {
-					// Plain directory: no filter, mount preserves dir name
-					baseDir = filepath.Clean(source.Local.Path)
+					mountDir = filepath.Dir(filepath.Clean(to))
+					dstInScratch = "/" + filepath.Base(to)
 				}
 
-				// For a plain directory, fall back to the dir itself so `to: ./`
-				// preserves the directory name rather than flattening its contents.
-				// For files and globs the user's `to` is used as-is.
-				mountTo := source.Local.To
-				if filepath.Clean(mountTo) == "." && len(includePatterns) == 0 {
-					mountTo = baseDir
+				copyInfo := &llb.CopyInfo{CreateDestPath: true}
+				if srcPath == "/" || strings.HasSuffix(srcPath, "/") {
+					copyInfo.CopyDirContentsOnly = true
 				}
 
-				localName := fmt.Sprintf("local-src-%d", i)
-				srcFS, err := fsutil.NewFS(baseDir)
-				if err != nil {
-					return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
+				base, ok := sourcePaths[mountDir]
+				if !ok {
+					base = llb.Scratch()
 				}
-				if len(includePatterns) > 0 {
-					srcFS, err = fsutil.NewFilterFS(srcFS, &fsutil.FilterOpt{
-						IncludePatterns: includePatterns,
-					})
-					if err != nil {
-						return ctx, fmt.Errorf("run step %q: source[%d]: %w", s.stepName, i, err)
-					}
-				}
+				sourcePaths[mountDir] = base.File(
+					llb.Copy(*stepCtx.LLBState, srcPath, dstInScratch, copyInfo),
+					llb.WithCustomNamef("[%s] copy %s from step %s", s.stepName, srcPath, source.Step.Name),
+				)
 
-				localMounts[localName] = srcFS
-				runOpts = append(runOpts, llb.AddMount(mountTo, llb.Local(localName)))
 			default:
 				return ctx, errors.New("no source type given")
 			}
@@ -214,29 +231,32 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		var outputs []outputMount
 
 		for i, artifact := range run.Artifacts {
-			switch {
-			case artifact.Local != nil:
-				mountPath := artifact.Local.Path
-				if filepath.Clean(mountPath) == "." {
-					// "." is not a valid absolute mount selector in LLB; resolve it
-					// to the step's workingDir so the scratch overlay sits exactly
-					// where the script writes its output.
-					if run.WorkingDir == "" {
-						return ctx, fmt.Errorf("run step %q: artifact[%d]: path %q requires workingDir to be set", s.stepName, i, artifact.Local.Path)
-					}
-					mountPath = run.WorkingDir
-				}
-
-				hostPath := artifact.Local.To
-				if hostPath == "" {
-					hostPath = artifact.Local.Path
-				}
-				outputs = append(outputs, outputMount{
-					mountPath: mountPath,
-					hostPath:  hostPath,
-				})
-				runOpts = append(runOpts, llb.AddMount(mountPath, llb.Scratch()))
+			if artifact.Local == nil {
+				continue
 			}
+			mountPath := artifact.Local.Path
+			if filepath.Clean(mountPath) == "." {
+				if run.WorkingDir == "" {
+					return ctx, fmt.Errorf("run step %q: artifact[%d]: path %q requires workingDir to be set", s.stepName, i, artifact.Local.Path)
+				}
+				mountPath = run.WorkingDir
+			}
+			hostPath := artifact.Local.To
+			if hostPath == "" {
+				hostPath = artifact.Local.Path
+			}
+			outputs = append(outputs, outputMount{mountPath: mountPath, hostPath: hostPath})
+
+			initState, hasSrc := sourcePaths[mountPath]
+			if !hasSrc {
+				initState = llb.Scratch()
+			}
+			delete(sourcePaths, mountPath)
+			runOpts = append(runOpts, llb.AddMount(mountPath, initState))
+		}
+
+		for mountPath, state := range sourcePaths {
+			runOpts = append(runOpts, llb.AddMount(mountPath, state))
 		}
 
 		runOpts = append(runOpts, llb.Args(cmdline))
@@ -246,7 +266,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if len(outputs) == 0 {
 			export = exec.Root()
 		} else {
-			action := llb.Copy(exec.GetMount(outputs[0].mountPath), "/", fmt.Sprintf("/%d/", 0))
+			action := llb.Copy(exec.GetMount(outputs[0].mountPath), "/", "/0/")
 			for i := 1; i < len(outputs); i++ {
 				action = action.Copy(exec.GetMount(outputs[i].mountPath), "/", fmt.Sprintf("/%d/", i))
 			}
@@ -258,14 +278,14 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ch := make(chan *client.SolveStatus)
 		opt := client.SolveOpt{
 			LocalMounts:  localMounts,
 			CacheImports: s.cacheImports,
 			CacheExports: s.cacheExports,
-			Session: []session.Attachable{
-				secretsprovider.FromMap(secrets),
-			}}
+			Session:      []session.Attachable{secretsprovider.FromMap(secrets)},
+		}
+
+		fmt.Printf("%#v", opt)
 
 		var tmpDir string
 		if len(outputs) > 0 {
@@ -280,49 +300,33 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}}
 		}
 
-		var solveErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, solveErr = s.buildkit.Solve(ctx, def, opt, ch)
-		}()
-
-		d, err := progressui.NewDisplay(ctx.Streams.Stderr, progressui.TtyMode)
-		if err != nil {
-			// If an error occurs while attempting to create the tty display,
-			// fallback to using plain mode on stdout (in contrast to stderr).
-			d, _ = progressui.NewDisplay(ctx.Streams.Stderr, progressui.PlainMode)
-		}
-		// not using shared context to not disrupt display but let is finish reporting errors
-		_, err = d.UpdateFrom(ctx, ch)
-
-		//for status := range ch {
-
-		/*for _, msg := range status.Logs {
-			if msg.Stream == 1 {
-				_, _ = ctx.Streams.Stdout.Write(msg.Data)
-			} else {
-				_, _ = ctx.Streams.Stderr.Write(msg.Data)
-			}
-		}*/
-		//}
-
-		<-done
-		if solveErr != nil {
-
+		if err := s.solve(ctx, def, opt); err != nil {
 			var exitErr *gatewaypb.ExitError
-			if errors.As(solveErr, &exitErr) {
+			if errors.As(err, &exitErr) {
 				return ctx, &ContainerError{
 					containerName: s.stepName,
 					image:         run.Image,
 					exitCode:      int(exitErr.ExitCode),
-					err:           solveErr,
+					err:           err,
 				}
 			}
-
-			fmt.Printf("solveErr: %#v", solveErr)
-			return ctx, solveErr
+			return ctx, fmt.Errorf("solve %w", err)
 		}
+
+		combined := exec.Root()
+		for _, om := range outputs {
+			combined = combined.File(
+				llb.Copy(exec.GetMount(om.mountPath), "/", om.mountPath,
+					&llb.CopyInfo{
+						CreateDestPath:      true,
+						CopyDirContentsOnly: true,
+					},
+				),
+				llb.WithCustomNamef("[%s] merge mount %s into root", s.stepName, om.mountPath),
+			)
+		}
+		ctx.LLBState = &combined
+		ctx.LocalMounts = localMounts
 
 		for i, om := range outputs {
 			src := filepath.Join(tmpDir, fmt.Sprintf("%d", i))
@@ -333,6 +337,26 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		return next(ctx)
 	}, nil
+}
+
+// solve marshals the LLB definition, streams progress to stderr, and waits for
+// the BuildKit solve to complete.
+func (s *Run) solve(ctx StepContext, def *llb.Definition, opt client.SolveOpt) error {
+	ch := make(chan *client.SolveStatus)
+	var solveErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, solveErr = s.buildkit.Solve(ctx, def, opt, ch)
+	}()
+
+	d, err := progressui.NewDisplay(ctx.Streams.Stderr, progressui.TtyMode)
+	if err != nil {
+		d, _ = progressui.NewDisplay(ctx.Streams.Stderr, progressui.PlainMode)
+	}
+	_, _ = d.UpdateFrom(ctx, ch)
+	<-done
+	return solveErr
 }
 
 type ContainerError struct {
@@ -423,35 +447,31 @@ func copyRegularFile(src, dst string) error {
 	return err
 }
 
-// splitGlobPath splits a path like "dir/sub/*.go" into ("dir/sub", "*.go").
-// If there is no glob, the full cleaned path is returned as dir with an empty pattern.
-func splitGlobPath(path string) (dir, pattern string) {
-	cleaned := filepath.Clean(path)
-	parts := strings.Split(cleaned, string(filepath.Separator))
-	for i, part := range parts {
-		if strings.ContainsAny(part, "*?[") {
-			if i == 0 {
-				return ".", filepath.Join(parts...)
-			}
-			return filepath.Join(parts[:i]...), filepath.Join(parts[i:]...)
+// globBaseDir returns the non-glob prefix of a pattern (e.g. "test/*" → "test", "*.go" → ".").
+func globBaseDir(pattern string) string {
+	parts := strings.Split(filepath.Clean(pattern), string(filepath.Separator))
+	var base []string
+	for _, p := range parts {
+		if strings.ContainsAny(p, "*?[") {
+			break
 		}
+		base = append(base, p)
 	}
-	return cleaned, ""
+	if len(base) == 0 {
+		return "."
+	}
+	return filepath.Join(base...)
 }
 
 func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 	script := strings.TrimSpace(run.Script)
-
-	hasShebang := strings.HasPrefix(script, "#!")
-	if hasShebang {
+	if strings.HasPrefix(script, "#!") {
 		lines := strings.Split(script, "\n")
-		header := lines[0]
-		shebang := strings.Split(header, "#!")
+		shebang := strings.Split(lines[0], "#!")
 		cmd = []string{shebang[1]}
 		args = append(args, "-e", "-c", strings.Join(lines[1:], "\n"))
 	} else {
 		args = append([]string{defaultShell}, "-e", "-c", script)
 	}
-
 	return
 }
