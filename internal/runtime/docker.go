@@ -395,6 +395,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	hostConfig := dockercontainer.HostConfig{
 		RestartPolicy: d.getRestartPolicy(container.RestartPolicy),
 		LogConfig:     logConfig,
+		Privileged:    container.Privileged,
 	}
 
 	netConfig := network.NetworkingConfig{
@@ -454,6 +455,40 @@ func (d *docker) startContainer(ctx context.Context, logger logr.Logger, contain
 
 	logger.V(3).Info("container inspect", "container-id", containerID, "container-inspect", specs)
 	return &specs, nil
+}
+
+func (d *docker) RunDetached(ctx context.Context, pod *Pod) error {
+	logger, err := logr.FromContext(ctx)
+	if err != nil {
+		logger = d.logger
+	}
+
+	if len(pod.Spec.Containers) != 1 {
+		return errors.New("exactly one container is required")
+	}
+
+	container := pod.Spec.Containers[0]
+	containerName := fmt.Sprintf("%s-%s", pod.Name, container.Name)
+
+	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	if err == nil {
+		if inspect.State.Running {
+			return nil
+		}
+		return d.client.ContainerStart(ctx, inspect.ID, dockercontainer.StartOptions{})
+	}
+
+	if !dockerclient.IsErrNotFound(err) {
+		return err
+	}
+
+	createResp, err := d.createContainer(ctx, logger, pod, container, dockercontainer.LogConfig{})
+	if err != nil {
+		return err
+	}
+
+	_, err = d.startContainer(ctx, logger, createResp.ID)
+	return err
 }
 
 func (d *docker) getRestartPolicy(policy RestartPolicy) dockercontainer.RestartPolicy {

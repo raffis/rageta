@@ -2,6 +2,7 @@ package run
 
 import (
 	"github.com/moby/buildkit/client"
+	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/buildkitsetup"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
@@ -17,6 +18,12 @@ type BuildkitOptions struct {
 func (s BuildkitOptions) Build() Step {
 	return &Buildkit{
 		opts: s,
+	}
+}
+
+func NewBuildkitOptions() BuildkitOptions {
+	return BuildkitOptions{
+		BuildkitOptions: buildkitsetup.NewOptions(),
 	}
 }
 
@@ -41,6 +48,12 @@ type BuildkitContext struct {
 }
 
 func (s *Buildkit) Run(rc *RunContext, next Next) error {
+	if s.opts.BuildkitOptions.Host == "docker-container://rageta-buildkitd" {
+		if err := s.ensureBuildkitd(rc); err != nil {
+			return err
+		}
+	}
+
 	c, err := s.opts.BuildkitOptions.Build(rc)
 	if err != nil {
 		return err
@@ -62,4 +75,21 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	rc.Buildkit.NoCache = s.opts.NoCache
 
 	return next(rc)
+}
+
+func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
+	return rc.ContainerRuntime.Driver.RunDetached(rc.Context, &cruntime.Pod{
+		Name: "rageta",
+		Spec: cruntime.PodSpec{
+			Containers: []cruntime.ContainerSpec{
+				{
+					Name:            "buildkitd",
+					Image:           "moby/buildkit:latest",
+					ImagePullPolicy: cruntime.PullImagePolicyMissing,
+					Privileged:      true,
+					RestartPolicy:   cruntime.RestartPolicyAlways,
+				},
+			},
+		},
+	})
 }

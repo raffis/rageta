@@ -182,9 +182,9 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				if stepCtx.LLBState == nil {
 					return ctx, fmt.Errorf("run step %q: source[%d]: step %q has no LLB state", s.stepName, i, source.Step.Name)
 				}
-				for k, v := range stepCtx.LocalMounts {
-					localMounts[k] = v
-				}
+				//for k, v := range stepCtx.LocalMounts {
+				//	localMounts[k] = v
+				//}
 				srcPath := source.Step.Path
 				if srcPath == "" {
 					srcPath = "/"
@@ -225,34 +225,53 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		type outputMount struct {
-			mountPath, hostPath string
+		type outputArtifact struct {
+			// absPath is the absolute container path where the artifact lives
+			absPath string
+			// fromMount is the source mount path that contains absPath (empty = exec root)
+			fromMount string
+			// relPath is absPath relative to fromMount (or absPath itself if fromMount is empty)
+			relPath  string
+			hostPath string
 		}
-		var outputs []outputMount
+		var outputs []outputArtifact
 
 		for i, artifact := range run.Artifacts {
 			if artifact.Local == nil {
 				continue
 			}
-			mountPath := artifact.Local.Path
-			if filepath.Clean(mountPath) == "." {
+			absPath := artifact.Local.Path
+			if filepath.Clean(absPath) == "." || absPath == "" {
 				if run.WorkingDir == "" {
 					return ctx, fmt.Errorf("run step %q: artifact[%d]: path %q requires workingDir to be set", s.stepName, i, artifact.Local.Path)
 				}
-				mountPath = run.WorkingDir
+				absPath = run.WorkingDir
+			} else if !filepath.IsAbs(absPath) {
+				if run.WorkingDir != "" {
+					absPath = filepath.Join(run.WorkingDir, absPath)
+				} else {
+					absPath = "/" + absPath
+				}
 			}
+
 			hostPath := artifact.Local.To
 			if hostPath == "" {
 				hostPath = artifact.Local.Path
 			}
-			outputs = append(outputs, outputMount{mountPath: mountPath, hostPath: hostPath})
 
-			initState, hasSrc := sourcePaths[mountPath]
-			if !hasSrc {
-				initState = llb.Scratch()
+			// Find the deepest source mount that contains this artifact path.
+			fromMount := ""
+			for mp := range sourcePaths {
+				if (absPath == mp || strings.HasPrefix(absPath, mp+"/")) && len(mp) > len(fromMount) {
+					fromMount = mp
+				}
 			}
-			delete(sourcePaths, mountPath)
-			runOpts = append(runOpts, llb.AddMount(mountPath, initState))
+			relPath := absPath
+			if fromMount != "" {
+				rel, _ := filepath.Rel(fromMount, absPath)
+				relPath = "/" + rel
+			}
+			outputs = append(outputs, outputArtifact{absPath: absPath, fromMount: fromMount, relPath: relPath, hostPath: hostPath})
 		}
 
 		for mountPath, state := range sourcePaths {
@@ -262,13 +281,20 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		runOpts = append(runOpts, llb.Args(cmdline))
 		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
 
+		sourceOf := func(o outputArtifact) llb.State {
+			if o.fromMount != "" {
+				return exec.GetMount(o.fromMount)
+			}
+			return exec.Root()
+		}
+
 		var export llb.State
 		if len(outputs) == 0 {
 			export = exec.Root()
 		} else {
-			action := llb.Copy(exec.GetMount(outputs[0].mountPath), "/", "/0/")
+			action := llb.Copy(sourceOf(outputs[0]), outputs[0].relPath, "/0/")
 			for i := 1; i < len(outputs); i++ {
-				action = action.Copy(exec.GetMount(outputs[i].mountPath), "/", fmt.Sprintf("/%d/", i))
+				action = action.Copy(sourceOf(outputs[i]), outputs[i].relPath, fmt.Sprintf("/%d/", i))
 			}
 			export = llb.Scratch().File(action)
 		}
@@ -316,22 +342,21 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		combined := exec.Root()
 		for _, om := range outputs {
 			combined = combined.File(
-				llb.Copy(exec.GetMount(om.mountPath), "/", om.mountPath,
+				llb.Copy(sourceOf(om), om.relPath, om.absPath,
 					&llb.CopyInfo{
 						CreateDestPath:      true,
 						CopyDirContentsOnly: true,
 					},
 				),
-				llb.WithCustomNamef("[%s] merge mount %s into root", s.stepName, om.mountPath),
+				llb.WithCustomNamef("[%s] merge artifact %s into root", s.stepName, om.absPath),
 			)
 		}
 		ctx.LLBState = &combined
-		ctx.LocalMounts = localMounts
 
 		for i, om := range outputs {
 			src := filepath.Join(tmpDir, fmt.Sprintf("%d", i))
 			if err := syncExportDirToHost(src, om.hostPath); err != nil {
-				return ctx, fmt.Errorf("export %s: %w", om.mountPath, err)
+				return ctx, fmt.Errorf("export %s: %w", om.absPath, err)
 			}
 		}
 

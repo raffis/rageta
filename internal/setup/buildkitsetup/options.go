@@ -6,6 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "github.com/moby/buildkit/client/connhelper/dockercontainer"
+	_ "github.com/moby/buildkit/client/connhelper/kubepod"
+	_ "github.com/moby/buildkit/client/connhelper/nerdctlcontainer"
+	_ "github.com/moby/buildkit/client/connhelper/npipe"
+	_ "github.com/moby/buildkit/client/connhelper/podmancontainer"
+	_ "github.com/moby/buildkit/client/connhelper/ssh"
+
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/tracing/delegated"
 	"github.com/pkg/errors"
@@ -15,7 +22,7 @@ import (
 )
 
 type Options struct {
-	Address       string `env:"BUILDKIT_HOST"`
+	Host          string `env:"BUILDKIT_HOST"`
 	TLSServerName string
 	TLSCACert     string
 	TLSCert       string
@@ -27,14 +34,20 @@ type Options struct {
 
 // BindFlags registers flags for connecting to buildkitd.
 func (o *Options) BindFlags(flags flagset.Interface) {
-	flags.StringVar(&o.Address, "buildkit-addr", o.Address, "BuildKitd address")
+	flags.StringVar(&o.Host, "buildkit-host", o.Host, "BuildKitd host")
 	flags.StringVar(&o.TLSServerName, "buildkit-tlsservername", "", "Server name for TLS certificate validation (default: hostname from address)")
 	flags.StringVar(&o.TLSCACert, "buildkit-tlscacert", "", "CA certificate file for validating the server")
 	flags.StringVar(&o.TLSCert, "buildkit-tlscert", "", "Client certificate file for mTLS")
 	flags.StringVar(&o.TLSKey, "buildkit-tlskey", "", "Client key file for mTLS")
 	flags.StringVar(&o.TLSDir, "buildkit-tlsdir", "", "Directory with ca.pem|ca.crt, cert.pem|tls.crt, key.pem|tls.key (mutually exclusive with individual TLS file flags)")
-	flags.BoolVar(&o.Wait, "buildkit-wait", false, "Block until the BuildKit backend accepts RPCs")
-	flags.BoolVar(&o.TLSVerify, "buildkit-tlsverify", false, "Verify server TLS using the system CA pool (sets server name from address; mutually exclusive with custom CA)")
+	flags.BoolVar(&o.Wait, "buildkit-wait", o.Wait, "Block until the BuildKit backend accepts RPCs")
+	flags.BoolVar(&o.TLSVerify, "buildkit-tlsverify", o.TLSVerify, "Verify server TLS using the system CA pool (sets server name from address; mutually exclusive with custom CA)")
+}
+
+func NewOptions() Options {
+	return Options{
+		Host: "docker-container://rageta-buildkitd",
+	}
 }
 
 // SetDefaultOptions runs after flag parsing: TLS directory resolution, validation, and defaults.
@@ -54,10 +67,10 @@ func (o *Options) SetDefaultOptions(flags *pflag.FlagSet) error {
 		if o.TLSCACert != "" {
 			return errors.New("cannot combine --buildkit-tlsverify with a custom CA (--buildkit-tlscacert or --buildkit-tlsdir)")
 		}
-		if o.Address == "" {
+		if o.Host == "" {
 			return errors.New("--buildkit-tlsverify requires --buildkit-host so the server name can be determined")
 		}
-		u, err := url.Parse(o.Address)
+		u, err := url.Parse(o.Host)
 		if err != nil {
 			return errors.Wrap(err, "parse buildkit address for TLS")
 		}
@@ -71,8 +84,8 @@ func (o *Options) SetDefaultOptions(flags *pflag.FlagSet) error {
 
 func (o *Options) Build(ctx context.Context) (*client.Client, error) {
 	serverName := o.TLSServerName
-	if serverName == "" && o.Address != "" {
-		if u, err := url.Parse(o.Address); err == nil {
+	if serverName == "" && o.Host != "" {
+		if u, err := url.Parse(o.Host); err == nil {
 			serverName = u.Hostname()
 		}
 	}
@@ -95,7 +108,7 @@ func (o *Options) Build(ctx context.Context) (*client.Client, error) {
 		opts = append(opts, client.WithCredentials(o.TLSCert, o.TLSKey))
 	}
 
-	cl, err := client.New(ctx, o.Address, opts...)
+	cl, err := client.New(ctx, o.Host, opts...)
 	if err != nil {
 		return nil, err
 	}

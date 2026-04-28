@@ -103,6 +103,7 @@ func DefaultOptions() Options {
 		ProviderOptions:         NewProviderOptions(),
 		EventsOptions:           NewEventsOptions(),
 		ReportOptions:           NewReportOptions(),
+		BuildkitOptions:         NewBuildkitOptions(),
 	}
 }
 
@@ -121,8 +122,8 @@ func (o Options) Build() *Runner {
 		o.EventsOptions.Build(),
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
-		o.BuildkitOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),
+		o.BuildkitOptions.Build(),
 		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
 		o.ProviderOptions.Build(),
