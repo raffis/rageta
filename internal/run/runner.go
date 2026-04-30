@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type Step interface {
@@ -53,11 +53,11 @@ type Options struct {
 	ImagePolicyOptions      ImagePolicyOptions
 	OutputOptions           OutputOptions
 	ReportOptions           ReportOptions
-	TemplateOptions         TemplateOptions
 	TeardownOptions         TeardownOptions
 	EventsOptions           EventsOptions
 	ForkOptions             ForkOptions
 	ContainerRuntimeOptions ContainerRuntimeOptions
+	BuildkitOptions         BuildkitOptions
 	LifecycleOptions        LifecycleOptions
 	OtelOptions             OtelOptions
 	LoggingOptions          LoggingOptions
@@ -72,16 +72,16 @@ type Options struct {
 	StepContextOptions      StepContextOptions
 }
 
-func (s *Options) BindFlags(flags *pflag.FlagSet) {
+func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
 	s.StepContextOptions.BindFlags(flags)
 	s.OutputOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
-	s.TemplateOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
 	s.EventsOptions.BindFlags(flags)
 	s.ForkOptions.BindFlags(flags)
+	s.BuildkitOptions.BindFlags(flags)
 	s.ContainerRuntimeOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
@@ -103,6 +103,7 @@ func DefaultOptions() Options {
 		ProviderOptions:         NewProviderOptions(),
 		EventsOptions:           NewEventsOptions(),
 		ReportOptions:           NewReportOptions(),
+		BuildkitOptions:         NewBuildkitOptions(),
 	}
 }
 
@@ -117,12 +118,12 @@ func (o Options) Build() *Runner {
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
 		o.ImagePolicyOptions.Build(),
-		o.TemplateOptions.Build(),
 		o.TeardownOptions.Build(),
 		o.EventsOptions.Build(),
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),
+		o.BuildkitOptions.Build(),
 		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
 		o.ProviderOptions.Build(),

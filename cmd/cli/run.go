@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/raffis/rageta/internal/run"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var runCmd = &cobra.Command{
@@ -14,13 +14,6 @@ var runCmd = &cobra.Command{
 	Short: "Execute a pipeline.",
 	RunE:  runRun,
 }
-
-type runFlagGroup struct {
-	Set         *pflag.FlagSet
-	DisplayName string
-}
-
-var runFlagGroups []runFlagGroup
 
 func applyFlagProfile(opts *run.Options) error {
 	switch runFlagProfile {
@@ -57,6 +50,7 @@ func electDefaultProfile() flagProfile {
 
 var runOpts run.Options
 var runFlagProfile = electDefaultProfile().String()
+var runFlags *flagset.Wrapper
 
 func init() {
 	runOpts = run.DefaultOptions()
@@ -67,7 +61,8 @@ func init() {
 	}
 
 	runCmd.Flags().StringVarP(&runFlagProfile, "profile", "p", runFlagProfile, "Flag profile")
-	runOpts.BindFlags(runCmd.Flags())
+	runFlags = flagset.NewWrapper(runCmd.Flags())
+	runOpts.BindFlags(runFlags)
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -94,10 +89,6 @@ func debugProfile(opts *run.Options) error {
 		opts.ImagePolicyOptions.Policy = run.PullImageAlways.String()
 	}
 
-	if !runCmd.Flags().Changed("skip-done") {
-		opts.PipelineOptions.SkipDone = false
-	}
-
 	if !runCmd.Flags().Changed("no-gc") {
 		opts.TeardownOptions.Disabled = true
 	}
@@ -105,7 +96,7 @@ func debugProfile(opts *run.Options) error {
 	if !runCmd.Root().PersistentFlags().Changed("verbose") {
 		rootArgs.logOptions.Verbose = 10
 		var err error
-		logger, zapConfig, err = rootArgs.logOptions.Build()
+		_, zapConfig, err = rootArgs.logOptions.Build()
 		if err != nil {
 			return err
 		}

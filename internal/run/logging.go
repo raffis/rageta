@@ -9,7 +9,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -25,7 +25,7 @@ func (s LoggingOptions) Build() Step {
 	}
 }
 
-func (s *LoggingOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *LoggingOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Detached, "log-detached", "", s.Detached, "Detach logs.")
 }
 
@@ -40,11 +40,12 @@ type Logging struct {
 }
 
 type LoggingContext struct {
-	Logger   logr.Logger
-	Builder  processor.LogBuilder
-	Detached bool
-	Debug    bool
-	MainLog  zapcore.Core
+	Logger     logr.Logger
+	Builder    processor.LogBuilder
+	Detached   bool
+	Debug      bool
+	MainLog    zapcore.Core
+	FileLogger logr.Logger
 }
 
 func (s *Logging) Run(rc *RunContext, next Next) error {
@@ -53,7 +54,7 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	maskedLog := rc.Secrets.Store.Writer(logFile)
+	maskedLog := rc.Secrets.Store.Pipe(rc, logFile, []byte("***"))
 	logCoreFile, err := s.buildZapCore(s.opts.ZapConfig, maskedLog)
 	if err != nil {
 		return err
@@ -65,10 +66,15 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 	}
 
 	logBuilder := s.logBuilder(defaultLog, s.opts.ZapConfig)
-	rc.Logging.Logger = zapr.NewLogger(zap.New(defaultLog))
+	rc.Logging.FileLogger = zapr.NewLogger(zap.New(defaultLog))
 	rc.Logging.Detached = s.opts.Detached
 	rc.Logging.Builder = logBuilder
 	rc.Logging.Debug = s.opts.ZapConfig.Level.Level() <= -5
+	rc.Logging.Logger, err = rc.Logging.Builder(rc.Output.Stderr)
+	if err != nil {
+		return err
+	}
+
 	return next(rc)
 }
 

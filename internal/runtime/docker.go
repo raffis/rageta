@@ -20,10 +20,10 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
 	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/docker/registry"
 	"github.com/go-logr/logr"
-	"github.com/moby/moby/pkg/jsonmessage"
-	"github.com/moby/moby/registry"
 	"github.com/moby/term"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/utils/strings/slices"
@@ -395,6 +395,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	hostConfig := dockercontainer.HostConfig{
 		RestartPolicy: d.getRestartPolicy(container.RestartPolicy),
 		LogConfig:     logConfig,
+		Privileged:    container.Privileged,
 	}
 
 	netConfig := network.NetworkingConfig{
@@ -404,9 +405,10 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 	mounts := []mount.Mount{}
 	for _, volume := range container.Volumes {
 		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: volume.HostPath,
-			Target: volume.Path,
+			Type:     mount.TypeBind,
+			Source:   volume.HostPath,
+			Target:   volume.Path,
+			ReadOnly: volume.ReadOnly,
 		})
 	}
 
@@ -453,6 +455,40 @@ func (d *docker) startContainer(ctx context.Context, logger logr.Logger, contain
 
 	logger.V(3).Info("container inspect", "container-id", containerID, "container-inspect", specs)
 	return &specs, nil
+}
+
+func (d *docker) RunDetached(ctx context.Context, pod *Pod) error {
+	logger, err := logr.FromContext(ctx)
+	if err != nil {
+		logger = d.logger
+	}
+
+	if len(pod.Spec.Containers) != 1 {
+		return errors.New("exactly one container is required")
+	}
+
+	container := pod.Spec.Containers[0]
+	containerName := fmt.Sprintf("%s-%s", pod.Name, container.Name)
+
+	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	if err == nil {
+		if inspect.State.Running {
+			return nil
+		}
+		return d.client.ContainerStart(ctx, inspect.ID, dockercontainer.StartOptions{})
+	}
+
+	if !dockerclient.IsErrNotFound(err) {
+		return err
+	}
+
+	createResp, err := d.createContainer(ctx, logger, pod, container, dockercontainer.LogConfig{})
+	if err != nil {
+		return err
+	}
+
+	_, err = d.startContainer(ctx, logger, createResp.ID)
+	return err
 }
 
 func (d *docker) getRestartPolicy(policy RestartPolicy) dockercontainer.RestartPolicy {

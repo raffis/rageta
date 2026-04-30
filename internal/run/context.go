@@ -2,13 +2,12 @@ package run
 
 import (
 	"context"
-
-	"github.com/raffis/rageta/internal/mask"
 )
 
 type RunContext struct {
 	context.Context
 	CEL              CELContext
+	Buildkit         BuildkitContext
 	ContainerRuntime ContainerRuntimeContext
 	ContextDir       ContextDirContext
 	Envs             EnvsContext
@@ -25,14 +24,9 @@ type RunContext struct {
 	Teardown         TeardownContext
 	Provider         ProviderContext
 	Pipeline         PipelineContext
-	Template         TemplateContext
 	Execution        ExecutionContext
 }
 
 func NewContext() *RunContext {
-	return &RunContext{
-		Secrets: SecretsContext{
-			Store: mask.NewSecretStore(mask.DefaultMask),
-		},
-	}
+	return &RunContext{}
 }

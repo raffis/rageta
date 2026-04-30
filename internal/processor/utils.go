@@ -22,7 +22,7 @@ func filterSteps(refs []string, pipeline Pipeline) ([]Step, error) {
 	return steps, nil
 }
 
-func refSlice(steps []v1beta1.StepReference) []string {
+func refSlice(steps []v1beta1.LocalReference) []string {
 	var refs []string
 	for _, ref := range steps {
 		refs = append(refs, ref.Name)

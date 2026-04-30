@@ -11,9 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/output"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/xio"
-	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
@@ -38,7 +38,7 @@ type OutputOptions struct {
 	InternalSteps bool
 }
 
-func (s *OutputOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *OutputOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.Output, "output", "o", s.Output, "Output renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a colored task name prefix to the output lines while `ui` renders the tasks in a terminal ui. `passthrough` dumps all outputs directly without any modification.")
 	flags.BoolVarP(&s.Expand, "expand", "", s.Expand, "Expand steps from inherited pipelines and display them as separate entities.")
 	flags.BoolVarP(&s.InternalSteps, "with-internals", "", s.InternalSteps, "Expose internal steps")
@@ -84,11 +84,8 @@ func (s *Output) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	if s.opts.Output != RenderOutputUI.String() {
-		rc.Logging.Logger, err = rc.Logging.Builder(rc.Output.Stderr)
-		if err != nil {
-			return err
-		}
+	if s.opts.Output == RenderOutputUI.String() {
+		rc.Logging.Logger = rc.Logging.FileLogger
 	}
 
 	rc.Output.Factory = outputFactory

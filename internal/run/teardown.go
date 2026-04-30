@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type TeardownOptions struct {
@@ -14,7 +14,7 @@ type TeardownOptions struct {
 	GracePeriod time.Duration
 }
 
-func (s *TeardownOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *TeardownOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Disabled, "skip-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
 	flags.DurationVarP(&s.GracePeriod, "grace-period", "", s.GracePeriod, "Maximum time to wait for termination and cleanup of steps.")
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/report"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type ReportType string
@@ -28,7 +28,7 @@ type ReportOptions struct {
 	ReportOutput string
 }
 
-func (s *ReportOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ReportOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ReportType, "report", "r", s.ReportType, "Report summary of steps at the end of execution. One of [table, json, markdown].")
 	flags.StringVarP(&s.ReportOutput, "report-output", "", s.ReportOutput, "Destination for the report output.")
 }
@@ -70,7 +70,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 		defer func() {
 			_ = output.Close()
 		}()
-		reportDev = rc.Secrets.Store.Writer(output)
+		reportDev = rc.Secrets.Store.Pipe(rc, output, []byte("***"))
 	}
 
 	reportFactory, err := s.buildReportFactory(reportDev)

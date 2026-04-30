@@ -9,6 +9,7 @@ import (
 type Interface interface {
 	CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error)
 	DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error
+	RunDetached(ctx context.Context, pod *Pod) error
 }
 
 type Await interface {
@@ -30,6 +31,8 @@ type Volume struct {
 	Name     string
 	Path     string
 	HostPath string
+	ReadOnly bool
+	Output   bool
 }
 
 type PodStatus struct {
@@ -52,6 +55,7 @@ type ContainerSpec struct {
 	PWD             string
 	RestartPolicy   RestartPolicy
 	Volumes         []Volume
+	Privileged      bool
 }
 
 type ContainerStatus struct {

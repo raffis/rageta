@@ -109,10 +109,6 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	contextDir := e.tmpDir
 
-	/*if pipeline.Name != "" {
-		contextDir = filepath.Join(contextDir, pipeline.Name)
-	}*/
-
 	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.ContextDir = contextDir
 		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
@@ -156,12 +152,20 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 		entrypoint: command.Entrypoint,
 	}
 
-	for _, spec := range command.Steps {
-		name := spec.Name
-		origName := name
+	steps, err := resolveTemplates(command.Steps, command.Templates)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, spec := range steps {
 		processors := e.stepBuilder(spec)
 
-		if err := p.withStep(origName, processors); err != nil {
+		var refs []string
+		for _, ref := range spec.DependsOn {
+			refs = append(refs, ref.Name)
+		}
+
+		if err := p.withStep(spec.Name, refs, processors); err != nil {
 			return p, err
 		}
 	}

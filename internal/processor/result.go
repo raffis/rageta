@@ -80,6 +80,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		hasher.Write([]byte(ctx.UniqueName()))
 		b := hasher.Sum(nil)
 		ctx.uniqueID = fmt.Sprintf("%x", b)
+		ctx.Steps[s.stepName] = &ctx
 
 		ctx, err := next(ctx)
 		ctx.EndedAt = time.Now()
@@ -105,7 +106,8 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ctx.Error = err
 		}
 
-		ctx.Steps[s.stepName] = &ctx
+		//ctx.Steps[s.stepName] = &ctx
+
 		ctx.uniqueName = ""
 		ctx.namespace = ""
 		ctx.uniqueID = ""

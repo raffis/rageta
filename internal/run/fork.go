@@ -6,8 +6,8 @@ import (
 	"slices"
 
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/utils"
-	"github.com/spf13/pflag"
 )
 
 type ForkOptions struct {
@@ -20,7 +20,7 @@ func (s ForkOptions) Build() Step {
 	}
 }
 
-func (s *ForkOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ForkOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Fork, "fork", "", s.Fork, "Creates a controller container which handles this pipeline and exit.")
 }
 
@@ -47,17 +47,17 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		Env:             rc.Envs.Envs,
 		ImagePullPolicy: rc.ImagePolicy.PullPolicy,
 	}
-	pod := cruntime.Pod{
+	_ = cruntime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
 		Spec: cruntime.PodSpec{
 			Containers: []cruntime.ContainerSpec{container},
 		},
 	}
 
-	status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
+	/*status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
 	if err != nil {
 		return err
-	}
+	}*/
 
 	/*if !s.noGC {
 		defer func() {
@@ -65,5 +65,6 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		}()
 	}*/
 
-	return status.Wait(rc)
+	return nil
+	//return status.Wait(rc)
 }

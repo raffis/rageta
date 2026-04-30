@@ -5,154 +5,353 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
-	"github.com/raffis/rageta/internal/utils"
-	"github.com/raffis/rageta/internal/xio"
+	"github.com/raffis/rageta/internal/utils/progressui"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+
+	bkclient "github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/client/llb/imagemetaresolver"
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	gatewaypb "github.com/moby/buildkit/frontend/gateway/pb"
+	digest "github.com/opencontainers/go-digest"
+	fstypes "github.com/tonistiigi/fsutil/types"
 )
 
-func WithRun(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, outputFactory OutputFactory, teardown chan Teardown) ProcessorBuilder {
+func WithRun(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Run == nil {
+		if spec.Run == nil || gwClient == nil {
 			return nil
 		}
-
 		return &Run{
-			step:              *spec.Run,
-			stepName:          spec.Name,
-			driver:            driver,
-			defaultPullPolicy: defaultPullPolicy,
-			teardown:          teardown,
+			step:         *spec.Run,
+			stepName:     spec.Name,
+			gwClient:     gwClient,
+			statusRouter: statusRouter,
+			cacheImports: cacheImports,
+			noCache:      noCache,
 		}
 	}
 }
 
-const (
-	defaultShell = "/bin/sh"
-)
+const defaultShell = "/bin/sh"
 
 type Run struct {
-	stepName          string
-	step              v1beta1.RunStep
-	driver            runtime.Interface
-	defaultPullPolicy runtime.PullImagePolicy
-	teardown          chan Teardown
+	stepName     string
+	step         v1beta1.RunStep
+	gwClient     gwclient.Client
+	statusRouter *VertexStatusRouter
+	cacheImports []gwclient.CacheOptionsEntry
+	noCache      bool
 }
 
-func (s *Run) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		run := s.step.DeepCopy()
-		pod := &runtime.Pod{
-			Name: fmt.Sprintf("rageta-%s-%s-%s", pipeline.ID(), ctx.UniqueID(), utils.RandString(5)),
-			Spec: runtime.PodSpec{},
-		}
-
-		if err := substitute.Substitute(ctx.ToV1Beta1(), run.Guid, run.Uid); err != nil {
-			return ctx, err
-		}
-
-		envs := make(map[string]string)
-		maps.Copy(envs, ctx.EnvVars.Envs)
-		maps.Copy(envs, ctx.SecretVars.Secrets)
-
 		command, args := s.commandArgs(run)
 
-		container := runtime.ContainerSpec{
-			Name:            s.stepName,
-			Stdin:           ctx.Streams.Stdin != nil || run.Stdin,
-			TTY:             run.TTY,
-			Image:           run.Image,
-			ImagePullPolicy: s.defaultPullPolicy,
-			Command:         command,
-			Args:            args,
-			Env:             envs,
-			PWD:             run.WorkingDir,
-			RestartPolicy:   runtime.RestartPolicy(run.RestartPolicy),
+		subst := []any{&run.Image, args, command, &run.WorkingDir, run.Guid, run.Uid}
+		for i := range run.Caches {
+			subst = append(subst, &run.Caches[i].ID, &run.Caches[i].Path)
 		}
-
-		if run.Guid != nil {
-			guid := run.Guid.IntValue()
-			container.Guid = &guid
-		}
-
-		if run.Uid != nil {
-			uid := run.Uid.IntValue()
-			container.Uid = &uid
-		}
-
-		for _, vol := range run.VolumeMounts {
-			container.Volumes = append(container.Volumes, runtime.Volume{
-				Name:     vol.Name,
-				HostPath: vol.HostPath,
-				Path:     vol.MountPath,
-			})
-		}
-
-		if ctx.Template.Template != nil {
-			if err := substitute.Substitute(ctx.ToV1Beta1(), ctx.Template.Template.Guid, ctx.Template.Template.Uid); err != nil {
-				return ctx, err
+		for i := range run.Sources {
+			switch {
+			case run.Sources[i].Local != nil:
+				subst = append(subst, &run.Sources[i].Local.Path, &run.Sources[i].Local.To)
+			case run.Sources[i].Step != nil:
+				subst = append(subst, &run.Sources[i].Step.Name, &run.Sources[i].Step.Path, &run.Sources[i].Step.To)
+			default:
+				return ctx, errors.New("no source type given")
 			}
-
-			ContainerSpec(&container, ctx.Template.Template)
 		}
-
-		subst := []any{
-			&container.Image,
-			container.Args,
-			container.Command,
-			&container.PWD,
+		for i := range run.Artifacts {
+			if run.Artifacts[i].Local != nil {
+				subst = append(subst, &run.Artifacts[i].Local.Path, &run.Artifacts[i].Local.To)
+			}
 		}
-
-		for i := range container.Volumes {
-			subst = append(subst, &container.Volumes[i].HostPath, &container.Volumes[i].Path)
-		}
-
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
 
-		for i, vol := range container.Volumes {
-			srcPath, err := filepath.Abs(vol.HostPath)
-			if err != nil {
-				return ctx, fmt.Errorf("failed to get absolute path: %w", err)
+		if run.Image == "" {
+			return ctx, errors.New("image is required")
+		}
+
+		cmdline := append(append([]string(nil), command...), args...)
+		if len(cmdline) == 0 {
+			return ctx, errors.New("command, args, or script is required")
+		}
+
+		var runOpts []llb.RunOption
+
+		for _, c := range run.Caches {
+			if c.ID == "" || c.Path == "" {
+				return ctx, errors.New("cache mount requires id and path")
 			}
-
-			container.Volumes[i].HostPath = srcPath
+			sharing := llb.CacheMountShared
+			switch strings.ToLower(strings.TrimSpace(c.Sharing)) {
+			case "", "shared":
+			case "private":
+				sharing = llb.CacheMountPrivate
+			case "locked":
+				sharing = llb.CacheMountLocked
+			default:
+				return ctx, fmt.Errorf("cache sharing %q: want shared, private, or locked", c.Sharing)
+			}
+			runOpts = append(runOpts, llb.AddMount(c.Path, llb.Scratch(), llb.AsPersistentCacheDir(c.ID, sharing)))
 		}
 
-		if run.Stdin && ctx.Streams.Stdin == nil {
-			ctx.Streams.Stdin = os.Stdin
+		for k, v := range ctx.EnvVars.Envs {
+			runOpts = append(runOpts, llb.AddEnv(k, v))
 		}
 
-		pod.Spec.Containers = []runtime.ContainerSpec{container}
+		for k, _ := range ctx.SecretVars.Secrets {
+			runOpts = append(runOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
+		}
 
-		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
-		ctx, err := s.exec(ctx, pod)
+		if run.WorkingDir != "" {
+			runOpts = append(runOpts, llb.Dir(run.WorkingDir))
+		}
 
+		if s.noCache {
+			runOpts = append(runOpts, llb.IgnoreCache)
+		}
+
+		root := llb.Image(run.Image, imagemetaresolver.WithDefault)
+
+		for _, source := range run.Sources {
+			switch {
+			case source.Local != nil:
+				srcPath := source.Local.Path
+				if srcPath == "" {
+					srcPath = "."
+				}
+				copyTo := source.Local.To
+				if filepath.Clean(copyTo) == "." || copyTo == "" {
+					if run.WorkingDir != "" {
+						copyTo = run.WorkingDir
+					} else {
+						copyTo = "/"
+					}
+				}
+
+				var contextSrc llb.State
+				var copyFrom string
+				if strings.ContainsAny(srcPath, "*?[") {
+					contextSrc = llb.Local("context", llb.IncludePatterns([]string{srcPath}))
+					copyFrom = globBaseDir(srcPath)
+				} else {
+					contextSrc = llb.Local("context")
+					copyFrom = srcPath
+				}
+				root = root.File(
+					llb.Copy(contextSrc, copyFrom, copyTo, &llb.CopyInfo{
+						CreateDestPath:      true,
+						CopyDirContentsOnly: true,
+					}),
+					llb.WithCustomNamef("copy CONTEXT:%s → %s", srcPath, copyTo),
+				)
+
+			case source.Step != nil:
+				stepCtx, ok := ctx.Steps[source.Step.Name]
+				if !ok || stepCtx.LLBState == nil {
+					return ctx, fmt.Errorf("source step %q dependency not found", source.Step.Name)
+				}
+
+				srcPath := source.Step.Path
+				if srcPath == "" {
+					srcPath = "/"
+				}
+				dst := source.Step.To
+				if dst == "" {
+					dst = srcPath
+				}
+
+				copyInfo := &llb.CopyInfo{CreateDestPath: true}
+				if srcPath == "/" || strings.HasSuffix(srcPath, "/") {
+					copyInfo.CopyDirContentsOnly = true
+				}
+
+				root = root.File(
+					llb.Copy(*stepCtx.LLBState, srcPath, dst, copyInfo),
+					llb.WithCustomNamef("copy %s:%s → %s", source.Step.Name, srcPath, dst),
+				)
+			default:
+				return ctx, errors.New("no source type given")
+			}
+		}
+
+		type outputArtifact struct {
+			absPath  string
+			hostPath string
+			hasGlob  bool
+		}
+		var outputs []outputArtifact
+
+		for i, artifact := range run.Artifacts {
+			if artifact.Local == nil {
+				continue
+			}
+			absPath := artifact.Local.Path
+			if filepath.Clean(absPath) == "." || absPath == "" {
+				if run.WorkingDir == "" {
+					return ctx, fmt.Errorf("run step %q: artifact[%d]: path %q requires workingDir to be set", s.stepName, i, artifact.Local.Path)
+				}
+				absPath = run.WorkingDir
+			} else if !filepath.IsAbs(absPath) {
+				if run.WorkingDir != "" {
+					absPath = filepath.Join(run.WorkingDir, absPath)
+				} else {
+					absPath = "/" + absPath
+				}
+			}
+			hostPath := artifact.Local.To
+			if hostPath == "" {
+				hostPath = artifact.Local.Path
+			}
+			outputs = append(outputs, outputArtifact{
+				absPath:  absPath,
+				hostPath: hostPath,
+				hasGlob:  strings.ContainsAny(absPath, "*?["),
+			})
+		}
+
+		runOpts = append(runOpts, llb.Args(cmdline))
+		exec := root.Run(runOpts...)
+
+		def, err := exec.Root().Marshal(ctx)
 		if err != nil {
-			var exitCode int
-			var runtimeErr ExitCode
-			if errors.As(err, &runtimeErr) {
-				exitCode = runtimeErr.ExitCode()
-			}
+			return ctx, err
+		}
 
-			return ctx, &ContainerError{
-				containerName: pod.Name,
-				image:         container.Image,
-				exitCode:      exitCode,
-				err:           err,
+		if s.statusRouter != nil {
+			if head, herr := def.Head(); herr == nil {
+				digests := []digest.Digest{head}
+				stepCh := make(chan *bkclient.SolveStatus, 16)
+				s.statusRouter.Register(digests, stepCh)
+
+				dev := ctx.Events.Dev
+				if dev == nil {
+					dev = io.Discard
+				}
+				d, derr := progressui.NewDisplay(dev, ctx.Streams.Stdout, progressui.PlainMode)
+				if derr != nil {
+					s.statusRouter.Unregister(digests)
+					return ctx, derr
+				}
+				displayDone := make(chan struct{})
+				go func() {
+					defer close(displayDone)
+					d.UpdateFrom(ctx, stepCh)
+				}()
+				defer func() {
+					s.statusRouter.Unregister(digests)
+					close(stepCh)
+					<-displayDone
+				}()
+			}
+		}
+
+		ref, err := s.solve(ctx, def)
+		if err != nil {
+			var exitErr *gatewaypb.ExitError
+			if errors.As(err, &exitErr) {
+				return ctx, &ContainerError{
+					containerName: s.stepName,
+					image:         run.Image,
+					exitCode:      int(exitErr.ExitCode),
+					err:           err,
+				}
+			}
+			return ctx, err
+		}
+
+		state, err := ref.ToState()
+		if err != nil {
+			return ctx, fmt.Errorf("ref to state: %w", err)
+		}
+		ctx.LLBState = &state
+
+		for _, om := range outputs {
+			exportDef, err := llb.Scratch().File(llb.Copy(exec.Root(), om.absPath, "/", &llb.CopyInfo{
+				CreateDestPath: true,
+				AllowWildcard:  om.hasGlob,
+			})).Marshal(ctx)
+			if err != nil {
+				return ctx, fmt.Errorf("export %s: marshal: %w", om.absPath, err)
+			}
+			exportRef, err := s.solve(ctx, exportDef)
+			if err != nil {
+				return ctx, fmt.Errorf("export %s: solve: %w", om.absPath, err)
+			}
+			if err := exportRefToHost(ctx, exportRef, "/", om.hostPath); err != nil {
+				return ctx, fmt.Errorf("export %s: %w", om.absPath, err)
 			}
 		}
 
 		return next(ctx)
 	}, nil
+}
+
+func (s *Run) solve(ctx context.Context, def *llb.Definition) (gwclient.Reference, error) {
+	res, err := s.gwClient.Solve(ctx, gwclient.SolveRequest{
+		Definition:   def.ToPB(),
+		CacheImports: s.cacheImports,
+		Evaluate:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.Ref, nil
+}
+
+func exportRefToHost(ctx context.Context, ref gwclient.Reference, srcPath, hostPath string) error {
+	stats, err := ref.ReadDir(ctx, gwclient.ReadDirRequest{
+		Path:           srcPath,
+		IncludePattern: "**",
+	})
+	if err != nil {
+		return err
+	}
+	return writeStats(ctx, ref, srcPath, hostPath, stats)
+}
+
+func writeStats(ctx context.Context, ref gwclient.Reference, base, hostBase string, stats []*fstypes.Stat) error {
+	for _, st := range stats {
+		rel := strings.TrimPrefix(st.Path, "/")
+		src := filepath.Join(base, rel)
+		dst := filepath.Join(hostBase, rel)
+
+		if st.IsDir() {
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				return err
+			}
+			sub, err := ref.ReadDir(ctx, gwclient.ReadDirRequest{Path: src, IncludePattern: "**"})
+			if err != nil {
+				return err
+			}
+			if err := writeStats(ctx, ref, src, dst, sub); err != nil {
+				return err
+			}
+		} else {
+			data, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: src})
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dst, data, fs.FileMode(st.Mode)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type ContainerError struct {
@@ -182,133 +381,91 @@ func (e *ContainerError) Image() string {
 	return e.image
 }
 
-func ContainerSpec(container *runtime.ContainerSpec, template *v1beta1.Template) {
-	if len(container.Args) == 0 {
-		container.Args = template.Args
+func syncExportDirToHost(exported, host string) error {
+	if err := os.RemoveAll(host); err != nil {
+		return fmt.Errorf("clear host path: %w", err)
 	}
-
-	if len(container.Command) == 0 {
-		container.Command = template.Command
+	if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
+		return err
 	}
-
-	if container.PWD == "" {
-		container.PWD = template.WorkingDir
-	}
-
-	if container.Image == "" {
-		container.Image = template.Image
-	}
-
-	if container.Uid == nil && template.Uid != nil {
-		uid := template.Uid.IntValue()
-		container.Uid = &uid
-	}
-
-	if container.Guid == nil && template.Guid != nil {
-		guid := template.Guid.IntValue()
-		container.Uid = &guid
-	}
-
-	for _, templateVol := range template.VolumeMounts {
-		hasVolume := false
-		for _, containerVol := range container.Volumes {
-			if templateVol.Name == containerVol.Name {
-				hasVolume = true
-				break
-			}
+	if err := os.Rename(exported, host); err != nil {
+		if err := copyDir(exported, host); err != nil {
+			return err
 		}
-
-		if !hasVolume {
-			container.Volumes = append(container.Volumes, runtime.Volume{
-				Name:     templateVol.Name,
-				HostPath: templateVol.HostPath,
-				Path:     templateVol.MountPath,
-			})
-		}
+		_ = os.RemoveAll(exported)
 	}
+	return nil
+}
+
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return os.MkdirAll(dst, 0o755)
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		return copyRegularFile(path, target)
+	})
+}
+
+func copyRegularFile(src, dst string) error {
+	st, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("copy %s: not a regular file", src)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, st.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+func globBaseDir(pattern string) string {
+	parts := strings.Split(filepath.Clean(pattern), string(filepath.Separator))
+	var base []string
+	for _, p := range parts {
+		if strings.ContainsAny(p, "*?[") {
+			break
+		}
+		base = append(base, p)
+	}
+	if len(base) == 0 {
+		return "."
+	}
+	return filepath.Join(base...)
 }
 
 func (s *Run) commandArgs(run *v1beta1.RunStep) (cmd []string, args []string) {
 	script := strings.TrimSpace(run.Script)
-	args = run.Args
-
-	if script == "" {
-		return run.Command, run.Args
-	}
-
-	hasShebang := strings.HasPrefix(script, "#!")
-	if hasShebang {
+	if strings.HasPrefix(script, "#!") {
 		lines := strings.Split(script, "\n")
-		header := lines[0]
-		shebang := strings.Split(header, "#!")
+		shebang := strings.Split(lines[0], "#!")
 		cmd = []string{shebang[1]}
 		args = append(args, "-e", "-c", strings.Join(lines[1:], "\n"))
 	} else {
-		if len(run.Command) == 0 {
-			cmd = []string{defaultShell}
-		} else {
-			cmd = run.Command
-		}
-
-		args = append(args, "-e", "-c", script)
+		args = append([]string{defaultShell}, "-e", "-c", script)
 	}
-
 	return
-}
-
-func (s *Run) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
-	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
-		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
-		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))
-		w.Write([]byte(cmd))
-		w.Flush()
-	}
-
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Streams.Stdin,
-		io.MultiWriter(append(ctx.Streams.AdditionalStdout, ctx.Streams.Stdout)...),
-		io.MultiWriter(append(ctx.Streams.AdditionalStderr, ctx.Streams.Stderr)...),
-	)
-
-	if err != nil {
-		return ctx, err
-	}
-
-	for _, v := range pod.Status.Containers {
-		ctx.Containers[v.Name] = v
-	}
-
-	if s.step.Await == v1beta1.AwaitStatusReady {
-		done := make(chan error)
-		go func() {
-			if err := await.Wait(ctx); err != nil {
-				done <- err
-			}
-
-			done <- nil
-		}()
-
-		s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
-			//In case of Await == v1beta1.AwaitStatusReady we need to delete the container here
-			//otherwise we end up with orphaned running containers
-			//And in addition if the container here is not deleted the done channel will never be fulfilled as there is nothing which will stop
-			//the containers otherwise if the app was started with --no-gc (skip pod deletion)
-			if containerStatus, ok := ctx.Containers[s.stepName]; ok {
-				err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
-					Status: runtime.PodStatus{
-						Containers: []runtime.ContainerStatus{containerStatus},
-					},
-				}, timeout)
-
-				if err != nil {
-					return err
-				}
-			}
-
-			return <-done
-		}
-		return ctx, err
-	}
-
-	err = await.Wait(ctx)
-	return ctx, err
 }

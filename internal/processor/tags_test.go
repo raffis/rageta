@@ -24,7 +24,7 @@ func TestTagsBuilder(t *testing.T) {
 		{
 			name: "global tags only returns Tags struct",
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			spec:      &v1beta1.Step{},
 			expectNil: false,
@@ -35,7 +35,7 @@ func TestTagsBuilder(t *testing.T) {
 			spec: &v1beta1.Step{
 				StepOptions: v1beta1.StepOptions{
 					Tags: []v1beta1.Tag{
-						{Name: "service", Value: "api", Color: "#00FF00"},
+						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
 				},
 			},
@@ -44,12 +44,12 @@ func TestTagsBuilder(t *testing.T) {
 		{
 			name: "both global and spec tags returns Tags struct",
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			spec: &v1beta1.Step{
 				StepOptions: v1beta1.StepOptions{
 					Tags: []v1beta1.Tag{
-						{Name: "service", Value: "api", Color: "#00FF00"},
+						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
 				},
 			},
@@ -99,15 +99,15 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "only spec tags",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
-				{Name: "version", Value: "v1.0.0", Color: "#0000FF"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
+				{Name: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 			},
 			globalTags:   []Tag{},
 			inputContext: StepContext{},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "api", Color: "#00FF00"},
-					{Key: "version", Value: "v1.0.0", Color: "#0000FF"},
+					{Key: "service", Value: "api", HEXColor: "#00FF00"},
+					{Key: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 				}},
 			},
 			expectedAfter: StepContext{},
@@ -117,14 +117,14 @@ func TestTagsBootstrap(t *testing.T) {
 			name:     "only global tags",
 			specTags: []v1beta1.Tag{},
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
-				{Key: "region", Value: "us-west", Color: "#FFFF00"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
+				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
 			inputContext: StepContext{},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "env", Value: "prod", Color: "#FF0000"},
-					{Key: "region", Value: "us-west", Color: "#FFFF00"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
+					{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 				}},
 			},
 			expectedAfter: StepContext{},
@@ -133,16 +133,16 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "both spec and global tags",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			inputContext: StepContext{},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "api", Color: "#00FF00"},
-					{Key: "env", Value: "prod", Color: "#FF0000"},
+					{Key: "service", Value: "api", HEXColor: "#00FF00"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedAfter: StepContext{},
@@ -151,23 +151,23 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "existing context tags are preserved after execution",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags: []Tag{},
 			inputContext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
-					{Key: "service", Value: "api", Color: "#00FF00"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
+					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
 			expectedAfter: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			shouldError: false,
@@ -175,7 +175,7 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "error handling - error propagation",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags:    []Tag{},
 			inputContext:  StepContext{},
@@ -186,25 +186,25 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "tag overwriting - same key overwrites existing",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "new-api", Color: "#00FF00"},
+				{Name: "service", Value: "new-api", HEXColor: "#00FF00"},
 			},
 			globalTags: []Tag{},
 			inputContext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "old-api", Color: "#CCCCCC"},
-					{Key: "env", Value: "prod", Color: "#FF0000"},
+					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "new-api", Color: "#00FF00"},
-					{Key: "env", Value: "prod", Color: "#FF0000"},
+					{Key: "service", Value: "new-api", HEXColor: "#00FF00"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedAfter: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "old-api", Color: "#CCCCCC"},
-					{Key: "env", Value: "prod", Color: "#FF0000"},
+					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			shouldError: false,
@@ -213,12 +213,12 @@ func TestTagsBootstrap(t *testing.T) {
 			name:     "empty spec tags with global tags",
 			specTags: []v1beta1.Tag{},
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			inputContext: StepContext{},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "env", Value: "prod", Color: "#FF0000"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedAfter: StepContext{},
@@ -227,13 +227,13 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "empty global tags with spec tags",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags:   []Tag{},
 			inputContext: StepContext{},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "service", Value: "api", Color: "#00FF00"},
+					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
 			expectedAfter: StepContext{},
@@ -242,32 +242,32 @@ func TestTagsBootstrap(t *testing.T) {
 		{
 			name: "complex tag mapping - multiple tags and proper mapping",
 			specTags: []v1beta1.Tag{
-				{Name: "service", Value: "api", Color: "#00FF00"},
-				{Name: "version", Value: "v1.0.0", Color: "#0000FF"},
-				{Name: "component", Value: "backend", Color: "#FF00FF"},
+				{Name: "service", Value: "api", HEXColor: "#00FF00"},
+				{Name: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
+				{Name: "component", Value: "backend", HEXColor: "#FF00FF"},
 			},
 			globalTags: []Tag{
-				{Key: "env", Value: "prod", Color: "#FF0000"},
-				{Key: "region", Value: "us-west", Color: "#FFFF00"},
+				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
+				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
 			inputContext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			expectedNext: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
-					{Key: "service", Value: "api", Color: "#00FF00"},
-					{Key: "version", Value: "v1.0.0", Color: "#0000FF"},
-					{Key: "component", Value: "backend", Color: "#FF00FF"},
-					{Key: "env", Value: "prod", Color: "#FF0000"},
-					{Key: "region", Value: "us-west", Color: "#FFFF00"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
+					{Key: "service", Value: "api", HEXColor: "#00FF00"},
+					{Key: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
+					{Key: "component", Value: "backend", HEXColor: "#FF00FF"},
+					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
+					{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 				}},
 			},
 			expectedAfter: StepContext{
 				Tags: TagsContext{tags: []Tag{
-					{Key: "existing", Value: "tag", Color: "#CCCCCC"},
+					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			shouldError: false,

@@ -9,15 +9,15 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/styles"
-	"github.com/spf13/pflag"
 )
 
 type SummaryOptions struct {
 	SkipSummary bool
 }
 
-func (s *SummaryOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *SummaryOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.SkipSummary, "skip-summary", "", s.SkipSummary, "Do not print an execution summary at the end of the pipeline execution.")
 }
 
@@ -91,8 +91,8 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 
 		for _, tag := range innerStepErr.Context().Tags.Tags() {
 			tags = append(tags, styles.TagLabel.
-				Background(lipgloss.Color(tag.Color)).
-				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+				Background(lipgloss.Color(tag.HEXColor)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
 				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
 			)
 		}
@@ -104,12 +104,12 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), runErr.Image())
 		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), runErr.ExitCode())
 
-		if len(tags) > 0 {
-			fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
-
-		}
 	} else {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), errors.Unwrap(err).Error())
+	}
+
+	if len(tags) > 0 {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
 	}
 
 	fmt.Fprint(w, "\n")

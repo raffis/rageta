@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/sethvargo/go-retry"
-	"github.com/spf13/pflag"
 )
 
 type ExecuteOptions struct {
@@ -15,7 +15,7 @@ type ExecuteOptions struct {
 	Entrypoint string
 }
 
-func (s *ExecuteOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ExecuteOptions) BindFlags(flags flagset.Interface) {
 	flags.Uint64VarP(&s.MaxRetries, "retry", "", s.MaxRetries, "Retry pipeline if a failure occurred.")
 	flags.StringVarP(&s.Entrypoint, "entrypoint", "t", s.Entrypoint, "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 }

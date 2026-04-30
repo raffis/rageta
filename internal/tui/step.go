@@ -100,8 +100,8 @@ func (t *StepMsg) TagsAsString() string {
 	var tags []string
 	for _, tag := range t.Tags {
 		tagLabel := styles.TagLabel.
-			Background(lipgloss.Color(tag.Color)).
-			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
+			Background(lipgloss.Color(tag.HEXColor)).
+			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
 			PaddingLeft(1).
 			PaddingRight(1).
 			Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value))
@@ -120,7 +120,7 @@ func (t *StepMsg) shortTags() string {
 	var tags []string
 	for _, tag := range t.Tags {
 		dot := listTagLabelStyle.
-			Foreground(lipgloss.Color(tag.Color)).
+			Foreground(lipgloss.Color(tag.HEXColor)).
 			Render("●")
 		tags = append(tags, dot)
 	}

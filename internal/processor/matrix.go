@@ -216,7 +216,7 @@ func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, i
 			}
 
 			if combine {
-				tag.Color = includeGroup.Tag.Color
+				tag.HEXColor = includeGroup.Tag.HEXColor
 
 				if includeGroup.Tag.Value != "" {
 					tag.Value = includeGroup.Tag.Value

@@ -69,15 +69,15 @@ type OutputParams []OutputParam
 
 type OutputParam struct {
 	// Name declares the name by which a parameter is referenced.
-	Name string        `json:"name"`
-	From string        `json:"from,omitempty"`
-	Step StepReference `json:"step"`
+	Name string         `json:"name"`
+	From string         `json:"from,omitempty"`
+	Step LocalReference `json:"step"`
 }
 
 type StepOutputParam struct {
 	// Name declares the name by which a parameter is referenced.
-	Name string        `json:"name"`
-	Step StepReference `json:"step"`
+	Name string         `json:"name"`
+	Step LocalReference `json:"step"`
 }
 
 // PropertySpec defines the struct for object keys

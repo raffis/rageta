@@ -19,6 +19,7 @@ type pipelineStep struct {
 	processors []processor.Bootstraper
 	name       string
 	pipeline   *pipeline
+	dependsOn  []string
 }
 
 func (p *pipelineStep) Processors() []processor.Bootstraper {
@@ -47,7 +48,20 @@ func (p *pipeline) Step(name string) (processor.Step, error) {
 	return nil, fmt.Errorf("no such step exists: %s", name)
 }
 
-func (p *pipeline) withStep(name string, processors []processor.Bootstraper) error {
+func (p *pipeline) DependantSteps(name string) []processor.Step {
+	var steps []processor.Step
+	for _, step := range p.steps {
+		for _, ref := range step.dependsOn {
+			if name == ref {
+				steps = append(steps, step)
+			}
+		}
+	}
+
+	return steps
+}
+
+func (p *pipeline) withStep(name string, dependsOn []string, processors []processor.Bootstraper) error {
 	if slices.ContainsFunc(p.steps, func(s *pipelineStep) bool {
 		return s.name == name
 	}) {
@@ -58,6 +72,7 @@ func (p *pipeline) withStep(name string, processors []processor.Bootstraper) err
 		name:       name,
 		processors: processors,
 		pipeline:   p,
+		dependsOn:  dependsOn,
 	})
 
 	return nil
