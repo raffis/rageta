@@ -15,6 +15,7 @@ type Executable func() (StepContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
 	Step(name string) (Step, error)
+	DependantSteps(name string) []Step
 	Entrypoint(name string) (Next, error)
 	EntrypointName() (string, error)
 	Name() string

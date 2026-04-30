@@ -104,12 +104,12 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), runErr.Image())
 		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), runErr.ExitCode())
 
-		if len(tags) > 0 {
-			fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
-
-		}
 	} else {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), errors.Unwrap(err).Error())
+	}
+
+	if len(tags) > 0 {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
 	}
 
 	fmt.Fprint(w, "\n")

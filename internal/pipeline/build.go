@@ -158,11 +158,14 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	}
 
 	for _, spec := range steps {
-		name := spec.Name
-		origName := name
 		processors := e.stepBuilder(spec)
 
-		if err := p.withStep(origName, processors); err != nil {
+		var refs []string
+		for _, ref := range spec.DependsOn {
+			refs = append(refs, ref.Name)
+		}
+
+		if err := p.withStep(spec.Name, refs, processors); err != nil {
 			return p, err
 		}
 	}

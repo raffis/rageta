@@ -2,6 +2,7 @@ package processor
 
 import (
 	"slices"
+	"sync"
 
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -73,6 +74,11 @@ func (t TagsContext) Has(key string) bool {
 
 	return false
 }
+
+var (
+	tagColors = make(map[Tag]string)
+	tagMutex  = sync.Mutex{}
+)
 
 func (t *TagsContext) Add(tag Tag) {
 	tagMutex.Lock()

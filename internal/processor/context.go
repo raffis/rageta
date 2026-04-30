@@ -7,19 +7,13 @@ import (
 	"os"
 	"path"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/moby/buildkit/client/llb"
 	cruntime "github.com/raffis/rageta/internal/runtime"
-	"github.com/tonistiigi/fsutil"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+	"github.com/tonistiigi/fsutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-var (
-	tagColors = make(map[Tag]string)
-	tagMutex  = sync.Mutex{}
 )
 
 type StepContext struct {
@@ -32,8 +26,8 @@ type StepContext struct {
 	EndedAt         time.Time
 	ContextDir      string
 	Steps           map[string]*StepContext `json:"-"`
-	LLBState        *llb.State             `json:"-"`
-	LocalMounts     map[string]fsutil.FS   `json:"-"`
+	LLBState        *llb.State              `json:"-"`
+	LocalMounts     map[string]fsutil.FS    `json:"-"`
 	Containers      map[string]cruntime.ContainerStatus
 	Tags            TagsContext
 	Streams         StreamsContext
@@ -67,12 +61,12 @@ func (c StepContext) WithNamespace(name string) StepContext {
 
 func NewContext() StepContext {
 	return StepContext{
-		EnvVars:    newEnvVarsContext(),
-		SecretVars: newSecretVarsContext(),
-		InputVars:  newInputVarsContext(),
-		Matrix:     newMatrixContext(),
-		OutputVars: newOutputVarsContext(),
-		Events:     newEventsContext(),
+		EnvVars:     newEnvVarsContext(),
+		SecretVars:  newSecretVarsContext(),
+		InputVars:   newInputVarsContext(),
+		Matrix:      newMatrixContext(),
+		OutputVars:  newOutputVarsContext(),
+		Events:      newEventsContext(),
 		Steps:       make(map[string]*StepContext),
 		Containers:  make(map[string]cruntime.ContainerStatus),
 		LocalMounts: make(map[string]fsutil.FS),

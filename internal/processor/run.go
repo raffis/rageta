@@ -12,13 +12,15 @@ import (
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
+	"github.com/docker/cli/cli/config"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/client/llb/imagemetaresolver"
 	gatewaypb "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/session"
+	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
-	"github.com/moby/buildkit/util/progress/progressui"
+	"github.com/raffis/rageta/internal/utils/progressui"
 	"github.com/tonistiigi/fsutil"
 )
 
@@ -53,6 +55,7 @@ type Run struct {
 
 func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		fmt.Printf("RUNNNNNN\n")
 		run := s.step.DeepCopy()
 		command, args := s.commandArgs(run)
 
@@ -82,6 +85,7 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if run.Image == "" {
 			return ctx, errors.New("image is required")
 		}
+
 		cmdline := append(append([]string(nil), command...), args...)
 		if len(cmdline) == 0 {
 			return ctx, errors.New("command, args, or script is required")
@@ -119,26 +123,26 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if run.WorkingDir != "" {
 			runOpts = append(runOpts, llb.Dir(run.WorkingDir))
 		}
+
 		if s.noCache {
 			runOpts = append(runOpts, llb.IgnoreCache)
 		}
 
-		// sourcePaths holds one LLB state per container path, built from sources.
-		// Artifact mounts that share a path inherit this as their initial content
-		// so the scratch overlay doesn't hide source files.
-		localMounts := make(map[string]fsutil.FS)
-		sourcePaths := make(map[string]llb.State)
+		root := llb.Image(run.Image, imagemetaresolver.WithDefault)
 
-		for i, source := range run.Sources {
+		localMounts := make(map[string]fsutil.FS)
+
+		for _, source := range run.Sources {
 			switch {
 			case source.Local != nil:
 				if _, ok := localMounts["context"]; !ok {
 					contextFS, err := fsutil.NewFS(s.buildContext)
 					if err != nil {
-						return ctx, fmt.Errorf("run step %q: build context %q: %w", s.stepName, s.buildContext, err)
+						return ctx, fmt.Errorf("building context filesystem failed: %s", err)
 					}
 					localMounts["context"] = contextFS
 				}
+
 				srcPath := source.Local.Path
 				if srcPath == "" {
 					srcPath = "."
@@ -152,39 +156,29 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					}
 				}
 
-				var localSrc llb.State
+				var contextSrc llb.State
 				var copyFrom string
 				if strings.ContainsAny(srcPath, "*?[") {
-					localSrc = llb.Local("context", llb.IncludePatterns([]string{srcPath}))
+					contextSrc = llb.Local("context", llb.IncludePatterns([]string{srcPath}))
 					copyFrom = globBaseDir(srcPath)
 				} else {
-					localSrc = llb.Local("context")
+					contextSrc = llb.Local("context")
 					copyFrom = srcPath
 				}
-
-				base, ok := sourcePaths[copyTo]
-				if !ok {
-					base = llb.Scratch()
-				}
-				sourcePaths[copyTo] = base.File(
-					llb.Copy(localSrc, copyFrom, "/", &llb.CopyInfo{
+				root = root.File(
+					llb.Copy(contextSrc, copyFrom, copyTo, &llb.CopyInfo{
 						CreateDestPath:      true,
 						CopyDirContentsOnly: true,
 					}),
-					llb.WithCustomNamef("[%s] copy context:%s → %s", s.stepName, srcPath, copyTo),
+					llb.WithCustomNamef("copy CONTEXT:%s → %s", srcPath, copyTo),
 				)
 
 			case source.Step != nil:
 				stepCtx, ok := ctx.Steps[source.Step.Name]
-				if !ok {
-					return ctx, fmt.Errorf("run step %q: source[%d]: step %q not found", s.stepName, i, source.Step.Name)
+				if !ok || stepCtx.LLBState == nil {
+					return ctx, fmt.Errorf("source step %q dependency not found", source.Step.Name)
 				}
-				if stepCtx.LLBState == nil {
-					return ctx, fmt.Errorf("run step %q: source[%d]: step %q has no LLB state", s.stepName, i, source.Step.Name)
-				}
-				//for k, v := range stepCtx.LocalMounts {
-				//	localMounts[k] = v
-				//}
+
 				srcPath := source.Step.Path
 				if srcPath == "" {
 					srcPath = "/"
@@ -194,15 +188,10 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					to = srcPath
 				}
 
-				// LLB mounts are always directories. When `to` is a file path
-				// (no trailing slash), mount at the parent and copy under the
-				// base name so the file appears at the right path in the container.
-				var mountDir, dstInScratch string
+				var dstInScratch string
 				if to == "/" || strings.HasSuffix(to, "/") {
-					mountDir = filepath.Clean(to)
 					dstInScratch = "/"
 				} else {
-					mountDir = filepath.Dir(filepath.Clean(to))
 					dstInScratch = "/" + filepath.Base(to)
 				}
 
@@ -211,28 +200,19 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					copyInfo.CopyDirContentsOnly = true
 				}
 
-				base, ok := sourcePaths[mountDir]
-				if !ok {
-					base = llb.Scratch()
-				}
-				sourcePaths[mountDir] = base.File(
+				root = root.File(
 					llb.Copy(*stepCtx.LLBState, srcPath, dstInScratch, copyInfo),
-					llb.WithCustomNamef("[%s] copy %s from step %s", s.stepName, srcPath, source.Step.Name),
+					llb.WithCustomNamef("copy %s:%s → %s", source.Step.Name, srcPath, dstInScratch),
 				)
-
 			default:
 				return ctx, errors.New("no source type given")
 			}
 		}
 
 		type outputArtifact struct {
-			// absPath is the absolute container path where the artifact lives
-			absPath string
-			// fromMount is the source mount path that contains absPath (empty = exec root)
-			fromMount string
-			// relPath is absPath relative to fromMount (or absPath itself if fromMount is empty)
-			relPath  string
+			absPath  string
 			hostPath string
+			hasGlob  bool
 		}
 		var outputs []outputArtifact
 
@@ -253,53 +233,33 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					absPath = "/" + absPath
 				}
 			}
-
 			hostPath := artifact.Local.To
 			if hostPath == "" {
 				hostPath = artifact.Local.Path
 			}
-
-			// Find the deepest source mount that contains this artifact path.
-			fromMount := ""
-			for mp := range sourcePaths {
-				if (absPath == mp || strings.HasPrefix(absPath, mp+"/")) && len(mp) > len(fromMount) {
-					fromMount = mp
-				}
-			}
-			relPath := absPath
-			if fromMount != "" {
-				rel, _ := filepath.Rel(fromMount, absPath)
-				relPath = "/" + rel
-			}
-			outputs = append(outputs, outputArtifact{absPath: absPath, fromMount: fromMount, relPath: relPath, hostPath: hostPath})
-		}
-
-		for mountPath, state := range sourcePaths {
-			runOpts = append(runOpts, llb.AddMount(mountPath, state))
+			outputs = append(outputs, outputArtifact{
+				absPath:  absPath,
+				hostPath: hostPath,
+				hasGlob:  strings.ContainsAny(absPath, "*?["),
+			})
 		}
 
 		runOpts = append(runOpts, llb.Args(cmdline))
-		exec := llb.Image(run.Image, imagemetaresolver.WithDefault).Run(runOpts...)
+		exec := root.Run(runOpts...)
 
-		sourceOf := func(o outputArtifact) llb.State {
-			if o.fromMount != "" {
-				return exec.GetMount(o.fromMount)
+		toMarshal := exec.Root()
+		if len(outputs) > 0 {
+			export := llb.Scratch()
+			for i := 0; i < len(outputs); i++ {
+				export = export.File(llb.Copy(exec.Root(), outputs[i].absPath, fmt.Sprintf("/%d/", i), &llb.CopyInfo{
+					CreateDestPath: true,
+					AllowWildcard:  outputs[i].hasGlob,
+				}))
 			}
-			return exec.Root()
+			toMarshal = export
 		}
 
-		var export llb.State
-		if len(outputs) == 0 {
-			export = exec.Root()
-		} else {
-			action := llb.Copy(sourceOf(outputs[0]), outputs[0].relPath, "/0/")
-			for i := 1; i < len(outputs); i++ {
-				action = action.Copy(sourceOf(outputs[i]), outputs[i].relPath, fmt.Sprintf("/%d/", i))
-			}
-			export = llb.Scratch().File(action)
-		}
-
-		def, err := export.Marshal(ctx)
+		def, err := toMarshal.Marshal(ctx)
 		if err != nil {
 			return ctx, err
 		}
@@ -308,10 +268,13 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			LocalMounts:  localMounts,
 			CacheImports: s.cacheImports,
 			CacheExports: s.cacheExports,
-			Session:      []session.Attachable{secretsprovider.FromMap(secrets)},
+			Session: []session.Attachable{
+				authprovider.NewDockerAuthProvider(authprovider.DockerAuthProviderConfig{
+					AuthConfigProvider: authprovider.LoadAuthConfig(config.LoadDefaultConfigFile(ctx.Streams.Stderr)),
+				}),
+				secretsprovider.FromMap(secrets),
+			},
 		}
-
-		fmt.Printf("%#v", opt)
 
 		var tmpDir string
 		if len(outputs) > 0 {
@@ -336,21 +299,10 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					err:           err,
 				}
 			}
-			return ctx, fmt.Errorf("solve %w", err)
+			return ctx, err
 		}
 
 		combined := exec.Root()
-		for _, om := range outputs {
-			combined = combined.File(
-				llb.Copy(sourceOf(om), om.relPath, om.absPath,
-					&llb.CopyInfo{
-						CreateDestPath:      true,
-						CopyDirContentsOnly: true,
-					},
-				),
-				llb.WithCustomNamef("[%s] merge artifact %s into root", s.stepName, om.absPath),
-			)
-		}
 		ctx.LLBState = &combined
 
 		for i, om := range outputs {
@@ -364,8 +316,6 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-// solve marshals the LLB definition, streams progress to stderr, and waits for
-// the BuildKit solve to complete.
 func (s *Run) solve(ctx StepContext, def *llb.Definition, opt client.SolveOpt) error {
 	ch := make(chan *client.SolveStatus)
 	var solveErr error
@@ -375,11 +325,16 @@ func (s *Run) solve(ctx StepContext, def *llb.Definition, opt client.SolveOpt) e
 		_, solveErr = s.buildkit.Solve(ctx, def, opt, ch)
 	}()
 
-	d, err := progressui.NewDisplay(ctx.Streams.Stderr, progressui.TtyMode)
+	d, err := progressui.NewDisplay(ctx.Events.Dev, ctx.Streams.Stdout, progressui.PlainMode)
 	if err != nil {
-		d, _ = progressui.NewDisplay(ctx.Streams.Stderr, progressui.PlainMode)
+		return err
 	}
-	_, _ = d.UpdateFrom(ctx, ch)
+
+	_, err = d.UpdateFrom(ctx, ch)
+	if err != nil {
+		return err
+	}
+
 	<-done
 	return solveErr
 }
@@ -472,7 +427,6 @@ func copyRegularFile(src, dst string) error {
 	return err
 }
 
-// globBaseDir returns the non-glob prefix of a pattern (e.g. "test/*" → "test", "*.go" → ".").
 func globBaseDir(pattern string) string {
 	parts := strings.Split(filepath.Clean(pattern), string(filepath.Separator))
 	var base []string
