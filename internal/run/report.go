@@ -70,7 +70,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 		defer func() {
 			_ = output.Close()
 		}()
-		reportDev = rc.Secrets.Store.Writer(output)
+		reportDev = rc.Secrets.Store.Pipe(rc, output, []byte("***"))
 	}
 
 	reportFactory, err := s.buildReportFactory(reportDev)

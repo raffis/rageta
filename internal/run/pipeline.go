@@ -10,7 +10,6 @@ import (
 type PipelineOptions struct {
 	SkipContainerLogs bool
 	SkipSteps         []string
-	BuildContext      string
 }
 
 func (s PipelineOptions) Build() Step {
@@ -19,7 +18,6 @@ func (s PipelineOptions) Build() Step {
 
 func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
-	flags.StringVar(&s.BuildContext, "build-context", ".", "Path to build context directory (source root for local: sources)")
 	flags.StringSliceVar(&s.SkipSteps, "skip-steps", s.SkipSteps, "Skip steps")
 }
 
@@ -53,7 +51,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithTmpDir(),
 			processor.WithInputVars(rc.CEL.Env),
 			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
-			processor.WithSecretVars(osEnvMap(), rc.Secrets.Secrets, rc.Secrets.Store),
+			processor.WithSecretVars(osEnvMap(), rc.Secrets.Store),
 			processor.WithOutputVars(),
 			processor.WithTags(rc.Tags.Tags),
 			processor.WithMatrix(),
@@ -67,8 +65,8 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithTimeout(),
 			processor.WithWhen(rc.CEL.Env),
 			processor.WithDependsOn(),
-			processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
-			processor.WithRun(rc.Buildkit.Client, s.opts.BuildContext, rc.Buildkit.CacheImports, rc.Buildkit.CacheExports, rc.Buildkit.NoCache),
+			//processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
+			processor.WithRun(rc.Buildkit.GatewayClient, rc.Buildkit.StatusRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache),
 			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 		)

@@ -2,8 +2,6 @@ package run
 
 import (
 	"context"
-
-	"github.com/raffis/rageta/internal/mask"
 )
 
 type RunContext struct {
@@ -30,9 +28,5 @@ type RunContext struct {
 }
 
 func NewContext() *RunContext {
-	return &RunContext{
-		Secrets: SecretsContext{
-			Store: mask.NewSecretStore(mask.DefaultMask),
-		},
-	}
+	return &RunContext{}
 }

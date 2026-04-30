@@ -106,8 +106,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ctx.Error = err
 		}
 
-		ctx.Steps[s.stepName] = &ctx
-		fmt.Printf("STEP DONE %s - %#v \n\n", s.stepName, ctx.LLBState)
+		//ctx.Steps[s.stepName] = &ctx
 
 		ctx.uniqueName = ""
 		ctx.namespace = ""

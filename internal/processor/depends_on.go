@@ -3,7 +3,6 @@ package processor
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -44,30 +43,30 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			dependsOn = append(dependsOn, step)
 		}
 
-		fmt.Printf("run before NEXT %s - %#v - %#v\n", s.stepName, s.refs, ctx.Steps)
+		//fmt.Printf("run before NEXT %s - %#v - %#v\n", s.stepName, s.refs, ctx.Steps)
 
 		ctx, err := s.processSteps(ctx, dependsOn)
 		if err != nil {
 			return ctx, err
 		}
 
-		fmt.Printf("run next %s\n", s.stepName)
+		//	fmt.Printf("run next %s\n", s.stepName)
 
-		for x, x2 := range ctx.Steps {
-			fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
-		}
+		//for x, x2 := range ctx.Steps {
+		//	fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
+		//}
 
 		ctx, err = next(ctx)
-		fmt.Printf("finished next %s -- %#v\n", s.stepName, ctx.LLBState)
-		for x, x2 := range ctx.Steps {
-			fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
-		}
+		//fmt.Printf("finished next %s -- %#v\n", s.stepName, ctx.LLBState)
+		//for x, x2 := range ctx.Steps {
+		//	fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
+		//}
 
 		if err != nil {
 			return ctx, err
 		}
 
-		fmt.Printf("AFTER %#v\n", pipeline.DependantSteps(s.stepName))
+		//fmt.Printf("AFTER %#v\n", pipeline.DependantSteps(s.stepName))
 
 		return s.processSteps(ctx, pipeline.DependantSteps(s.stepName))
 	}, nil

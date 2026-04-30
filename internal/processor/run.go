@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,32 +11,29 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/substitute"
+	"github.com/raffis/rageta/internal/utils/progressui"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
-	"github.com/docker/cli/cli/config"
-	"github.com/moby/buildkit/client"
+	bkclient "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/client/llb/imagemetaresolver"
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	gatewaypb "github.com/moby/buildkit/frontend/gateway/pb"
-	"github.com/moby/buildkit/session"
-	"github.com/moby/buildkit/session/auth/authprovider"
-	"github.com/moby/buildkit/session/secrets/secretsprovider"
-	"github.com/raffis/rageta/internal/utils/progressui"
-	"github.com/tonistiigi/fsutil"
+	digest "github.com/opencontainers/go-digest"
+	fstypes "github.com/tonistiigi/fsutil/types"
 )
 
-func WithRun(buildkit *client.Client, buildContext string, cacheImports []client.CacheOptionsEntry, cacheExports []client.CacheOptionsEntry, noCache bool) ProcessorBuilder {
+func WithRun(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Run == nil || buildkit == nil {
+		if spec.Run == nil || gwClient == nil {
 			return nil
 		}
 		return &Run{
 			step:         *spec.Run,
 			stepName:     spec.Name,
-			buildkit:     buildkit,
-			buildContext: buildContext,
+			gwClient:     gwClient,
+			statusRouter: statusRouter,
 			cacheImports: cacheImports,
-			cacheExports: cacheExports,
 			noCache:      noCache,
 		}
 	}
@@ -46,16 +44,14 @@ const defaultShell = "/bin/sh"
 type Run struct {
 	stepName     string
 	step         v1beta1.RunStep
-	buildkit     *client.Client
-	buildContext string
-	cacheImports []client.CacheOptionsEntry
-	cacheExports []client.CacheOptionsEntry
+	gwClient     gwclient.Client
+	statusRouter *VertexStatusRouter
+	cacheImports []gwclient.CacheOptionsEntry
 	noCache      bool
 }
 
 func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		fmt.Printf("RUNNNNNN\n")
 		run := s.step.DeepCopy()
 		command, args := s.commandArgs(run)
 
@@ -114,10 +110,8 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			runOpts = append(runOpts, llb.AddEnv(k, v))
 		}
 
-		secrets := make(map[string][]byte, len(ctx.SecretVars.Secrets))
-		for k, v := range ctx.SecretVars.Secrets {
+		for k, _ := range ctx.SecretVars.Secrets {
 			runOpts = append(runOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
-			secrets[k] = []byte(v)
 		}
 
 		if run.WorkingDir != "" {
@@ -130,19 +124,9 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		root := llb.Image(run.Image, imagemetaresolver.WithDefault)
 
-		localMounts := make(map[string]fsutil.FS)
-
 		for _, source := range run.Sources {
 			switch {
 			case source.Local != nil:
-				if _, ok := localMounts["context"]; !ok {
-					contextFS, err := fsutil.NewFS(s.buildContext)
-					if err != nil {
-						return ctx, fmt.Errorf("building context filesystem failed: %s", err)
-					}
-					localMounts["context"] = contextFS
-				}
-
 				srcPath := source.Local.Path
 				if srcPath == "" {
 					srcPath = "."
@@ -183,16 +167,9 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				if srcPath == "" {
 					srcPath = "/"
 				}
-				to := source.Step.To
-				if to == "" {
-					to = srcPath
-				}
-
-				var dstInScratch string
-				if to == "/" || strings.HasSuffix(to, "/") {
-					dstInScratch = "/"
-				} else {
-					dstInScratch = "/" + filepath.Base(to)
+				dst := source.Step.To
+				if dst == "" {
+					dst = srcPath
 				}
 
 				copyInfo := &llb.CopyInfo{CreateDestPath: true}
@@ -201,8 +178,8 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				}
 
 				root = root.File(
-					llb.Copy(*stepCtx.LLBState, srcPath, dstInScratch, copyInfo),
-					llb.WithCustomNamef("copy %s:%s → %s", source.Step.Name, srcPath, dstInScratch),
+					llb.Copy(*stepCtx.LLBState, srcPath, dst, copyInfo),
+					llb.WithCustomNamef("copy %s:%s → %s", source.Step.Name, srcPath, dst),
 				)
 			default:
 				return ctx, errors.New("no source type given")
@@ -247,49 +224,41 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		runOpts = append(runOpts, llb.Args(cmdline))
 		exec := root.Run(runOpts...)
 
-		toMarshal := exec.Root()
-		if len(outputs) > 0 {
-			export := llb.Scratch()
-			for i := 0; i < len(outputs); i++ {
-				export = export.File(llb.Copy(exec.Root(), outputs[i].absPath, fmt.Sprintf("/%d/", i), &llb.CopyInfo{
-					CreateDestPath: true,
-					AllowWildcard:  outputs[i].hasGlob,
-				}))
-			}
-			toMarshal = export
-		}
-
-		def, err := toMarshal.Marshal(ctx)
+		def, err := exec.Root().Marshal(ctx)
 		if err != nil {
 			return ctx, err
 		}
 
-		opt := client.SolveOpt{
-			LocalMounts:  localMounts,
-			CacheImports: s.cacheImports,
-			CacheExports: s.cacheExports,
-			Session: []session.Attachable{
-				authprovider.NewDockerAuthProvider(authprovider.DockerAuthProviderConfig{
-					AuthConfigProvider: authprovider.LoadAuthConfig(config.LoadDefaultConfigFile(ctx.Streams.Stderr)),
-				}),
-				secretsprovider.FromMap(secrets),
-			},
-		}
+		if s.statusRouter != nil {
+			if head, herr := def.Head(); herr == nil {
+				digests := []digest.Digest{head}
+				stepCh := make(chan *bkclient.SolveStatus, 16)
+				s.statusRouter.Register(digests, stepCh)
 
-		var tmpDir string
-		if len(outputs) > 0 {
-			tmpDir, err = os.MkdirTemp("", "rageta-buildkit-export-*")
-			if err != nil {
-				return ctx, err
+				dev := ctx.Events.Dev
+				if dev == nil {
+					dev = io.Discard
+				}
+				d, derr := progressui.NewDisplay(dev, ctx.Streams.Stdout, progressui.PlainMode)
+				if derr != nil {
+					s.statusRouter.Unregister(digests)
+					return ctx, derr
+				}
+				displayDone := make(chan struct{})
+				go func() {
+					defer close(displayDone)
+					d.UpdateFrom(ctx, stepCh)
+				}()
+				defer func() {
+					s.statusRouter.Unregister(digests)
+					close(stepCh)
+					<-displayDone
+				}()
 			}
-			defer os.RemoveAll(tmpDir)
-			opt.Exports = []client.ExportEntry{{
-				Type:      client.ExporterLocal,
-				OutputDir: tmpDir,
-			}}
 		}
 
-		if err := s.solve(ctx, def, opt); err != nil {
+		ref, err := s.solve(ctx, def)
+		if err != nil {
 			var exitErr *gatewaypb.ExitError
 			if errors.As(err, &exitErr) {
 				return ctx, &ContainerError{
@@ -302,12 +271,25 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		combined := exec.Root()
-		ctx.LLBState = &combined
+		state, err := ref.ToState()
+		if err != nil {
+			return ctx, fmt.Errorf("ref to state: %w", err)
+		}
+		ctx.LLBState = &state
 
-		for i, om := range outputs {
-			src := filepath.Join(tmpDir, fmt.Sprintf("%d", i))
-			if err := syncExportDirToHost(src, om.hostPath); err != nil {
+		for _, om := range outputs {
+			exportDef, err := llb.Scratch().File(llb.Copy(exec.Root(), om.absPath, "/", &llb.CopyInfo{
+				CreateDestPath: true,
+				AllowWildcard:  om.hasGlob,
+			})).Marshal(ctx)
+			if err != nil {
+				return ctx, fmt.Errorf("export %s: marshal: %w", om.absPath, err)
+			}
+			exportRef, err := s.solve(ctx, exportDef)
+			if err != nil {
+				return ctx, fmt.Errorf("export %s: solve: %w", om.absPath, err)
+			}
+			if err := exportRefToHost(ctx, exportRef, "/", om.hostPath); err != nil {
 				return ctx, fmt.Errorf("export %s: %w", om.absPath, err)
 			}
 		}
@@ -316,27 +298,60 @@ func (s *Run) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Run) solve(ctx StepContext, def *llb.Definition, opt client.SolveOpt) error {
-	ch := make(chan *client.SolveStatus)
-	var solveErr error
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, solveErr = s.buildkit.Solve(ctx, def, opt, ch)
-	}()
+func (s *Run) solve(ctx context.Context, def *llb.Definition) (gwclient.Reference, error) {
+	res, err := s.gwClient.Solve(ctx, gwclient.SolveRequest{
+		Definition:   def.ToPB(),
+		CacheImports: s.cacheImports,
+		Evaluate:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.Ref, nil
+}
 
-	d, err := progressui.NewDisplay(ctx.Events.Dev, ctx.Streams.Stdout, progressui.PlainMode)
+func exportRefToHost(ctx context.Context, ref gwclient.Reference, srcPath, hostPath string) error {
+	stats, err := ref.ReadDir(ctx, gwclient.ReadDirRequest{
+		Path:           srcPath,
+		IncludePattern: "**",
+	})
 	if err != nil {
 		return err
 	}
+	return writeStats(ctx, ref, srcPath, hostPath, stats)
+}
 
-	_, err = d.UpdateFrom(ctx, ch)
-	if err != nil {
-		return err
+func writeStats(ctx context.Context, ref gwclient.Reference, base, hostBase string, stats []*fstypes.Stat) error {
+	for _, st := range stats {
+		rel := strings.TrimPrefix(st.Path, "/")
+		src := filepath.Join(base, rel)
+		dst := filepath.Join(hostBase, rel)
+
+		if st.IsDir() {
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				return err
+			}
+			sub, err := ref.ReadDir(ctx, gwclient.ReadDirRequest{Path: src, IncludePattern: "**"})
+			if err != nil {
+				return err
+			}
+			if err := writeStats(ctx, ref, src, dst, sub); err != nil {
+				return err
+			}
+		} else {
+			data, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: src})
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dst, data, fs.FileMode(st.Mode)); err != nil {
+				return err
+			}
+		}
 	}
-
-	<-done
-	return solveErr
+	return nil
 }
 
 type ContainerError struct {

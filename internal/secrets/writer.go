@@ -1,18 +1,21 @@
-package mask
+package secrets
 
 import (
 	"bytes"
+	"context"
 	"io"
 )
 
 type maskedWriter struct {
+	ctx   context.Context
+	mask  []byte
 	w     io.Writer
-	store *SecretStore
+	store Interface
 }
 
 func (w *maskedWriter) Write(b []byte) (n int, err error) {
-	for _, secret := range w.store.secrets {
-		b = bytes.ReplaceAll(b, secret, w.store.placeholder)
+	for _, v := range w.store.Clone(w.ctx) {
+		b = bytes.ReplaceAll(b, v, w.mask)
 	}
 
 	return w.w.Write(b)

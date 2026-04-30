@@ -54,7 +54,7 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 		return err
 	}
 
-	maskedLog := rc.Secrets.Store.Writer(logFile)
+	maskedLog := rc.Secrets.Store.Pipe(rc, logFile, []byte("***"))
 	logCoreFile, err := s.buildZapCore(s.opts.ZapConfig, maskedLog)
 	if err != nil {
 		return err
