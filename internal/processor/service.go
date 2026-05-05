@@ -115,11 +115,11 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				exitCode = runtimeErr.ExitCode()
 			}
 
-			return ctx, &ContainerError{
-				containerName: pod.Name,
-				image:         container.Image,
-				exitCode:      exitCode,
-				err:           err,
+			return ctx, &scriptError{
+				//ontainerName: pod.Name,
+				//image:         container.Image,
+				exitCode: exitCode,
+				//err:           err,
 			}
 		}
 

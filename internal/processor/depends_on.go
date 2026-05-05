@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -61,6 +62,7 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		//for x, x2 := range ctx.Steps {
 		//	fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
 		//}
+		fmt.Printf("ERROR %#v\n", err)
 
 		if err != nil {
 			return ctx, err

@@ -126,18 +126,12 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 		}
 	}()
 
-	var buildErr error
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, buildErr = c.Build(rc.Context, buildOpt, "", func(ctx context.Context, gwc gwclient.Client) (*gwclient.Result, error) {
-			rc.Buildkit.GatewayClient = gwc
-			return gwclient.NewResult(), next(rc)
-		}, ch)
-	}()
+	_, err = c.Build(rc, buildOpt, "", func(ctx context.Context, gwc gwclient.Client) (*gwclient.Result, error) {
+		rc.Buildkit.GatewayClient = gwc
+		return gwclient.NewResult(), next(rc)
+	}, ch)
 
-	<-done
-	return buildErr
+	return err
 }
 
 func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {

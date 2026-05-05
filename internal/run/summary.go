@@ -38,11 +38,11 @@ func (s *Summary) Run(rc *RunContext, next Next) error {
 
 	if err != nil {
 		s.writeErrorToStderr(err, rc)
-		return nil
+		return err
 	}
 
 	s.writeSuccessToStderr(rc)
-	return nil
+	return err
 }
 
 func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
@@ -89,6 +89,8 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), path.Join(rc.ContextDir.Path, innerStepErr.Context().UniqueID()))
 
+		fmt.Printf("TAGS: %#v", innerStepErr.Context().Tags.Tags())
+
 		for _, tag := range innerStepErr.Context().Tags.Tags() {
 			tags = append(tags, styles.TagLabel.
 				Background(lipgloss.Color(tag.HEXColor)).
@@ -98,12 +100,14 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		}
 	}
 
-	var runErr processor.ErrorContainer
-	if errors.As(err, &runErr) {
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Container:"), runErr.ContainerName())
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), runErr.Image())
-		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), runErr.ExitCode())
+	var imageErr processor.ImageName
+	if errors.As(err, &imageErr) {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), imageErr.Image())
+	}
 
+	var exitCodeErr processor.ExitCode
+	if errors.As(err, &exitCodeErr) {
+		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), exitCodeErr.ExitCode())
 	} else {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), errors.Unwrap(err).Error())
 	}

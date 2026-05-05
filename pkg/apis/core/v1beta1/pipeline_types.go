@@ -57,6 +57,11 @@ type StepOptions struct {
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
 	Tags         []Tag             `json:"tags,omitempty"`
+	Sources      []Source          `json:"sources,omitempty"`
+	Artifacts    []Artifact        `json:"artifacts,omitempty"`
+	Caches       []Cache           `json:"caches,omitempty"`
+	Image        string            `json:"image,omitempty"`
+	WorkingDir   string            `json:"workingDir,omitempty"`
 }
 
 type Source struct {
@@ -137,7 +142,7 @@ type Step struct {
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
 	StepOptions `json:",inline"`
-	Run         *RunStep     `json:"run,omitempty"`
+	Script      *string      `json:"script,omitempty"`
 	Service     *ServiceStep `json:"service,omitempty"`
 	Inherit     *InheritStep `json:"inherit,omitempty"`
 }
@@ -154,17 +159,6 @@ type Cache struct {
 	// Sharing controls concurrent access: "shared" (default), "private", or "locked".
 	// +optional
 	Sharing string `json:"sharing,omitempty"`
-}
-
-type RunStep struct {
-	Sources    []Source            `json:"sources,omitempty"`
-	Artifacts  []Artifact          `json:"artifacts,omitempty"`
-	Caches     []Cache             `json:"caches,omitempty"`
-	Image      string              `json:"image,omitempty"`
-	Script     string              `json:"script,omitempty"`
-	WorkingDir string              `json:"workingDir,omitempty"`
-	Uid        *intstr.IntOrString `json:"uid,omitempty"`
-	Guid       *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type ServiceStep struct {

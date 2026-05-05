@@ -8,20 +8,6 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func filterSteps(refs []string, pipeline Pipeline) ([]Step, error) {
-	var steps []Step
-	for _, v := range refs {
-		step, err := pipeline.Step(v)
-		if err != nil {
-			return nil, err
-		}
-
-		steps = append(steps, step)
-	}
-
-	return steps, nil
-}
-
 func refSlice(steps []v1beta1.LocalReference) []string {
 	var refs []string
 	for _, ref := range steps {

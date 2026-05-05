@@ -70,6 +70,8 @@ type Options struct {
 	TagsOptions             TagsOptions
 	SummaryOptions          SummaryOptions
 	StepContextOptions      StepContextOptions
+	ShellOptions            ShellOptions
+	ExitCodeOptions         ExitCodeOptions
 }
 
 func (s *Options) BindFlags(flags flagset.Interface) {
@@ -92,6 +94,8 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ExecuteOptions.BindFlags(flags)
 	s.InputsOptions.BindFlags(flags)
 	s.PipelineOptions.BindFlags(flags)
+	s.ShellOptions.BindFlags(flags)
+	s.ExitCodeOptions.BindFlags(flags)
 }
 
 func DefaultOptions() Options {
@@ -109,6 +113,8 @@ func DefaultOptions() Options {
 
 func (o Options) Build() *Runner {
 	return Builder(
+		o.ExitCodeOptions.Build(),
+		o.ShellOptions.Build(),
 		o.SummaryOptions.Build(),
 		o.ContextDirOptions.Build(),
 		o.StepContextOptions.Build(),

@@ -11,11 +11,11 @@ type OutputFactory func(ctx StepContext, stepName, short string) (io.Writer, io.
 
 func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		internalStep := spec.Run == nil && spec.Inherit == nil
+		/*internalStep := spec.Run == nil && spec.Inherit == nil
 
 		if !withInternals && internalStep {
 			return nil
-		}
+		}*/
 
 		stdio := &Output{
 			stepName:      spec.Name,
@@ -66,8 +66,8 @@ func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ctx.Streams.Stderr = nil
-		ctx.Streams.Stdout = nil
+		//ctx.Streams.Stderr = nil
+		//ctx.Streams.Stdout = nil
 
 		return ctx, err
 	}, nil

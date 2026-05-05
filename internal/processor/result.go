@@ -21,52 +21,6 @@ type Result struct {
 	stepName string
 }
 
-type stepError struct {
-	parent         error
-	stepName       string
-	uniqueStepName string
-	context        StepContext
-}
-
-func (e *stepError) Error() string {
-	return fmt.Sprintf("step %s failed: %s", e.stepName, e.parent.Error())
-}
-
-func (e *stepError) Unwrap() error {
-	return e.parent
-}
-
-func (e *stepError) StepName() string {
-	return e.stepName
-}
-
-func (e *stepError) Context() StepContext {
-	return e.context
-}
-
-type multiStepError struct {
-	parents        []error
-	stepName       string
-	uniqueStepName string
-	context        StepContext
-}
-
-func (e *multiStepError) Error() string {
-	return fmt.Sprintf("step %s failed: %s", e.stepName, errors.Join(e.parents...).Error())
-}
-
-func (e *multiStepError) Unwrap() []error {
-	return e.parents
-}
-
-func (e *multiStepError) StepName() string {
-	return e.stepName
-}
-
-func (e *multiStepError) Context() StepContext {
-	return e.context
-}
-
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		ctx.StartedAt = time.Now()
@@ -91,22 +45,20 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				err = &multiStepError{
 					parents:  uw.Unwrap(),
 					stepName: s.stepName,
-					//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
-					context: ctx,
+					context:  ctx,
+					uniqueID: ctx.uniqueID,
 				}
 			} else {
 				err = &stepError{
 					parent:   err,
 					stepName: s.stepName,
-					//uniqueStepName: SuffixName(s.stepName, ctx.NamePrefix),
-					context: ctx,
+					context:  ctx,
+					uniqueID: ctx.uniqueID,
 				}
 			}
 
 			ctx.Error = err
 		}
-
-		//ctx.Steps[s.stepName] = &ctx
 
 		ctx.uniqueName = ""
 		ctx.namespace = ""
@@ -114,4 +66,50 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		return ctx, err
 	}, nil
+}
+
+type stepError struct {
+	parent   error
+	stepName string
+	uniqueID string
+	context  StepContext
+}
+
+func (e *stepError) Error() string {
+	return fmt.Sprintf("step %s failed: %s", e.stepName, e.parent.Error())
+}
+
+func (e *stepError) Unwrap() error {
+	return e.parent
+}
+
+func (e *stepError) StepName() string {
+	return e.stepName
+}
+
+func (e *stepError) Context() StepContext {
+	return e.context
+}
+
+type multiStepError struct {
+	parents  []error
+	stepName string
+	uniqueID string
+	context  StepContext
+}
+
+func (e *multiStepError) Error() string {
+	return fmt.Sprintf("step %s failed: %s", e.stepName, errors.Join(e.parents...).Error())
+}
+
+func (e *multiStepError) Unwrap() []error {
+	return e.parents
+}
+
+func (e *multiStepError) StepName() string {
+	return e.stepName
+}
+
+func (e *multiStepError) Context() StepContext {
+	return e.context
 }

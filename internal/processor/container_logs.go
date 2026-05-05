@@ -12,9 +12,9 @@ import (
 
 func WithContainerLogs(enabled bool, wrap secretMaskWrapper) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if !enabled || spec.Run == nil {
+		/*if !enabled || spec.Run == nil {
 			return nil
-		}
+		}*/
 
 		logs := &ContainerLogs{
 			stepName: spec.Name,

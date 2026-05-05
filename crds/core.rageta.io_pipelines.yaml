@@ -119,6 +119,36 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
+                artifacts:
+                  items:
+                    properties:
+                      image:
+                        type: object
+                      local:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                    type: object
+                  type: array
+                caches:
+                  items:
+                    properties:
+                      id:
+                        description: ID is the cache namespace. May contain substitution
+                          expressions.
+                        type: string
+                      path:
+                        description: Path is the mount point inside the container.
+                        type: string
+                      sharing:
+                        description: 'Sharing controls concurrent access: "shared"
+                          (default), "private", or "locked".'
+                        type: string
+                    type: object
+                  type: array
                 dependsOn:
                   items:
                     properties:
@@ -137,6 +167,8 @@ spec:
                   type: array
                 expose:
                   type: boolean
+                image:
+                  type: string
                 inherit:
                   properties:
                     entrypoint:
@@ -296,76 +328,8 @@ spec:
                   - constant
                   - exponential
                   type: object
-                run:
-                  properties:
-                    artifacts:
-                      items:
-                        properties:
-                          image:
-                            type: object
-                          local:
-                            properties:
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                        type: object
-                      type: array
-                    caches:
-                      items:
-                        properties:
-                          id:
-                            description: ID is the cache namespace. May contain substitution
-                              expressions.
-                            type: string
-                          path:
-                            description: Path is the mount point inside the container.
-                            type: string
-                          sharing:
-                            description: 'Sharing controls concurrent access: "shared"
-                              (default), "private", or "locked".'
-                            type: string
-                        type: object
-                      type: array
-                    guid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    image:
-                      type: string
-                    script:
-                      type: string
-                    sources:
-                      items:
-                        properties:
-                          local:
-                            properties:
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                          step:
-                            properties:
-                              name:
-                                type: string
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                        type: object
-                      type: array
-                    uid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    workingDir:
-                      type: string
-                  type: object
+                script:
+                  type: string
                 secrets:
                   items:
                     properties:
@@ -402,6 +366,27 @@ spec:
                   type: object
                 short:
                   type: string
+                sources:
+                  items:
+                    properties:
+                      local:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                      step:
+                        properties:
+                          name:
+                            type: string
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                    type: object
+                  type: array
                 tags:
                   items:
                     properties:
@@ -429,6 +414,8 @@ spec:
                         type: string
                     type: object
                   type: array
+                workingDir:
+                  type: string
               required:
               - timeout
               type: object
@@ -438,6 +425,36 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
+                artifacts:
+                  items:
+                    properties:
+                      image:
+                        type: object
+                      local:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                    type: object
+                  type: array
+                caches:
+                  items:
+                    properties:
+                      id:
+                        description: ID is the cache namespace. May contain substitution
+                          expressions.
+                        type: string
+                      path:
+                        description: Path is the mount point inside the container.
+                        type: string
+                      sharing:
+                        description: 'Sharing controls concurrent access: "shared"
+                          (default), "private", or "locked".'
+                        type: string
+                    type: object
+                  type: array
                 dependsOn:
                   items:
                     properties:
@@ -456,6 +473,8 @@ spec:
                   type: array
                 expose:
                   type: boolean
+                image:
+                  type: string
                 inherit:
                   properties:
                     entrypoint:
@@ -615,76 +634,8 @@ spec:
                   - constant
                   - exponential
                   type: object
-                run:
-                  properties:
-                    artifacts:
-                      items:
-                        properties:
-                          image:
-                            type: object
-                          local:
-                            properties:
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                        type: object
-                      type: array
-                    caches:
-                      items:
-                        properties:
-                          id:
-                            description: ID is the cache namespace. May contain substitution
-                              expressions.
-                            type: string
-                          path:
-                            description: Path is the mount point inside the container.
-                            type: string
-                          sharing:
-                            description: 'Sharing controls concurrent access: "shared"
-                              (default), "private", or "locked".'
-                            type: string
-                        type: object
-                      type: array
-                    guid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    image:
-                      type: string
-                    script:
-                      type: string
-                    sources:
-                      items:
-                        properties:
-                          local:
-                            properties:
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                          step:
-                            properties:
-                              name:
-                                type: string
-                              path:
-                                type: string
-                              to:
-                                type: string
-                            type: object
-                        type: object
-                      type: array
-                    uid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    workingDir:
-                      type: string
-                  type: object
+                script:
+                  type: string
                 secrets:
                   items:
                     properties:
@@ -721,6 +672,27 @@ spec:
                   type: object
                 short:
                   type: string
+                sources:
+                  items:
+                    properties:
+                      local:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                      step:
+                        properties:
+                          name:
+                            type: string
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                    type: object
+                  type: array
                 tags:
                   items:
                     properties:
@@ -748,6 +720,8 @@ spec:
                         type: string
                     type: object
                   type: array
+                workingDir:
+                  type: string
               required:
               - timeout
               type: object

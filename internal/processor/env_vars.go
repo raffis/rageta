@@ -2,9 +2,8 @@ package processor
 
 import (
 	"maps"
-	"os"
-	"path"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -22,8 +21,7 @@ type EnvVars struct {
 }
 
 type EnvVarsContext struct {
-	Envs       map[string]string
-	OutputPath string
+	Envs map[string]string
 }
 
 func newEnvVarsContext() EnvVarsContext {
@@ -43,33 +41,14 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		envTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "env")
-		if err != nil {
-			return ctx, err
+		for k, v := range ctx.EnvVars.Envs {
+			ctx.Build.State = ctx.Build.State.With(llb.AddEnv(k, v))
 		}
 
-		var nextErr error
-		defer func() {
-			_ = envTmp.Close()
-			_ = os.Remove(envTmp.Name())
-		}()
-
-		ctx.EnvVars.OutputPath = envTmp.Name()
-		ctx, nextErr = next(ctx)
-		if syncErr := envTmp.Sync(); syncErr != nil {
-			nextErr = syncErr
-		}
-
-		envs, err := parseVars(envTmp)
-		if err != nil {
-			return ctx, err
-		}
-
-		maps.Copy(originEnvs, envs)
+		ctx, err := next(ctx)
 		ctx.EnvVars.Envs = originEnvs
-		ctx.EnvVars.OutputPath = ""
 
-		return ctx, nextErr
+		return ctx, err
 
 	}, nil
 }
