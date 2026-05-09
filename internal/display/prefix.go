@@ -1,4 +1,4 @@
-package output
+package display
 
 import (
 	"fmt"
@@ -10,8 +10,8 @@ import (
 	"github.com/raffis/rageta/internal/xio"
 )
 
-func Prefix(stdout, stderr io.Writer) processor.OutputFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		style := lipgloss.NewStyle().Foreground(styles.RandAdaptiveColor())
 
 		stdoutWrapper := xio.NewLineWriter(xio.NewPrefixWriter(stdout, fmt.Appendf(nil, "%s ", style.Render(ctx.UniqueName()))))

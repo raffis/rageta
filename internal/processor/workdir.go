@@ -7,13 +7,19 @@ import (
 	"github.com/moby/buildkit/client/llb"
 )
 
+const (
+	DefaultWorkingDir = "/rageta/work"
+)
+
 func WithWorkdir() ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.WorkingDir == "" {
-			return nil
+		workDir := spec.WorkingDir
+		if workDir == "" {
+			workDir = DefaultWorkingDir
 		}
+
 		return &Workdir{
-			workingDir: spec.WorkingDir,
+			workingDir: workDir,
 		}
 	}
 }
@@ -22,14 +28,18 @@ type Workdir struct {
 	workingDir string
 }
 
+type WorkdirContext struct {
+	Path string
+}
+
 func (s *Workdir) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		workingDir := s.workingDir
-		if err := substitute.Substitute(ctx.ToV1Beta1(), &workingDir); err != nil {
+		ctx.Workdir.Path = s.workingDir
+		if err := substitute.Substitute(ctx.ToV1Beta1(), &ctx.Workdir.Path); err != nil {
 			return ctx, err
 		}
 
-		ctx.Build.State = ctx.Build.State.With(llb.Dir(workingDir))
+		ctx.Build.State = ctx.Build.State.With(llb.Dir(ctx.Workdir.Path))
 		return next(ctx)
 	}, nil
 }

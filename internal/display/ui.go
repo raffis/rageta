@@ -1,4 +1,4 @@
-package output
+package display
 
 import (
 	"errors"
@@ -14,8 +14,8 @@ type sender interface {
 	Send(msg tea.Msg)
 }
 
-func UI(sender sender) processor.OutputFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+func UI(sender sender) processor.DisplayFactory {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		displayName := stepName
 		if short != "" {
 			displayName = short

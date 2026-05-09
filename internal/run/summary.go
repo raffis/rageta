@@ -50,8 +50,8 @@ func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
 	if errors.As(err, &pipelineExecErr) {
 		s.writePipelineErrorToStderr(errors.Unwrap(err), []error{errors.Unwrap(err)}, rc)
 	} else {
-		fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render("Details:"))
-		fmt.Fprintln(rc.Output.Stderr, err.Error())
+		fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render("Details:"))
+		fmt.Fprintln(rc.Display.Stderr, err.Error())
 	}
 
 	helpCmd := "rageta help"
@@ -59,7 +59,7 @@ func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
 	if rc.Provider.Ref != "" {
 		helpCmd = fmt.Sprintf("%s %s", helpCmd, rc.Provider.Ref)
 	}
-	fmt.Fprintf(rc.Output.Stderr, "\nRun %s for more information\n", styles.HelpSection.Render(helpCmd))
+	fmt.Fprintf(rc.Display.Stderr, "\nRun %s for more information\n", styles.HelpSection.Render(helpCmd))
 }
 
 func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *RunContext) {
@@ -79,11 +79,11 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	fmt.Printf("\n───────\n")
 	var stepErr processor.StepError
 	if errors.As(err, &stepErr) {
-		fmt.Fprintf(rc.Output.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
+		fmt.Fprintf(rc.Display.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
 	}
 
 	var tags []string
-	w := tabwriter.NewWriter(rc.Output.Stderr, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
 	var innerStepErr processor.StepError
 	if AsInner(err, &innerStepErr) {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
@@ -124,7 +124,7 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	for _, parentErr := range parents {
 		var stepErr processor.StepError
 		if errors.As(parentErr, &stepErr) {
-			fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.StepName())))
+			fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.StepName())))
 		}
 
 		i++
@@ -132,8 +132,8 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 }
 
 func (s *Summary) writeSuccessToStderr(rc *RunContext) {
-	fmt.Fprintf(rc.Output.Stderr, "\nThe pipeline was successfully executed.\n\n")
-	w := tabwriter.NewWriter(rc.Output.Stderr, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(rc.Display.Stderr, "\nThe pipeline was successfully executed.\n\n")
+	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
 	w.Flush()
 }

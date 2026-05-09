@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/go-logr/logr"
-	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
@@ -111,7 +110,6 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.ContextDir = contextDir
-		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
 		stepCtx.Steps = make(map[string]*processor.StepContext)
 		stepCtx.InputVars.Inputs = mappedInputs
 		outputs := make(map[string]v1beta1.ParamValue)

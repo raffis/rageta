@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/spf13/pflag"
 )
 
 type Step interface {
@@ -23,11 +24,12 @@ func Builder(steps ...Step) *Runner {
 	return result
 }
 
-func (r *Runner) Run(ctx context.Context, args []string, _ io.Reader, stdout, stderr io.Writer) (rc *RunContext, err error) {
+func (r *Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) (rc *RunContext, err error) {
 	rc = NewContext()
 	rc.Context = ctx
-	rc.Output.Stdout = stdout
-	rc.Output.Stderr = stderr
+	rc.Display.Stdout = stdout
+	rc.Display.Stderr = stderr
+	rc.Display.Stdin = stdin
 	rc.Provider.Args = args
 
 	noop := func(rc *RunContext) error {
@@ -51,7 +53,7 @@ type Options struct {
 	EnvOptions              EnvsOptions
 	SecretOptions           SecretsOptions
 	ImagePolicyOptions      ImagePolicyOptions
-	OutputOptions           OutputOptions
+	DisplayOptions          DisplayOptions
 	ReportOptions           ReportOptions
 	TeardownOptions         TeardownOptions
 	EventsOptions           EventsOptions
@@ -69,16 +71,17 @@ type Options struct {
 	ContextDirOptions       ContextDirOptions
 	TagsOptions             TagsOptions
 	SummaryOptions          SummaryOptions
-	StepContextOptions      StepContextOptions
-	ShellOptions            ShellOptions
+	TerminalOptions         TerminalOptions
 	ExitCodeOptions         ExitCodeOptions
 }
 
 func (s *Options) BindFlags(flags flagset.Interface) {
+	pipelineFlags := pflag.NewFlagSet("Pipeline", pflag.ExitOnError)
+	flags.AddFlagSet(pipelineFlags)
+
 	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
-	s.StepContextOptions.BindFlags(flags)
-	s.OutputOptions.BindFlags(flags)
+	s.DisplayOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
 	s.EventsOptions.BindFlags(flags)
@@ -87,44 +90,45 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ContainerRuntimeOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
-	s.TagsOptions.BindFlags(flags)
-	s.EnvOptions.BindFlags(flags)
-	s.SecretOptions.BindFlags(flags)
 	s.ProviderOptions.BindFlags(flags)
-	s.ExecuteOptions.BindFlags(flags)
-	s.InputsOptions.BindFlags(flags)
-	s.PipelineOptions.BindFlags(flags)
-	s.ShellOptions.BindFlags(flags)
+	s.TerminalOptions.BindFlags(flags)
 	s.ExitCodeOptions.BindFlags(flags)
+	s.SummaryOptions.BindFlags(flags)
+	s.TagsOptions.BindFlags(pipelineFlags)
+	s.EnvOptions.BindFlags(pipelineFlags)
+	s.SecretOptions.BindFlags(pipelineFlags)
+	s.ExecuteOptions.BindFlags(pipelineFlags)
+	s.InputsOptions.BindFlags(pipelineFlags)
+	s.PipelineOptions.BindFlags(pipelineFlags)
 }
 
 func DefaultOptions() Options {
 	return Options{
 		ContainerRuntimeOptions: NewContainerRuntimeOptions(),
 		ImagePolicyOptions:      NewImagePolicyOptions(),
-		OutputOptions:           NewOutputOptions(),
+		DisplayOptions:          NewDisplayOptions(),
 		LoggingOptions:          NewLoggingOptions(),
 		ProviderOptions:         NewProviderOptions(),
 		EventsOptions:           NewEventsOptions(),
 		ReportOptions:           NewReportOptions(),
 		BuildkitOptions:         NewBuildkitOptions(),
+		TerminalOptions:         NewTerminalOptions(),
 	}
 }
 
 func (o Options) Build() *Runner {
 	return Builder(
 		o.ExitCodeOptions.Build(),
-		o.ShellOptions.Build(),
+		o.TeardownOptions.Build(),
+		o.TerminalOptions.Build(),
 		o.SummaryOptions.Build(),
 		o.ContextDirOptions.Build(),
-		o.StepContextOptions.Build(),
 		o.SecretOptions.Build(),
 		o.ReportOptions.Build(),
 		o.OtelOptions.Build(),
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
 		o.ImagePolicyOptions.Build(),
-		o.TeardownOptions.Build(),
 		o.EventsOptions.Build(),
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
@@ -135,7 +139,7 @@ func (o Options) Build() *Runner {
 		o.ProviderOptions.Build(),
 		o.PipelineOptions.Build(),
 		o.InputsOptions.Build(),
-		o.OutputOptions.Build(),
+		o.DisplayOptions.Build(),
 		o.ExecuteOptions.Build(),
 	)
 }

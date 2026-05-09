@@ -8,12 +8,24 @@ import (
 	"golang.org/x/term"
 )
 
+type SecretBackend string
+
+var (
+	SecretBackendEnv SecretBackend = "env"
+)
+
+func (s SecretBackend) String() string {
+	return string(s)
+}
+
 type SecretsOptions struct {
-	Secrets []string
+	SecretBackend string
+	Secrets       []string
 }
 
 func (s *SecretsOptions) BindFlags(flags flagset.Interface) {
-	flags.StringSliceVarP(&s.Secrets, "secret", "s", s.Secrets, "Pass secrets to the pipeline. Secrets are handled as env variables but it is ensured they are masked in any sort of outputs.")
+	flags.StringVarP(&s.SecretBackend, "secret-backend", "", s.SecretBackend, "Secret backend")
+	flags.StringSliceVarP(&s.Secrets, "secret", "s", s.Secrets, "Pass secrets to the pipeline. Secrets are loaded from a secret backend and it is ensured secrets on any streams are always masked.")
 }
 
 func (s SecretsOptions) Build() Step {
@@ -34,13 +46,13 @@ func (s *Secrets) Run(rc *RunContext, next Next) error {
 		rc.Secrets.Store.AddSecret(rc, k, []byte(v))
 	}
 
-	rc.Output.Stdout = rc.Secrets.Store.Pipe(rc, rc.Output.Stdout, []byte("***"))
+	rc.Display.Stdout = rc.Secrets.Store.Pipe(rc, rc.Display.Stdout, []byte("***"))
 	var isTerm = term.IsTerminal(int(os.Stdout.Fd()))
 
 	if isTerm {
-		rc.Output.Stderr = rc.Output.Stdout
+		rc.Display.Stderr = rc.Display.Stdout
 	} else {
-		rc.Output.Stderr = rc.Secrets.Store.Pipe(rc, rc.Output.Stderr, []byte("***"))
+		rc.Display.Stderr = rc.Secrets.Store.Pipe(rc, rc.Display.Stderr, []byte("***"))
 	}
 
 	return next(rc)

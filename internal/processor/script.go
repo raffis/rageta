@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -65,6 +66,19 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			llb.Mkdir("/rageta", 0755),
 		)
 
+		fmt.Printf("((((((((((((((((((((((((%#v))))))))))))))))))))))))\n", ctx.Services.Status)
+
+		for name, service := range ctx.Services.Status {
+			netIP := net.ParseIP(service.ContainerIP)
+			if netIP == nil {
+				continue
+			}
+
+			ctx.Build.State = ctx.Build.State.AddExtraHost(name, netIP)
+			envName := strings.ToUpper(strings.Replace(name, "-", "_", -1))
+			ctx.Build.State = ctx.Build.State.AddEnv(fmt.Sprintf("SERVICE_%s", envName), service.ContainerIP)
+		}
+
 		scriptPath := fmt.Sprintf("/rageta/%s.sh", ctx.UniqueID())
 		exitCodePath := fmt.Sprintf("/rageta/%s.code", ctx.UniqueID())
 
@@ -72,9 +86,8 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			llb.Mkfile(scriptPath, 0755, []byte(script)),
 		)
 
-		ctx.Build.State = ctx.Build.State.With(llb.AddEnv("HISTFILE", "/rageta/ash_history"))
 		ctx.Build.State = ctx.Build.State.Run(
-			llb.Shlex(fmt.Sprintf("/bin/sh -c 'echo \"s /%s\" >> /rageta/ash_history'", scriptPath)),
+			llb.Shlex(fmt.Sprintf("/bin/sh -c 'echo %s >> /rageta/ash_history'", scriptPath)),
 		).Root()
 
 		// We need the script to always exit 0 in order to get the filesystem state even in case of an error

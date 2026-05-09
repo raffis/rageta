@@ -211,11 +211,18 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	wg, ctx := errgroup.WithContext(ctx)
 	wg.Go(func() error {
-		_, err := stdcopy.StdCopy(stdout, stderr, streams.Reader)
-		if err != nil {
-			return fmt.Errorf("demux container streams failed: %w", err)
+		if container.TTY {
+			// TTY stream is raw, no multiplexing header
+			_, err := io.Copy(stdout, streams.Reader)
+			if err != nil {
+				return fmt.Errorf("copy tty stream failed: %w", err)
+			}
+		} else {
+			_, err := stdcopy.StdCopy(stdout, stderr, streams.Reader)
+			if err != nil {
+				return fmt.Errorf("demux container streams failed: %w", err)
+			}
 		}
-
 		return nil
 	})
 
@@ -243,6 +250,7 @@ func (d *docker) CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdou
 
 	wg.Go(func() error {
 		await := <-waitC
+		streams.CloseWrite()
 		if await.StatusCode > 0 {
 			return &Result{
 				exitCode: int(await.StatusCode),
@@ -378,6 +386,7 @@ func (d *docker) createContainer(ctx context.Context, logger logr.Logger, pod *P
 		Image:      container.Image,
 		StdinOnce:  container.Stdin,
 		OpenStdin:  container.Stdin,
+		Tty:        container.TTY,
 		Entrypoint: strslice.StrSlice(container.Command),
 		Cmd:        strslice.StrSlice(container.Args),
 		Env:        envSlice(container.Env),

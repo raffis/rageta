@@ -15,6 +15,10 @@ import (
 
 func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
+		if spec.Script == nil {
+			return nil
+		}
+
 		return &Build{
 			gwClient:     gwClient,
 			statusRouter: statusRouter,
@@ -51,11 +55,6 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		if ctx.Build.RunOpts == nil {
 			return ctx, nil
-		}
-
-		workingDir, err := ctx.Build.State.GetDir(ctx)
-		if err != nil {
-			return ctx, err
 		}
 
 		exec := ctx.Build.State.Run(ctx.Build.RunOpts...)
@@ -100,7 +99,7 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		ctx.Build.Ref = ref
 		ctx.Build.State = state
-		ctx.Build.State = state.With(llb.Dir(workingDir))
+		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path))
 
 		return next(ctx)
 	}, nil

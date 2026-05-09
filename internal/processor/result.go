@@ -40,6 +40,9 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx.EndedAt = time.Now()
 		ctx.Error = nil
 
+		fmt.Printf("TAGS RES %#v\n", ctx.Tags.tags)
+		fmt.Printf("REST %#v -- %#v\n", ctx.Build.Ref, ctx.Build.State)
+
 		if err != nil {
 			if uw, ok := err.(interface{ Unwrap() []error }); ok {
 				err = &multiStepError{

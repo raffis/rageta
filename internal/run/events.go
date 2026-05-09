@@ -44,9 +44,9 @@ type EventsContext struct {
 func (s *Events) Run(rc *RunContext, next Next) error {
 	switch {
 	case s.opts.EventsOutput == "/dev/stdout" || s.opts.EventsOutput == "-":
-		rc.Events.Dev = rc.Output.Stdout
+		rc.Events.Dev = rc.Display.Stdout
 	case s.opts.EventsOutput == "/dev/stderr":
-		rc.Events.Dev = rc.Output.Stderr
+		rc.Events.Dev = rc.Display.Stderr
 	case s.opts.EventsOutput != "":
 		f, err := os.OpenFile(s.opts.EventsOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 		if err != nil {

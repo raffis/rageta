@@ -42,7 +42,7 @@ func (s ContainerRuntimeOptions) Build() Step {
 func (s ContainerRuntimeOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. Only docker is supported.")
 
-	dockerFlags := pflag.NewFlagSet("docker", pflag.ExitOnError)
+	dockerFlags := pflag.NewFlagSet("Docker", pflag.ExitOnError)
 	dockerFlags.BoolVarP(&s.DockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
 	s.DockerOptions.BindFlags(dockerFlags)
 	flags.AddFlagSet(dockerFlags)

@@ -26,6 +26,10 @@ func (p *pipelineStep) Processors() []processor.Bootstraper {
 	return p.processors
 }
 
+func (p *pipelineStep) Name() string {
+	return p.name
+}
+
 func (p *pipelineStep) Entrypoint() (processor.Next, error) {
 	return processor.Chain(p.pipeline, p.processors...)
 }

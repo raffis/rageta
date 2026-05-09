@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path"
 	"runtime"
 	"time"
 
-	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -24,7 +22,6 @@ type StepContext struct {
 	EndedAt         time.Time
 	ContextDir      string
 	Steps           map[string]*StepContext `json:"-"`
-	Containers      map[string]cruntime.ContainerStatus
 	Tags            TagsContext
 	Streams         StreamsContext
 	OutputVars      OutputVarsContext
@@ -34,6 +31,8 @@ type StepContext struct {
 	Matrix          MatrixContext
 	Events          EventsContext
 	Build           BuildContext
+	Workdir         WorkdirContext
+	Services        ServiceContext
 }
 
 func (c StepContext) UniqueID() string {
@@ -65,8 +64,8 @@ func NewContext() StepContext {
 		Matrix:     newMatrixContext(),
 		OutputVars: newOutputVarsContext(),
 		Events:     newEventsContext(),
+		Services:   newServiceContext(),
 		Steps:      make(map[string]*StepContext),
-		Containers: make(map[string]cruntime.ContainerStatus),
 	}
 }
 
@@ -89,10 +88,12 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
 	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
 	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
-	copy.Containers = maps.Clone(c.Containers)
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
 	copy.Build.RunOpts = append(copy.Build.RunOpts, c.Build.RunOpts...)
 	copy.Build.State = c.Build.State
+	copy.Build.Ref = c.Build.Ref
+	copy.Workdir.Path = c.Workdir.Path
+	copy.Services.Status = maps.Clone(c.Services.Status)
 
 	return copy
 }
@@ -102,61 +103,31 @@ func (t StepContext) Merge(c StepContext) StepContext {
 	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
 	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Steps, c.Steps)
-	maps.Copy(t.Containers, c.Containers)
+	maps.Copy(t.Services.Status, c.Services.Status)
 
 	return t
 }
 
 func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
-	for k, v := range vars.Containers {
-		t.Containers[k] = cruntime.ContainerStatus{
-			ContainerID: v.ContainerID,
-			ContainerIP: v.ContainerIP,
-			Name:        v.Name,
-			Ready:       v.Ready,
-			Started:     v.Started,
-			ExitCode:    int(v.ExitCode),
-		}
-	}
-
-	/*for k, v := range vars.Steps {
-		t.Steps[k] = &StepResult{
-			DataDir: v.TmpDir,
-		}
-	}*/
 }
 
 func (t StepContext) ToV1Beta1() *v1beta1.Context {
 	vars := &v1beta1.Context{
-		TmpDir:     path.Join(t.ContextDir, t.UniqueID(), "data"),
-		Steps:      make(map[string]*v1beta1.StepResult),
-		Containers: make(map[string]*v1beta1.ContainerStatus),
-		Matrix:     maps.Clone(t.Matrix.Params),
-		Envs:       maps.Clone(t.EnvVars.Envs),
-		Secrets:    maps.Clone(t.SecretVars.Secrets),
-		Inputs:     maps.Clone(t.InputVars.Inputs),
-		Outputs:    make(map[string]*v1beta1.Output),
-		Os:         runtime.GOOS,
-		Arch:       runtime.GOARCH,
-		Uid:        fmt.Sprintf("%d", os.Getuid()),
-		Guid:       fmt.Sprintf("%d", os.Getgid()),
-	}
-
-	for k, v := range t.Containers {
-		vars.Containers[k] = &v1beta1.ContainerStatus{
-			ContainerID: v.ContainerID,
-			ContainerIP: v.ContainerIP,
-			Name:        v.Name,
-			Ready:       v.Ready,
-			Started:     v.Started,
-			ExitCode:    int32(v.ExitCode),
-		}
+		Steps:   make(map[string]*v1beta1.StepResult),
+		Matrix:  maps.Clone(t.Matrix.Params),
+		Envs:    maps.Clone(t.EnvVars.Envs),
+		Secrets: maps.Clone(t.SecretVars.Secrets),
+		Inputs:  maps.Clone(t.InputVars.Inputs),
+		Outputs: make(map[string]*v1beta1.Output),
+		Os:      runtime.GOOS,
+		Arch:    runtime.GOARCH,
+		Uid:     fmt.Sprintf("%d", os.Getuid()),
+		Guid:    fmt.Sprintf("%d", os.Getgid()),
 	}
 
 	for k, v := range t.Steps {
 		vars.Steps[k] = &v1beta1.StepResult{
 			Outputs:   make(map[string]v1beta1.ParamValue),
-			TmpDir:    path.Join(v.ContextDir, v.UniqueID(), "data"),
 			StartedAt: metav1.Time{Time: v.StartedAt},
 			EndedAt:   metav1.Time{Time: v.EndedAt},
 		}

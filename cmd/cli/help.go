@@ -125,11 +125,32 @@ func printHelpCommand(cmd *cobra.Command) {
 	}
 
 	if cmd == runCmd && runFlags != nil {
+		// Collect flag names that belong to a named sub-flagset.
+		inSubSet := map[string]bool{}
+		for _, set := range runFlags.FlagSets() {
+			set.VisitAll(func(f *pflag.Flag) { inSubSet[f.Name] = true })
+		}
+
+		// Render flags that are only on the root flagset (not in any sub-flagset).
+		directSet := pflag.NewFlagSet("Flags", pflag.ContinueOnError)
+		cmd.NonInheritedFlags().VisitAll(func(f *pflag.Flag) {
+			if !inSubSet[f.Name] {
+				directSet.AddFlag(f)
+			}
+		})
+		if directBlocks := formatFlagSetStyle(directSet); len(directBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(directBlocks, "\n\n"))
+		}
+
 		for _, set := range runFlags.FlagSets() {
 			flagBlocks := formatFlagSetStyle(set)
 			if len(flagBlocks) > 0 {
 				sections = append(sections, styles.HelpSection.Render("\n\n"+set.Name()), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
+		}
+
+		if inheritedBlocks := formatFlagSetStyle(cmd.InheritedFlags()); len(inheritedBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Global Flags:"), "\n\n", strings.Join(inheritedBlocks, "\n\n"))
 		}
 	} else {
 		localBlocks := formatFlagSetStyle(cmd.NonInheritedFlags())

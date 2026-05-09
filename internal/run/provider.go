@@ -27,7 +27,7 @@ type ProviderOptions struct {
 }
 
 func (s *ProviderOptions) BindFlags(flags flagset.Interface) {
-	ociFlags := pflag.NewFlagSet("oci", pflag.ExitOnError)
+	ociFlags := pflag.NewFlagSet("OCI", pflag.ExitOnError)
 	s.OCI.BindFlags(ociFlags)
 	flags.AddFlagSet(ociFlags)
 }

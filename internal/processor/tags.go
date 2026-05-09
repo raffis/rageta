@@ -1,7 +1,7 @@
 package processor
 
 import (
-	"slices"
+	"fmt"
 	"sync"
 
 	"github.com/raffis/rageta/internal/styles"
@@ -43,14 +43,19 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	tags = append(tags, s.globalTags...)
 
 	return func(ctx StepContext) (StepContext, error) {
-		originTags := slices.Clone(ctx.Tags.tags)
+		//originTags := slices.Clone(ctx.Tags.tags)
 
 		for _, tag := range tags {
 			ctx.Tags.Add(tag)
 		}
 
+		fmt.Printf("TAGS %#v\n", ctx.Tags.tags)
+
 		ctx, err := next(ctx)
-		ctx.Tags.tags = originTags
+		//ctx.Tags.tags = originTags
+		fmt.Printf("TAGS AFTER %#v\n", ctx.Tags.tags)
+		fmt.Printf("LLM %#v -- %#v\n", ctx.Build.Ref, ctx.Build.State)
+
 		return ctx, err
 	}, nil
 }

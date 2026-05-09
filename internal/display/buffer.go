@@ -1,4 +1,4 @@
-package output
+package display
 
 import (
 	"bytes"
@@ -20,10 +20,10 @@ type bufferVars struct {
 	Tags        []processor.Tag
 }
 
-func Buffer(tmpl *template.Template, dev io.Writer) processor.OutputFactory {
+func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
 	mu := sync.RWMutex{}
 
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		buffer := &bytes.Buffer{}
 
 		return buffer, buffer, func(err error) error {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,7 +23,9 @@ func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Inter
 		}
 
 		return &Service{
-			step:              *spec.Service,
+			service:           *spec.Service,
+			image:             spec.Image,
+			workdir:           spec.WorkingDir,
 			stepName:          spec.Name,
 			driver:            driver,
 			defaultPullPolicy: defaultPullPolicy,
@@ -34,22 +35,34 @@ func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Inter
 }
 
 type Service struct {
+	image             string
+	workdir           string
 	stepName          string
-	step              v1beta1.ServiceStep
+	service           v1beta1.ServiceStep
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
 }
 
+type ServiceContext struct {
+	Status map[string]runtime.ContainerStatus
+}
+
+func newServiceContext() ServiceContext {
+	return ServiceContext{
+		Status: make(map[string]runtime.ContainerStatus),
+	}
+}
+
 func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		run := s.step.DeepCopy()
+		svc := s.service.DeepCopy()
 		pod := &runtime.Pod{
 			Name: fmt.Sprintf("rageta-%s-%s-%s", pipeline.ID(), ctx.UniqueID(), utils.RandString(5)),
 			Spec: runtime.PodSpec{},
 		}
 
-		if err := substitute.Substitute(ctx.ToV1Beta1(), run.Guid, run.Uid); err != nil {
+		if err := substitute.Substitute(ctx.ToV1Beta1(), svc.Guid, svc.Uid); err != nil {
 			return ctx, err
 		}
 
@@ -59,21 +72,23 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		container := runtime.ContainerSpec{
 			Name:            s.stepName,
-			Image:           run.Image,
+			Image:           s.image,
 			ImagePullPolicy: s.defaultPullPolicy,
-			Command:         run.Command,
-			Args:            run.Args,
+			Command:         svc.Command,
+			Args:            svc.Args,
 			Env:             envs,
-			PWD:             run.WorkingDir,
+			PWD:             s.workdir,
 		}
 
-		if run.Guid != nil {
-			guid := run.Guid.IntValue()
+		fmt.Sprintf("%#v \n", container)
+
+		if svc.Guid != nil {
+			guid := svc.Guid.IntValue()
 			container.Guid = &guid
 		}
 
-		if run.Uid != nil {
-			uid := run.Uid.IntValue()
+		if svc.Uid != nil {
+			uid := svc.Uid.IntValue()
 			container.Uid = &uid
 		}
 
@@ -84,25 +99,10 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			&container.PWD,
 		}
 
-		for i := range container.Volumes {
-			subst = append(subst, &container.Volumes[i].HostPath, &container.Volumes[i].Path)
-		}
-
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
-
-		for i, vol := range container.Volumes {
-			if vol.HostPath == "" {
-				continue
-			}
-			srcPath, err := filepath.Abs(vol.HostPath)
-			if err != nil {
-				return ctx, fmt.Errorf("failed to get absolute path: %w", err)
-			}
-
-			container.Volumes[i].HostPath = srcPath
-		}
+		fmt.Sprintf("%#v \n", container)
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
 		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
@@ -115,11 +115,9 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				exitCode = runtimeErr.ExitCode()
 			}
 
-			return ctx, &scriptError{
-				//ontainerName: pod.Name,
-				//image:         container.Image,
+			return ctx, &serviceError{
 				exitCode: exitCode,
-				//err:           err,
+				parent:   err,
 			}
 		}
 
@@ -145,7 +143,7 @@ func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	}
 
 	for _, v := range pod.Status.Containers {
-		ctx.Containers[v.Name] = v
+		ctx.Services.Status[v.Name] = v
 	}
 
 	done := make(chan error)
@@ -158,7 +156,7 @@ func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	}()
 
 	s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
-		if containerStatus, ok := ctx.Containers[s.stepName]; ok {
+		if containerStatus, ok := ctx.Services.Status[s.stepName]; ok {
 			err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
 				Status: runtime.PodStatus{
 					Containers: []runtime.ContainerStatus{containerStatus},
@@ -174,4 +172,21 @@ func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
 	}
 
 	return ctx, err
+}
+
+type serviceError struct {
+	exitCode int
+	parent   error
+}
+
+func (e *serviceError) Error() string {
+	return fmt.Sprintf("script failed: %s", e.parent.Error())
+}
+
+func (e *serviceError) Unwrap() error {
+	return e.parent
+}
+
+func (e *serviceError) ExitCode() int {
+	return e.exitCode
 }

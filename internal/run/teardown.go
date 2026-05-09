@@ -10,12 +10,10 @@ import (
 )
 
 type TeardownOptions struct {
-	Disabled    bool
 	GracePeriod time.Duration
 }
 
 func (s *TeardownOptions) BindFlags(flags flagset.Interface) {
-	flags.BoolVarP(&s.Disabled, "skip-gc", "", s.Disabled, "Keep all containers and temporary files after execution.")
 	flags.DurationVarP(&s.GracePeriod, "grace-period", "", s.GracePeriod, "Maximum time to wait for termination and cleanup of steps.")
 }
 
@@ -35,30 +33,32 @@ type Teardown struct {
 
 type TeardownContext struct {
 	Teardown chan processor.Teardown
-	Enabled  bool
 }
 
 func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
 	rc.Teardown.Teardown = teardown
-	rc.Teardown.Enabled = !s.opts.Disabled
-	wg := &sync.WaitGroup{}
 
-	defer func() {
-		wg.Wait()
-	}()
+	var stack []processor.Teardown
 
 	go func() {
-		s.runTeardown(rc, wg)
+		for fn := range rc.Teardown.Teardown {
+			stack = append(stack, fn)
+		}
 	}()
 
-	return next(rc)
+	err := next(rc)
+	close(teardown)
+	s.runTeardown(rc, stack)
+	return err
 }
 
-func (s *Teardown) runTeardown(rc *RunContext, wg *sync.WaitGroup) {
-	for fn := range rc.Teardown.Teardown {
+func (s *Teardown) runTeardown(rc *RunContext, stack []processor.Teardown) {
+	wg := &sync.WaitGroup{}
+
+	for _, fn := range stack {
+		wg.Add(1)
 		go func(fn processor.Teardown) {
-			wg.Add(1)
 			defer wg.Done()
 
 			teardownCtx := context.TODO()
@@ -74,4 +74,6 @@ func (s *Teardown) runTeardown(rc *RunContext, wg *sync.WaitGroup) {
 			}
 		}(fn)
 	}
+
+	wg.Wait()
 }

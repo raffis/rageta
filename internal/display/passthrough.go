@@ -1,4 +1,4 @@
-package output
+package display
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	"github.com/raffis/rageta/internal/xio"
 )
 
-func Passthrough(stdout, stderr io.Writer) processor.OutputFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.OutputCloser) {
+func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
+	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		stdoutWrapper := xio.NewLineWriter(stdout)
 		stderrWrapper := stdoutWrapper
 

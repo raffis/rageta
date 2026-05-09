@@ -70,7 +70,7 @@ func (s *Logging) Run(rc *RunContext, next Next) error {
 	rc.Logging.Detached = s.opts.Detached
 	rc.Logging.Builder = logBuilder
 	rc.Logging.Debug = s.opts.ZapConfig.Level.Level() <= -5
-	rc.Logging.Logger, err = rc.Logging.Builder(rc.Output.Stderr)
+	rc.Logging.Logger, err = rc.Logging.Builder(rc.Display.Stderr)
 	if err != nil {
 		return err
 	}

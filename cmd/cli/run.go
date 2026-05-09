@@ -82,15 +82,11 @@ func debugProfile(opts *run.Options) error {
 	}
 
 	if !runCmd.Flags().Changed("expand") {
-		opts.OutputOptions.Expand = true
+		opts.DisplayOptions.Expand = true
 	}
 
 	if !runCmd.Flags().Changed("pull") {
 		opts.ImagePolicyOptions.Policy = run.PullImageAlways.String()
-	}
-
-	if !runCmd.Flags().Changed("no-gc") {
-		opts.TeardownOptions.Disabled = true
 	}
 
 	if !runCmd.Root().PersistentFlags().Changed("verbose") {
@@ -133,15 +129,11 @@ func githubActionsProfile(opts *run.Options) error {
 	{{- else }}
 		{{- printf "::group::✅ %s\n%s\n::endgroup::\n" $stepName .Buffer }}
 	{{- end }}`
-		opts.OutputOptions.Output = fmt.Sprintf("%s=%s", run.RenderOutputBuffer.String(), renderOutputBufferDefaultTemplate)
+		opts.DisplayOptions.Display = fmt.Sprintf("%s=%s", run.RenderDisplayBuffer.String(), renderOutputBufferDefaultTemplate)
 	}
 
 	if !runCmd.Flags().Changed("report-output") && os.Getenv("GITHUB_STEP_SUMMARY") != "" {
 		opts.ReportOptions.ReportOutput = os.Getenv("GITHUB_STEP_SUMMARY")
-	}
-
-	if !runCmd.Flags().Changed("no-gc") {
-		opts.TeardownOptions.Disabled = true
 	}
 
 	return nil

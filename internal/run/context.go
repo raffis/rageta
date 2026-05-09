@@ -19,12 +19,11 @@ type RunContext struct {
 	Otel             OtelContext
 	Logging          LoggingContext
 	Report           ReportContext
-	Output           OutputContext
+	Display          DisplayContext
 	ImagePullPolicy  ImagePolicyContext
 	Teardown         TeardownContext
 	Provider         ProviderContext
 	Pipeline         PipelineContext
-	Execution        ExecutionContext
 }
 
 func NewContext() *RunContext {

@@ -6,10 +6,10 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type OutputCloser func(err error) error
-type OutputFactory func(ctx StepContext, stepName, short string) (io.Writer, io.Writer, OutputCloser)
+type DisplayCloser func(err error) error
+type DisplayFactory func(ctx StepContext, stepName, short string) (io.Writer, io.Writer, DisplayCloser)
 
-func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) ProcessorBuilder {
+func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		/*internalStep := spec.Run == nil && spec.Inherit == nil
 
@@ -17,7 +17,7 @@ func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) Proce
 			return nil
 		}*/
 
-		stdio := &Output{
+		stdio := &Display{
 			stepName:      spec.Name,
 			short:         spec.Short,
 			spec:          spec,
@@ -29,11 +29,11 @@ func WithOutput(outputFactory OutputFactory, withInternals, decouple bool) Proce
 	}
 }
 
-type Output struct {
+type Display struct {
 	stepName      string
 	short         string
 	spec          *v1beta1.Step
-	outputFactory OutputFactory
+	outputFactory DisplayFactory
 	decouple      bool
 }
 
@@ -45,7 +45,7 @@ type StreamsContext struct {
 	AdditionalStderr []io.Writer
 }
 
-func (s *Output) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
+func (s *Display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		if ctx.Tags.Has("pipeline") && !s.decouple {
 			return next(ctx)

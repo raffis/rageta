@@ -162,12 +162,10 @@ type Cache struct {
 }
 
 type ServiceStep struct {
-	Image      string              `json:"image,omitempty"`
-	Command    []string            `json:"command,omitempty"`
-	Args       []string            `json:"args,omitempty"`
-	WorkingDir string              `json:"workingDir,omitempty"`
-	Uid        *intstr.IntOrString `json:"uid,omitempty"`
-	Guid       *intstr.IntOrString `json:"guid,omitempty"`
+	Command []string            `json:"command,omitempty"`
+	Args    []string            `json:"args,omitempty"`
+	Uid     *intstr.IntOrString `json:"uid,omitempty"`
+	Guid    *intstr.IntOrString `json:"guid,omitempty"`
 }
 
 type InheritStep struct {

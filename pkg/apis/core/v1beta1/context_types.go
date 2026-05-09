@@ -9,19 +9,9 @@ import (
 
 type StepResult struct {
 	Outputs   map[string]ParamValue `cel:"outputs"`
-	TmpDir    string                `cel:"tmpDir"`
 	Error     string                `cel:"error"`
 	StartedAt metav1.Time           `cel:"startedAt"`
 	EndedAt   metav1.Time           `cel:"endedAt"`
-}
-
-type ContainerStatus struct {
-	ContainerID string
-	ContainerIP string
-	Name        string
-	Ready       bool
-	Started     bool
-	ExitCode    int32
 }
 
 type Output struct {
@@ -29,20 +19,18 @@ type Output struct {
 }
 
 type Context struct {
-	Inputs     map[string]ParamValue       `cel:"inputs"`
-	Envs       map[string]string           `cel:"envs"`
-	Secrets    map[string]string           `cel:"secrets"`
-	Containers map[string]*ContainerStatus `cel:"containers"`
-	Steps      map[string]*StepResult      `cel:"steps"`
-	TmpDir     string                      `cel:"tmpDir"`
-	Matrix     map[string]string           `cel:"matrix"`
-	Secret     string                      `cel:"secret"`
-	Env        string                      `cel:"env"`
-	Outputs    map[string]*Output          `cel:"outputs"`
-	Os         string                      `cel:"os"`
-	Arch       string                      `cel:"arch"`
-	Uid        string                      `cel:"uid"`
-	Guid       string                      `cel:"guid"`
+	Inputs  map[string]ParamValue  `cel:"inputs"`
+	Envs    map[string]string      `cel:"envs"`
+	Secrets map[string]string      `cel:"secrets"`
+	Steps   map[string]*StepResult `cel:"steps"`
+	Matrix  map[string]string      `cel:"matrix"`
+	Secret  string                 `cel:"secret"`
+	Env     string                 `cel:"env"`
+	Outputs map[string]*Output     `cel:"outputs"`
+	Os      string                 `cel:"os"`
+	Arch    string                 `cel:"arch"`
+	Uid     string                 `cel:"uid"`
+	Guid    string                 `cel:"guid"`
 }
 
 func (v *Context) Index() map[string]string {
@@ -53,7 +41,6 @@ func (v *Context) Index() map[string]string {
 		"context.guid":   v.Guid,
 		"context.env":    v.Env,
 		"context.secret": v.Secret,
-		"context.tmpDir": v.TmpDir,
 	}
 
 	for k, v := range v.Inputs {
@@ -81,18 +68,11 @@ func (v *Context) Index() map[string]string {
 		vars[fmt.Sprintf("context.matrix.%s", k)] = v
 	}
 
-	for k, v := range v.Containers {
-		vars[fmt.Sprintf("context.containers.%s.containerID", k)] = v.ContainerID
-		vars[fmt.Sprintf("context.containers.%s.containerIP", k)] = v.ContainerIP
-		vars[fmt.Sprintf("context.containers.%s.name", k)] = v.Name
-	}
-
 	for k, v := range v.Outputs {
 		vars[fmt.Sprintf("context.outputs.%s.path", k)] = v.Path
 	}
 
 	for k, v := range v.Steps {
-		vars[fmt.Sprintf("context.steps.%s.tmpDir", k)] = v.TmpDir
 		vars[fmt.Sprintf("context.steps.%s.error", k)] = v.Error
 		vars[fmt.Sprintf("context.steps.%s.startedAt", k)] = fmt.Sprintf("%d", v.StartedAt.Unix())
 		vars[fmt.Sprintf("context.steps.%s.endedAt", k)] = fmt.Sprintf("%d", v.EndedAt.Unix())

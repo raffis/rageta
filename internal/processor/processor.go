@@ -31,6 +31,7 @@ type Bootstraper interface {
 type Step interface {
 	Processors() []Bootstraper
 	Entrypoint() (Next, error)
+	Name() string
 }
 
 type Teardown func(ctx context.Context, timeout time.Duration) error

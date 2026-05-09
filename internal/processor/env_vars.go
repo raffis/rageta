@@ -46,10 +46,9 @@ func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		ctx, err := next(ctx)
-		ctx.EnvVars.Envs = originEnvs
+		//ctx.EnvVars.Envs = originEnvs
 
 		return ctx, err
-
 	}, nil
 }
 

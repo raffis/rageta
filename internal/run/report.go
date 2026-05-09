@@ -60,7 +60,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 	var reportDev io.Writer
 
 	if reportOutput == "/dev/stdout" || reportOutput == "" {
-		reportDev = rc.Output.Stdout
+		reportDev = rc.Display.Stdout
 	} else {
 		output, err := os.OpenFile(reportOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 		if err != nil {

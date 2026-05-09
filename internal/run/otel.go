@@ -22,7 +22,7 @@ type OtelOptions struct {
 }
 
 func (s *OtelOptions) BindFlags(flags flagset.Interface) {
-	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
+	otelFlags := pflag.NewFlagSet("OpenTelemetry", pflag.ExitOnError)
 	s.OtelOpts.BindFlags(otelFlags)
 	flags.AddFlagSet(otelFlags)
 }

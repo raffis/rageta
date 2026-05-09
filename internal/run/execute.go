@@ -28,10 +28,6 @@ type Execute struct {
 	opts ExecuteOptions
 }
 
-type ExecutionContext struct {
-	StepContext processor.StepContext
-}
-
 type pipelineExecutionError struct {
 	parent error
 }
@@ -45,9 +41,10 @@ func (e *pipelineExecutionError) Unwrap() error {
 }
 
 func (s *Execute) Run(rc *RunContext, next Next) error {
-	rc.Execution.StepContext.Context = rc.Context
+	stepContext := processor.NewContext()
+	stepContext.Context = rc.Context
 
-	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, rc.Execution.StepContext)
+	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, stepContext)
 	if err != nil {
 		return err
 	}
@@ -68,8 +65,7 @@ func (s *Execute) retryRun(rc *RunContext, pipelineCmd processor.Executable) err
 	b := retry.WithMaxRetries(s.opts.MaxRetries, inner)
 
 	return retry.Do(rc.Context, b, func(ctx context.Context) error {
-		stepCtx, _, err := pipelineCmd()
-		rc.Execution.StepContext = stepCtx
+		_, _, err := pipelineCmd()
 
 		if err != nil {
 			return retry.RetryableError(err)

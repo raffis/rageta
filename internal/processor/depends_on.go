@@ -14,19 +14,19 @@ func WithDependsOn() ProcessorBuilder {
 			return nil
 		}*/
 
-		return &Needs{
+		return &DependsOn{
 			refs:     refSlice(spec.DependsOn),
 			stepName: spec.Name,
 		}
 	}
 }
 
-type Needs struct {
+type DependsOn struct {
 	refs     []string
 	stepName string
 }
 
-func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
 		var dependsOn []Step
 
@@ -47,6 +47,9 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		//fmt.Printf("run before NEXT %s - %#v - %#v\n", s.stepName, s.refs, ctx.Steps)
 
 		ctx, err := s.processSteps(ctx, dependsOn)
+
+		fmt.Printf("\nXXXXXXXXXX0 %s -   %#v - %#v\n", s.stepName, ctx.Tags, ctx.Build.Ref)
+
 		if err != nil {
 			return ctx, err
 		}
@@ -58,23 +61,23 @@ func (s *Needs) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		//}
 
 		ctx, err = next(ctx)
+		fmt.Printf("\nXXXXXXXXXX1 %s  -  %#v - %#v\n", s.stepName, ctx.Tags, ctx.Build.Ref)
 		//fmt.Printf("finished next %s -- %#v\n", s.stepName, ctx.LLBState)
 		//for x, x2 := range ctx.Steps {
 		//	fmt.Printf("== %#v -- %#v\n", x, x2.LLBState)
 		//}
-		fmt.Printf("ERROR %#v\n", err)
 
 		if err != nil {
 			return ctx, err
 		}
 
-		//fmt.Printf("AFTER %#v\n", pipeline.DependantSteps(s.stepName))
+		fmt.Printf("RUN DEPENDANTS  %#v\n", pipeline.DependantSteps(s.stepName))
 
 		return s.processSteps(ctx, pipeline.DependantSteps(s.stepName))
 	}, nil
 }
 
-func (s *Needs) processSteps(ctx StepContext, steps []Step) (StepContext, error) {
+func (s *DependsOn) processSteps(ctx StepContext, steps []Step) (StepContext, error) {
 	if len(steps) == 0 {
 		return ctx, nil
 	}
@@ -85,12 +88,18 @@ func (s *Needs) processSteps(ctx StepContext, steps []Step) (StepContext, error)
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var launched int
 	for _, step := range steps {
+		if _, alreadyRunning := ctx.Steps[step.Name()]; alreadyRunning {
+			continue
+		}
+
 		next, err := step.Entrypoint()
 		if err != nil {
 			return ctx, err
 		}
 
+		launched++
 		copyCTX := ctx.DeepCopy()
 		copyCTX.Context = cancelCtx
 		copyCTX.Steps[s.stepName] = &copyCTX
@@ -99,6 +108,10 @@ func (s *Needs) processSteps(ctx StepContext, steps []Step) (StepContext, error)
 			t, err := next(copyCTX)
 			results <- result{t, err}
 		}()
+	}
+
+	if launched == 0 {
+		return ctx, nil
 	}
 
 	var done int
@@ -113,17 +126,15 @@ WAIT:
 		case cancelCtx.Err() == context.Canceled && len(errs) > 0:
 		case res.err != nil && AbortOnError(res.err):
 			errs = append(errs, res.err)
-
-			//if s.failFast {
-			//	cancel()
-			//}
 		default:
 		}
 
-		if done == len(steps) {
+		if done == launched {
 			break WAIT
 		}
 	}
+
+	fmt.Printf("\nXXXXXXXXXX3 %s %#v - %#v\n", s.stepName, ctx.Build.Ref)
 
 	if len(errs) > 0 {
 		return ctx, errors.Join(errs...)
