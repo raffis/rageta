@@ -2,13 +2,15 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
@@ -37,12 +39,24 @@ type Artifacts struct {
 
 func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		artifacts := make([]v1beta1.Artifact, len(s.artifacts))
 		subst := []any{}
-		for i := range s.artifacts {
-			if s.artifacts[i].Local != nil {
-				subst = append(subst, &s.artifacts[i].Local.Path, &s.artifacts[i].Local.To)
+
+		for i := range artifacts {
+			artifacts[i] = *s.artifacts[i].DeepCopy()
+			switch {
+			case artifacts[i].Envvars != nil:
+				subst = append(subst, &artifacts[i].Envvars.Path)
+			case artifacts[i].Outputvars != nil:
+				subst = append(subst, &artifacts[i].Outputvars.Path)
+			case artifacts[i].Local != nil:
+				subst = append(subst, &artifacts[i].Local.Path, &artifacts[i].Local.To)
+			case artifacts[i].Image != nil:
+			default:
+				return ctx, errors.New("unknown artifact type")
 			}
 		}
+
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
@@ -52,17 +66,28 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		for _, artifact := range s.artifacts {
-			if artifact.Local == nil {
+		for _, artifact := range artifacts {
+			var srcPath, hostPath string
+
+			switch {
+			case artifact.Envvars != nil:
+				srcPath = artifact.Envvars.Path
+			case artifact.Outputvars != nil:
+				srcPath = artifact.Outputvars.Path
+			case artifact.Local != nil:
+				srcPath := artifact.Local.Path
+				if srcPath == "" {
+					srcPath = "."
+				}
+
+				hostPath := artifact.Local.To
+				if hostPath == "" {
+					hostPath = srcPath
+				}
+			case artifact.Image != nil:
 				continue
-			}
-			srcPath := artifact.Local.Path
-			if srcPath == "" {
-				srcPath = "."
-			}
-			hostPath := artifact.Local.To
-			if hostPath == "" {
-				hostPath = srcPath
+			default:
+				return ctx, errors.New("unknown artifact type")
 			}
 
 			exportDef, err := llb.Scratch().File(llb.Copy(ctx.Build.State, srcPath, "/", &llb.CopyInfo{
@@ -71,16 +96,31 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			})).Marshal(ctx)
 
 			if err != nil {
-				return ctx, fmt.Errorf("export %q: marshal: %w", srcPath, err)
+				return ctx, fmt.Errorf("artifact %q: marshal: %w", srcPath, err)
 			}
 
 			exportRef, err := s.solve(ctx, exportDef)
 			if err != nil {
-				return ctx, fmt.Errorf("export %q: solve: %w", srcPath, err)
+				return ctx, fmt.Errorf("artifact %q: solve: %w", srcPath, err)
 			}
 
-			if err := exportRefToHost(ctx, exportRef, "/", hostPath); err != nil {
-				return ctx, fmt.Errorf("export %q: %w", hostPath, err)
+			switch {
+			case artifact.Envvars != nil:
+				vars, err := readVars(ctx, exportRef, srcPath)
+				if err != nil {
+					return ctx, fmt.Errorf("envvar artifact failed %q: %w", srcPath, err)
+				}
+
+				maps.Copy(ctx.EnvVars.Envs, vars)
+			case artifact.Outputvars != nil:
+			case artifact.Local != nil:
+				if err := readObject(ctx, exportRef, "/", hostPath); err != nil {
+					return ctx, fmt.Errorf("local artifact failed %q: %w", hostPath, err)
+				}
+			case artifact.Image != nil:
+				continue
+			default:
+				return ctx, errors.New("unknown artifact type")
 			}
 		}
 
@@ -93,24 +133,37 @@ func (s *Artifacts) solve(ctx context.Context, def *llb.Definition) (gwclient.Re
 		Definition: def.ToPB(),
 		Evaluate:   true,
 	})
+
 	if err != nil {
 		return nil, err
 	}
+
 	return res.Ref, nil
 }
 
-func exportRefToHost(ctx context.Context, ref gwclient.Reference, srcPath, hostPath string) error {
+func readObject(ctx context.Context, ref gwclient.Reference, srcPath, hostPath string) error {
+	stat, err := ref.StatFile(ctx, gwclient.StatRequest{Path: srcPath})
+	if err != nil {
+		return err
+	}
+
+	if !stat.IsDir() {
+		return exportObject(ctx, ref, srcPath, hostPath, []*fstypes.Stat{stat})
+	}
+
 	stats, err := ref.ReadDir(ctx, gwclient.ReadDirRequest{
 		Path:           srcPath,
 		IncludePattern: "**",
 	})
+
 	if err != nil {
 		return err
 	}
-	return writeStats(ctx, ref, srcPath, hostPath, stats)
+
+	return exportObject(ctx, ref, srcPath, hostPath, stats)
 }
 
-func writeStats(ctx context.Context, ref gwclient.Reference, base, hostBase string, stats []*fstypes.Stat) error {
+func exportObject(ctx context.Context, ref gwclient.Reference, base, hostBase string, stats []*fstypes.Stat) error {
 	for _, st := range stats {
 		rel := strings.TrimPrefix(st.Path, "/")
 		src := filepath.Join(base, rel)
@@ -124,135 +177,63 @@ func writeStats(ctx context.Context, ref gwclient.Reference, base, hostBase stri
 			if err != nil {
 				return err
 			}
-			if err := writeStats(ctx, ref, src, dst, sub); err != nil {
-				return err
-			}
-		} else {
-			data, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: src})
-			if err != nil {
-				return err
-			}
-			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(dst, data, fs.FileMode(st.Mode)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
 
-func syncExportDirToHost(exported, host string) error {
-	if err := os.RemoveAll(host); err != nil {
-		return fmt.Errorf("clear host path: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(exported, host); err != nil {
-		if err := copyDir(exported, host); err != nil {
-			return err
+			return exportObject(ctx, ref, src, dst, sub)
 		}
-		_ = os.RemoveAll(exported)
-	}
-	return nil
-}
 
-func copyDir(src, dst string) error {
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		data, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: src})
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
-		if rel == "." {
-			return os.MkdirAll(dst, 0o755)
+		if err := os.WriteFile(dst, data, fs.FileMode(st.Mode)); err != nil {
+			return err
 		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		return copyRegularFile(path, target)
-	})
+	}
+
+	return nil
 }
 
-func copyRegularFile(src, dst string) error {
-	st, err := os.Stat(src)
+func readVars(ctx context.Context, ref gwclient.Reference, srcPath string) (map[string]string, error) {
+	stat, err := ref.StatFile(ctx, gwclient.StatRequest{Path: srcPath})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !st.Mode().IsRegular() {
-		return fmt.Errorf("copy %s: not a regular file", src)
+
+	if stat.IsDir() {
+		return nil, errors.New("must be a file")
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	in, err := os.Open(src)
+
+	b, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: srcPath})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, st.Mode().Perm())
+
+	vars, err := godotenv.UnmarshalBytes(b)
 	if err != nil {
-		return err
+		return vars, fmt.Errorf("vars parser failed: %w", err)
 	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+
+	return vars, err
 }
 
 /*
-
-		envTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "env")
+	for name, output := range outputs {
+		_ = output.Sync()
+		b, err := io.ReadAll(output)
 		if err != nil {
 			return ctx, err
 		}
 
-		var nextErr error
-		defer func() {
-			_ = envTmp.Close()
-			_ = os.Remove(envTmp.Name())
-		}()
+		value := v1beta1.ParamValue{}
 
-		ctx.EnvVars.OutputPath = envTmp.Name()
-		ctx, nextErr = next(ctx)
-		if syncErr := envTmp.Sync(); syncErr != nil {
-			nextErr = syncErr
+		if err := value.UnmarshalJSON(b); err != nil {
+			return ctx, fmt.Errorf("param output failed: %w", err)
 		}
 
-		envs, err := parseVars(envTmp)
-		if err != nil {
-			return ctx, err
-		}
-
-		maps.Copy(originEnvs, envs)
-		ctx.EnvVars.Envs = originEnvs
-		ctx.EnvVars.OutputPath = ""
-
-		return ctx, nextErr
-
-	}, nil
-}
-
-func envMap(envs []v1beta1.EnvVar, osEnv, defaultEnv map[string]string) map[string]string {
-	env := make(map[string]string)
-	for _, e := range envs {
-		if e.Value == nil {
-			if v, ok := osEnv[e.Name]; ok {
-				env[e.Name] = v
-			}
-
-			continue
-		}
-
-		env[e.Name] = *e.Value
+		ctx.OutputVars.OutputVars[name] = value
 	}
-
-	maps.Copy(env, defaultEnv)
-	return env
-}
 
 */

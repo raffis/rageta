@@ -3,7 +3,6 @@ package run
 import (
 	"errors"
 	"fmt"
-	"path"
 	"strings"
 	"text/tabwriter"
 
@@ -87,9 +86,6 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	var innerStepErr processor.StepError
 	if AsInner(err, &innerStepErr) {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), path.Join(rc.ContextDir.Path, innerStepErr.Context().UniqueID()))
-
-		fmt.Printf("TAGS: %#v", innerStepErr.Context().Tags.Tags())
 
 		for _, tag := range innerStepErr.Context().Tags.Tags() {
 			tags = append(tags, styles.TagLabel.
@@ -106,10 +102,13 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	}
 
 	var exitCodeErr processor.ExitCode
-	if errors.As(err, &exitCodeErr) {
+	switch {
+	case errors.As(err, &exitCodeErr):
 		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), exitCodeErr.ExitCode())
-	} else {
+	case errors.Unwrap(err) != nil:
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), errors.Unwrap(err).Error())
+	default:
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), err.Error())
 	}
 
 	if len(tags) > 0 {

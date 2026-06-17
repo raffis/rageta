@@ -65,9 +65,6 @@ func (s *Terminal) walkError(rc *RunContext, err error) error {
 	for unwrappedErr != nil {
 		if uw, ok := unwrappedErr.(interface{ Unwrap() []error }); ok {
 			for _, unwrappedErr := range uw.Unwrap() {
-
-				fmt.Printf("\nUNWRAPPED %#v\n", unwrappedErr)
-
 				return s.walkError(rc, unwrappedErr)
 			}
 
@@ -106,8 +103,6 @@ func (s *Terminal) openTerminal(rc *RunContext, err error) error {
 		return nil
 	}
 
-	fmt.Printf("start terminal in %#v", innerStepErr)
-
 	ctx := context.Background()
 
 	stepCtx := innerStepErr.Context().DeepCopy()
@@ -130,14 +125,9 @@ func (s *Terminal) openTerminal(rc *RunContext, err error) error {
 		pr.Close()
 	}()
 
-	contextFS, err := fsutil.NewFS(".")
-	if err != nil {
-		return err
-	}
-
 	_, solveErr := rc.Buildkit.Client.Solve(ctx, def, client.SolveOpt{
 		LocalMounts: map[string]fsutil.FS{
-			"context": contextFS,
+			"context": rc.Buildkit.ContextFS,
 		},
 		Exports: []client.ExportEntry{
 			{
@@ -165,10 +155,12 @@ func (s *Terminal) openTerminal(rc *RunContext, err error) error {
 
 	for name, service := range stepCtx.Services.Status {
 		//ctx.Build.State = ctx.Build.State.AddExtraHost(name, net.IP(service.ContainerIP))
-		envName := strings.ToUpper(strings.Replace(name, "-", "_", -1))
+		envName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 		stepCtx.EnvVars.Envs[fmt.Sprintf("SERVICE_%s", envName)] = service.ContainerIP
 	}
 
+	fmt.Printf("STYLE %#v\n", stepCtx.Style.Style)
+	stepCtx.EnvVars.Envs["PS1"] = fmt.Sprintf("%s$ ", stepCtx.Style.Style.Render(stepCtx.UniqueName()))
 	stepCtx.EnvVars.Envs["HISTFILE"] = "/rageta/ash_history"
 	pod := &runtime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),

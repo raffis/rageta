@@ -13,7 +13,7 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
-func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool) ProcessorBuilder {
+func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool, builtRefs *[]gwclient.Reference) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Script == nil {
 			return nil
@@ -24,6 +24,7 @@ func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cache
 			statusRouter: statusRouter,
 			cacheImports: cacheImports,
 			noCache:      noCache,
+			builtRefs:    builtRefs,
 		}
 	}
 }
@@ -33,6 +34,7 @@ type Build struct {
 	statusRouter *VertexStatusRouter
 	cacheImports []gwclient.CacheOptionsEntry
 	noCache      bool
+	builtRefs    *[]gwclient.Reference
 }
 
 func newBuildContext() BuildContext {
@@ -64,8 +66,11 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		}
 
 		if s.statusRouter != nil {
-			if head, herr := def.Head(); herr == nil {
-				digests := []digest.Digest{head}
+			if _, herr := def.Head(); herr == nil {
+				var digests []digest.Digest
+				for _, dt := range def.ToPB().Def {
+					digests = append(digests, digest.FromBytes(dt))
+				}
 				stepCh := make(chan *bkclient.SolveStatus, 16)
 				s.statusRouter.Register(digests, stepCh)
 
@@ -98,6 +103,9 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		}
 
 		ctx.Build.Ref = ref
+		if s.builtRefs != nil {
+			*s.builtRefs = append(*s.builtRefs, ref)
+		}
 		ctx.Build.State = state
 		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path))
 

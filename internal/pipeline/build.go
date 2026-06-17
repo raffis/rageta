@@ -128,14 +128,14 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 				continue
 			}
 
-			from := pipelineOutput.Name
+			/*from := pipelineOutput.Name
 			if pipelineOutput.From != "" {
 				from = pipelineOutput.From
 			}
 
 			if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
 				outputs[pipelineOutput.Name] = output
-			}
+			}*/
 		}
 
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())

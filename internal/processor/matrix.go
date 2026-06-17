@@ -141,7 +141,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			maps.Copy(ctx.Steps, res.ctx.Steps)
 
 			//Unify matrix outputs into an array output for the current step
-			for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
+			/*for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
 				var param v1beta1.ParamValue
 
 				if val, ok := ctx.OutputVars.OutputVars[paramKey]; !ok {
@@ -157,7 +157,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 
 				ctx.OutputVars.OutputVars[paramKey] = param
-			}
+			}*/
 
 			switch {
 			case cancelCtx.Err() == context.Canceled && len(errs) > 0:

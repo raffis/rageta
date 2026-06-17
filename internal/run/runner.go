@@ -77,8 +77,6 @@ type Options struct {
 
 func (s *Options) BindFlags(flags flagset.Interface) {
 	pipelineFlags := pflag.NewFlagSet("Pipeline", pflag.ExitOnError)
-	flags.AddFlagSet(pipelineFlags)
-
 	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
 	s.DisplayOptions.BindFlags(flags)
@@ -100,6 +98,7 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ExecuteOptions.BindFlags(pipelineFlags)
 	s.InputsOptions.BindFlags(pipelineFlags)
 	s.PipelineOptions.BindFlags(pipelineFlags)
+	flags.AddFlagSet(pipelineFlags)
 }
 
 func DefaultOptions() Options {
@@ -133,9 +132,9 @@ func (o Options) Build() *Runner {
 		o.CELOptions.Build(),
 		o.TagsOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),
-		o.BuildkitOptions.Build(),
 		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
+		o.BuildkitOptions.Build(),
 		o.ProviderOptions.Build(),
 		o.PipelineOptions.Build(),
 		o.InputsOptions.Build(),

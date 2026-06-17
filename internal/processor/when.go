@@ -69,7 +69,7 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					return ctx, ErrConditionFalse
 				}
 			default:
-				return ctx, fmt.Errorf("invalid if condition given")
+				return ctx, fmt.Errorf("invalid condition given")
 			}
 		}
 

@@ -14,10 +14,6 @@ type StepResult struct {
 	EndedAt   metav1.Time           `cel:"endedAt"`
 }
 
-type Output struct {
-	Path string `cel:"path"`
-}
-
 type Context struct {
 	Inputs  map[string]ParamValue  `cel:"inputs"`
 	Envs    map[string]string      `cel:"envs"`
@@ -26,7 +22,6 @@ type Context struct {
 	Matrix  map[string]string      `cel:"matrix"`
 	Secret  string                 `cel:"secret"`
 	Env     string                 `cel:"env"`
-	Outputs map[string]*Output     `cel:"outputs"`
 	Os      string                 `cel:"os"`
 	Arch    string                 `cel:"arch"`
 	Uid     string                 `cel:"uid"`
@@ -66,10 +61,6 @@ func (v *Context) Index() map[string]string {
 
 	for k, v := range v.Matrix {
 		vars[fmt.Sprintf("context.matrix.%s", k)] = v
-	}
-
-	for k, v := range v.Outputs {
-		vars[fmt.Sprintf("context.outputs.%s.path", k)] = v.Path
 	}
 
 	for k, v := range v.Steps {

@@ -2,7 +2,6 @@ package processor
 
 import (
 	"fmt"
-	"maps"
 
 	"github.com/raffis/rageta/internal/provider"
 	"github.com/raffis/rageta/internal/substitute"
@@ -57,14 +56,14 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		_, outputs, err := cmd()
+		_, _, err = cmd()
 
 		if err != nil {
 			return ctx, fmt.Errorf("failed to execute pipeline: %w", err)
 		}
 
 		//s.mergeContext(outputContext, ctx)
-		maps.Copy(ctx.OutputVars.OutputVars, outputs)
+		//maps.Copy(ctx.OutputVars.OutputVars, outputs)
 
 		return next(ctx)
 	}, nil

@@ -28,15 +28,18 @@ type Caches struct {
 
 func (s *Caches) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		caches := make([]v1beta1.Cache, len(s.caches))
 		subst := []any{}
-		for i := range s.caches {
-			subst = append(subst, &s.caches[i].ID, &s.caches[i].Path)
+
+		for i := range caches {
+			caches[i] = *s.caches[i].DeepCopy()
+			subst = append(subst, &caches[i].ID, &caches[i].Path)
 		}
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
 
-		for _, c := range s.caches {
+		for _, c := range caches {
 			if c.ID == "" || c.Path == "" {
 				return ctx, errors.New("cache mount requires id and path")
 			}

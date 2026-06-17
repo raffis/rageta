@@ -24,7 +24,7 @@ type StepContext struct {
 	Steps           map[string]*StepContext `json:"-"`
 	Tags            TagsContext
 	Streams         StreamsContext
-	OutputVars      OutputVarsContext
+	Style           StyleContext
 	EnvVars         EnvVarsContext
 	SecretVars      SecretVarsContext
 	InputVars       InputVarsContext
@@ -62,7 +62,6 @@ func NewContext() StepContext {
 		Build:      newBuildContext(),
 		InputVars:  newInputVarsContext(),
 		Matrix:     newMatrixContext(),
-		OutputVars: newOutputVarsContext(),
 		Events:     newEventsContext(),
 		Services:   newServiceContext(),
 		Steps:      make(map[string]*StepContext),
@@ -81,8 +80,6 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Streams.Stdin = c.Streams.Stdin
 	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
 	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
-	copy.OutputVars.Outputs = append(copy.OutputVars.Outputs, c.OutputVars.Outputs...)
-	copy.OutputVars.OutputVars = maps.Clone(c.OutputVars.OutputVars)
 	copy.Steps = maps.Clone(c.Steps)
 	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
@@ -118,7 +115,6 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 		Envs:    maps.Clone(t.EnvVars.Envs),
 		Secrets: maps.Clone(t.SecretVars.Secrets),
 		Inputs:  maps.Clone(t.InputVars.Inputs),
-		Outputs: make(map[string]*v1beta1.Output),
 		Os:      runtime.GOOS,
 		Arch:    runtime.GOARCH,
 		Uid:     fmt.Sprintf("%d", os.Getuid()),
@@ -136,13 +132,8 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 			vars.Steps[k].Error = v.Error.Error()
 		}
 
-		maps.Copy(vars.Steps[k].Outputs, v.OutputVars.OutputVars)
+		//	maps.Copy(vars.Steps[k].Outputs, v.OutputVars.OutputVars)
 	}
 
-	for _, v := range t.OutputVars.Outputs {
-		vars.Outputs[v.Name] = &v1beta1.Output{
-			Path: v.Path,
-		}
-	}
 	return vars
 }

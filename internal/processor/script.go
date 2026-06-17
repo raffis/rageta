@@ -1,39 +1,49 @@
 package processor
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
 
-	"github.com/raffis/rageta/internal/substitute"
-	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-
 	"github.com/moby/buildkit/client/llb"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/raffis/rageta/internal/secrets"
+	"github.com/raffis/rageta/internal/substitute"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithScript() ProcessorBuilder {
+func WithScript(store secrets.Interface) ProcessorBuilder {
 	return func(spec *v1beta1.Step) Bootstraper {
 		if spec.Script == nil {
 			return nil
 		}
 		return &Script{
-			script: *spec.Script,
+			script:   *spec.Script,
+			stepName: spec.Name,
+			store:    store,
 		}
 	}
 }
 
-const defaultShell = "/bin/ash"
+const (
+	defaultShell = "/bin/ash"
+	scriptPath   = "/rageta/script.sh"
+	exitCodePath = "/rageta/exitcode"
+	contextPath  = "/rageta/context.json"
+)
 
 type Script struct {
 	script   string
 	stepName string
+	store    secrets.Interface
 }
 
 func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
-		busybox := llb.Image("busybox:uclibc")
+		busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
 				CreateDestPath:                 true,
@@ -66,8 +76,6 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			llb.Mkdir("/rageta", 0755),
 		)
 
-		fmt.Printf("((((((((((((((((((((((((%#v))))))))))))))))))))))))\n", ctx.Services.Status)
-
 		for name, service := range ctx.Services.Status {
 			netIP := net.ParseIP(service.ContainerIP)
 			if netIP == nil {
@@ -79,8 +87,14 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			ctx.Build.State = ctx.Build.State.AddEnv(fmt.Sprintf("SERVICE_%s", envName), service.ContainerIP)
 		}
 
-		scriptPath := fmt.Sprintf("/rageta/%s.sh", ctx.UniqueID())
-		exitCodePath := fmt.Sprintf("/rageta/%s.code", ctx.UniqueID())
+		contextJSON, err := json.MarshalIndent(ctx.ToV1Beta1(), "", "  ")
+		if err != nil {
+			return ctx, err
+		}
+
+		secretID := fmt.Sprintf("rageta-context-%s", s.stepName)
+		s.store.AddSecret(context.Background(), secretID, contextJSON)
+		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(contextPath, llb.SecretID(secretID)))
 
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Mkfile(scriptPath, 0755, []byte(script)),
@@ -96,7 +110,7 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath),
 		}))
 
-		ctx, err := next(ctx)
+		ctx, err = next(ctx)
 		if err != nil {
 			return ctx, err
 		}

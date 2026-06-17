@@ -29,14 +29,16 @@ type Sources struct {
 
 func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx StepContext) (StepContext, error) {
+		sources := make([]v1beta1.Source, len(s.sources))
 		subst := []any{}
 
-		for i := range s.sources {
+		for i := range sources {
+			sources[i] = *s.sources[i].DeepCopy()
 			switch {
-			case s.sources[i].Local != nil:
-				subst = append(subst, &s.sources[i].Local.Path, &s.sources[i].Local.To)
-			case s.sources[i].Step != nil:
-				subst = append(subst, &s.sources[i].Step.Name, &s.sources[i].Step.Path, &s.sources[i].Step.To)
+			case sources[i].Local != nil:
+				subst = append(subst, &sources[i].Local.Path, &sources[i].Local.To)
+			case sources[i].Step != nil:
+				subst = append(subst, &sources[i].Step.Name, &sources[i].Step.Path, &sources[i].Step.To)
 			default:
 				return ctx, errors.New("no source type given")
 			}
@@ -45,7 +47,7 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		for _, source := range s.sources {
+		for _, source := range sources {
 			switch {
 			case source.Local != nil:
 				srcPath := source.Local.Path

@@ -81,8 +81,18 @@ type SourceStep struct {
 }
 
 type Artifact struct {
-	Local *ArtifactLocal `json:"local,omitempty"`
-	Image *ArtifactImage `json:"image,omitempty"`
+	Local      *ArtifactLocal      `json:"local,omitempty"`
+	Image      *ArtifactImage      `json:"image,omitempty"`
+	Envvars    *ArtifactEnvvars    `json:"envvars,omitempty"`
+	Outputvars *ArtifactOutputvars `json:"outputvars,omitempty"`
+}
+
+type ArtifactEnvvars struct {
+	Path string `json:"path,omitempty"`
+}
+
+type ArtifactOutputvars struct {
+	Path string `json:"path,omitempty"`
 }
 
 type ArtifactLocal struct {

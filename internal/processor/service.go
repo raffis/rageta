@@ -80,8 +80,6 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			PWD:             s.workdir,
 		}
 
-		fmt.Sprintf("%#v \n", container)
-
 		if svc.Guid != nil {
 			guid := svc.Guid.IntValue()
 			container.Guid = &guid
@@ -102,7 +100,6 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
-		fmt.Sprintf("%#v \n", container)
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
 		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))

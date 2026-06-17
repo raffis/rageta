@@ -122,6 +122,11 @@ spec:
                 artifacts:
                   items:
                     properties:
+                      envvars:
+                        properties:
+                          path:
+                            type: string
+                        type: object
                       image:
                         type: object
                       local:
@@ -129,6 +134,11 @@ spec:
                           path:
                             type: string
                           to:
+                            type: string
+                        type: object
+                      outputvars:
+                        properties:
+                          path:
                             type: string
                         type: object
                     type: object
@@ -354,15 +364,11 @@ spec:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    image:
-                      type: string
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    workingDir:
-                      type: string
                   type: object
                 short:
                   type: string
@@ -428,6 +434,11 @@ spec:
                 artifacts:
                   items:
                     properties:
+                      envvars:
+                        properties:
+                          path:
+                            type: string
+                        type: object
                       image:
                         type: object
                       local:
@@ -435,6 +446,11 @@ spec:
                           path:
                             type: string
                           to:
+                            type: string
+                        type: object
+                      outputvars:
+                        properties:
+                          path:
                             type: string
                         type: object
                     type: object
@@ -660,15 +676,11 @@ spec:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    image:
-                      type: string
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    workingDir:
-                      type: string
                   type: object
                 short:
                   type: string

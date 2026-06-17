@@ -34,7 +34,7 @@ func (s *CEL) Run(rc *RunContext, next Next) error {
 			reflect.TypeOf(&v1beta1.Context{}),
 			reflect.TypeOf(&v1beta1.StepResult{}),
 			reflect.TypeOf(&v1beta1.ParamValue{}),
-			reflect.TypeOf(&v1beta1.Output{}),
+			//reflect.TypeOf(&v1beta1.Output{}),
 		),
 		cel.Variable("context", cel.ObjectType("v1beta1.Context")),
 	)

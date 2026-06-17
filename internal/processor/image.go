@@ -3,11 +3,9 @@ package processor
 import (
 	"fmt"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-
-	"github.com/moby/buildkit/client/llb"
-	"github.com/moby/buildkit/client/llb/imagemetaresolver"
 )
 
 func WithImage() ProcessorBuilder {
@@ -33,7 +31,7 @@ func (s *Image) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ctx.Build.State = llb.Image(image, imagemetaresolver.WithDefault)
+		ctx.Build.State = llb.Image(image, llb.ResolveModePreferLocal)
 		ctx, err := next(ctx)
 
 		if err != nil {

@@ -61,6 +61,8 @@ type BuildkitContext struct {
 	GWCacheImports []gwclient.CacheOptionsEntry
 	CacheExports   []client.CacheOptionsEntry
 	NoCache        bool
+	ContextFS      fsutil.FS
+	BuiltRefs      []gwclient.Reference
 }
 
 func (s *Buildkit) Run(rc *RunContext, next Next) error {
@@ -103,8 +105,10 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	rc.Buildkit.CacheExports = cacheExports
 	rc.Buildkit.NoCache = s.opts.NoCache
 	rc.Buildkit.StatusRouter = statusRouter
+	rc.Buildkit.ContextFS = contextFS
 
 	buildOpt := client.SolveOpt{
+		FrontendAttrs: map[string]string{},
 		LocalMounts: map[string]fsutil.FS{
 			"context": contextFS,
 		},
@@ -128,7 +132,13 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 
 	_, err = c.Build(rc, buildOpt, "", func(ctx context.Context, gwc gwclient.Client) (*gwclient.Result, error) {
 		rc.Buildkit.GatewayClient = gwc
-		return gwclient.NewResult(), next(rc)
+		err := next(rc)
+		rc.Logging.Logger.Info("cache export refs", "count", len(rc.Buildkit.BuiltRefs), "pipelineErr", err)
+		res := gwclient.NewResult()
+		if len(rc.Buildkit.BuiltRefs) > 0 {
+			res.SetRef(rc.Buildkit.BuiltRefs[len(rc.Buildkit.BuiltRefs)-1])
+		}
+		return res, err
 	}, ch)
 
 	return err
