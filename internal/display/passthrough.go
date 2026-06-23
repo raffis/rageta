@@ -9,7 +9,7 @@ import (
 )
 
 func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
+	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		stdoutWrapper := xio.NewLineWriter(stdout)
 		stderrWrapper := stdoutWrapper
 

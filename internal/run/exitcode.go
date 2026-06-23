@@ -15,7 +15,7 @@ func (s *ExitCodeOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.AllowFailure, "allow-failure", "", s.AllowFailure, "In case of an error exit with code 0.")
 }
 
-func (s ExitCodeOptions) Build() Step {
+func (s ExitCodeOptions) Build() Task {
 	return &ExitCode{opts: s}
 }
 

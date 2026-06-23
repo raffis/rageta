@@ -12,7 +12,7 @@ type LifecycleOptions struct {
 	Timeout time.Duration
 }
 
-func (s LifecycleOptions) Build() Step {
+func (s LifecycleOptions) Build() Task {
 	return &Lifecycle{
 		opts: s,
 	}

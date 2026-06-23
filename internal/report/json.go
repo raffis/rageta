@@ -20,7 +20,7 @@ func JSON(w io.Writer) *jsonReport {
 	}
 }
 
-func (r *jsonReport) Report(ctx processor.StepContext, name string) error {
+func (r *jsonReport) Report(ctx processor.TaskContext, name string) error {
 	r.store.Add(name, ctx)
 	return nil
 }

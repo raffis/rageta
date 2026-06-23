@@ -12,7 +12,7 @@ const (
 )
 
 func WithWorkdir() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		workDir := spec.WorkingDir
 		if workDir == "" {
 			workDir = DefaultWorkingDir
@@ -33,7 +33,7 @@ type WorkdirContext struct {
 }
 
 func (s *Workdir) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		ctx.Workdir.Path = s.workingDir
 		if err := substitute.Substitute(ctx.ToV1Beta1(), &ctx.Workdir.Path); err != nil {
 			return ctx, err

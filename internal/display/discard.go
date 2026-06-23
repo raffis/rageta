@@ -7,7 +7,7 @@ import (
 )
 
 func Discard() processor.DisplayFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
+	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		return io.Discard, io.Discard, func(err error) error {
 			return nil
 		}

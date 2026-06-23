@@ -56,9 +56,9 @@ type ResultError interface {
 	Result() string
 }
 
-type StepError interface {
-	StepName() string
-	Context() StepContext
+type TaskError interface {
+	TaskName() string
+	Context() TaskContext
 }
 
 type ImageName interface {

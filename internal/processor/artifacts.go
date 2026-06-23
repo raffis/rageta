@@ -20,7 +20,7 @@ import (
 )
 
 func WithArtifacts(gwClient gwclient.Client) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Artifacts == nil {
 			return nil
 		}
@@ -38,7 +38,7 @@ type Artifacts struct {
 }
 
 func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		artifacts := make([]v1beta1.Artifact, len(s.artifacts))
 		subst := []any{}
 

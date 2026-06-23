@@ -44,7 +44,7 @@ func (s *DisplayOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.InternalSteps, "with-internals", "", s.InternalSteps, "Expose internal steps")
 }
 
-func (s DisplayOptions) Build() Step {
+func (s DisplayOptions) Build() Task {
 	return &Display{opts: s}
 }
 
@@ -100,9 +100,9 @@ func (s *Display) Run(rc *RunContext, next Next) error {
 	}
 
 	if err != nil {
-		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusFailed, Error: err})
+		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusFailed, Error: err})
 	} else {
-		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.StepStatusDone, Error: nil})
+		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusDone, Error: nil})
 	}
 
 	<-s.tuiDone
@@ -151,8 +151,7 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 	}
 
 	s.tuiDone = make(chan struct{})
-
-	model := tui.NewUI(rc.Logging.Logger.WithValues("component", "tui"))
+	model := tui.NewUI(rc.Logging.FileLogger.WithValues("component", "tui"))
 	s.tuiApp = tea.NewProgram(model,
 		tea.WithOutput(xio.NewFDWrapper(rc.Display.Stdout, os.Stdout)),
 		tea.WithEnvironment(bubbleTeaProgramEnv()),

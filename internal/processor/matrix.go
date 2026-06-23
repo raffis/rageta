@@ -16,7 +16,7 @@ import (
 )
 
 func WithMatrix() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 {
 			return nil
 		}
@@ -58,7 +58,7 @@ var ErrEmptyMatrix = &pipelineError{
 type isMatrixContext struct{}
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.Value(isMatrixContext{}) == s {
 			return next(ctx)
 		}
@@ -138,7 +138,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	WAIT:
 		for res := range results {
 			done++
-			maps.Copy(ctx.Steps, res.ctx.Steps)
+			maps.Copy(ctx.Tasks, res.ctx.Tasks)
 
 			//Unify matrix outputs into an array output for the current step
 			/*for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
@@ -198,7 +198,7 @@ func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, er
 	return result, nil
 }
 
-func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, include []v1beta1.IncludeParam) StepContext {
+func (s *Matrix) extendMatrix(ctx TaskContext, matrixParams map[string]string, include []v1beta1.IncludeParam) TaskContext {
 	includeParams := make(map[string]string)
 
 	for currentMatrixKey, currentMatrixValue := range matrixParams {

@@ -17,7 +17,7 @@ import (
 )
 
 func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, teardown chan Teardown) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Service == nil {
 			return nil
 		}
@@ -38,7 +38,7 @@ type Service struct {
 	image             string
 	workdir           string
 	stepName          string
-	service           v1beta1.ServiceStep
+	service           v1beta1.ServiceTask
 	driver            runtime.Interface
 	defaultPullPolicy runtime.PullImagePolicy
 	teardown          chan Teardown
@@ -55,7 +55,7 @@ func newServiceContext() ServiceContext {
 }
 
 func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		svc := s.service.DeepCopy()
 		pod := &runtime.Pod{
 			Name: fmt.Sprintf("rageta-%s-%s-%s", pipeline.ID(), ctx.UniqueID(), utils.RandString(5)),
@@ -122,7 +122,7 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Service) exec(ctx StepContext, pod *runtime.Pod) (StepContext, error) {
+func (s *Service) exec(ctx TaskContext, pod *runtime.Pod) (TaskContext, error) {
 	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
 		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
 		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))

@@ -25,10 +25,10 @@ type SecretsOptions struct {
 
 func (s *SecretsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.SecretBackend, "secret-backend", "", s.SecretBackend, "Secret backend")
-	flags.StringSliceVarP(&s.Secrets, "secret", "s", s.Secrets, "Pass secrets to the pipeline. Secrets are loaded from a secret backend and it is ensured secrets on any streams are always masked.")
+	flags.StringSliceVarP(&s.Secrets, "secret", "", s.Secrets, "Pass secrets to the pipeline. Secrets are loaded from a secret backend and it is ensured secrets on any streams are always masked.")
 }
 
-func (s SecretsOptions) Build() Step {
+func (s SecretsOptions) Build() Task {
 	return &Secrets{opts: s}
 }
 

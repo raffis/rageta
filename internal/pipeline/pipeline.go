@@ -12,25 +12,25 @@ type pipeline struct {
 	name       string
 	id         string
 	entrypoint string
-	steps      []*pipelineStep
+	steps      []*pipelineTask
 }
 
-type pipelineStep struct {
+type pipelineTask struct {
 	processors []processor.Bootstraper
 	name       string
 	pipeline   *pipeline
 	dependsOn  []string
 }
 
-func (p *pipelineStep) Processors() []processor.Bootstraper {
+func (p *pipelineTask) Processors() []processor.Bootstraper {
 	return p.processors
 }
 
-func (p *pipelineStep) Name() string {
+func (p *pipelineTask) Name() string {
 	return p.name
 }
 
-func (p *pipelineStep) Entrypoint() (processor.Next, error) {
+func (p *pipelineTask) Entrypoint() (processor.Next, error) {
 	return processor.Chain(p.pipeline, p.processors...)
 }
 
@@ -42,7 +42,7 @@ func (p *pipeline) ID() string {
 	return p.id
 }
 
-func (p *pipeline) Step(name string) (processor.Step, error) {
+func (p *pipeline) Task(name string) (processor.Task, error) {
 	for _, step := range p.steps {
 		if step.name == name {
 			return step, nil
@@ -52,8 +52,8 @@ func (p *pipeline) Step(name string) (processor.Step, error) {
 	return nil, fmt.Errorf("no such step exists: %s", name)
 }
 
-func (p *pipeline) DependantSteps(name string) []processor.Step {
-	var steps []processor.Step
+func (p *pipeline) DependantTasks(name string) []processor.Task {
+	var steps []processor.Task
 	for _, step := range p.steps {
 		for _, ref := range step.dependsOn {
 			if name == ref {
@@ -65,14 +65,23 @@ func (p *pipeline) DependantSteps(name string) []processor.Step {
 	return steps
 }
 
-func (p *pipeline) withStep(name string, dependsOn []string, processors []processor.Bootstraper) error {
-	if slices.ContainsFunc(p.steps, func(s *pipelineStep) bool {
+func (p *pipeline) TaskDependencies(name string) []string {
+	for _, step := range p.steps {
+		if step.name == name {
+			return step.dependsOn
+		}
+	}
+	return nil
+}
+
+func (p *pipeline) withTask(name string, dependsOn []string, processors []processor.Bootstraper) error {
+	if slices.ContainsFunc(p.steps, func(s *pipelineTask) bool {
 		return s.name == name
 	}) {
 		return fmt.Errorf("duplicate step: %s", name)
 	}
 
-	p.steps = append(p.steps, &pipelineStep{
+	p.steps = append(p.steps, &pipelineTask{
 		name:       name,
 		processors: processors,
 		pipeline:   p,
@@ -100,7 +109,7 @@ func (p *pipeline) Entrypoint(name string) (processor.Next, error) {
 	}
 
 	if name != "" {
-		step, err := p.Step(name)
+		step, err := p.Task(name)
 		if err != nil {
 			return nil, fmt.Errorf("entrypoint not found: %w", err)
 		}

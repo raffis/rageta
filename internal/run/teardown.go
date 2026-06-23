@@ -23,7 +23,7 @@ func NewTeardownOptions() TeardownOptions {
 	}
 }
 
-func (s TeardownOptions) Build() Step {
+func (s TeardownOptions) Build() Task {
 	return &Teardown{opts: s}
 }
 

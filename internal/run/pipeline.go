@@ -9,16 +9,16 @@ import (
 
 type PipelineOptions struct {
 	SkipContainerLogs bool
-	SkipSteps         []string
+	SkipTasks         []string
 }
 
-func (s PipelineOptions) Build() Step {
+func (s PipelineOptions) Build() Task {
 	return &Pipeline{opts: s}
 }
 
 func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
-	flags.StringSliceVar(&s.SkipSteps, "skip-steps", s.SkipSteps, "Skip steps")
+	flags.StringSliceVar(&s.SkipTasks, "skip-steps", s.SkipTasks, "Skip steps")
 }
 
 type Pipeline struct {
@@ -32,7 +32,7 @@ type PipelineContext struct {
 func (s *Pipeline) Run(rc *RunContext, next Next) error {
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(s.stepPipeline(rc, &builder)),
+		pipeline.WithTaskBuilder(s.stepPipeline(rc, &builder)),
 		pipeline.WithLogger(rc.Logging.Logger),
 		pipeline.WithTmpDir(rc.ContextDir.Path),
 	)
@@ -41,24 +41,24 @@ func (s *Pipeline) Run(rc *RunContext, next Next) error {
 	return next(rc)
 }
 
-func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuilder) pipeline.StepBuilder {
-	return func(spec v1beta1.Step) []processor.Bootstraper {
+func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuilder) pipeline.TaskBuilder {
+	return func(spec v1beta1.Task) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
 			processor.WithReport(rc.Report.Factory),
 			processor.WithRetry(),
 			processor.WithResult(),
-			processor.WithDependsOn(),
 			processor.WithImage(),
 			processor.WithWorkdir(),
 			processor.WithStyle(),
 			processor.WithDisplay(rc.Display.Factory, rc.Display.InternalSteps, rc.Display.Expand),
 			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
 			processor.WithMatrix(),
+			processor.WithDependsOn(),
 			processor.WithOtelTrace(rc.Logging.Logger, rc.Otel.Tracer),
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
-			processor.WithSkipBlacklist(s.opts.SkipSteps),
+			processor.WithSkipBlacklist(s.opts.SkipTasks),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
 			processor.WithWhen(rc.CEL.Env),
@@ -68,7 +68,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
 			processor.WithSecretVars(osEnvMap(), rc.Secrets.Store),
 			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
-			processor.WithScript(rc.Secrets.Store),
+			processor.WithSteps(rc.Secrets.Store),
 			processor.WithSources(),
 			processor.WithCaches(),
 			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.StatusRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),

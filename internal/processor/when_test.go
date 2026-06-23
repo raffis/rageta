@@ -17,18 +17,18 @@ func TestIfBuilder(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name:      "no if conditions returns nil",
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: true,
 		},
 		{
 			name: "if conditions present returns If struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					When: []v1beta1.Condition{
 						{CEL: stringPtr("context.env.TEST_VAR == 'test'")},
 					},
@@ -38,8 +38,8 @@ func TestIfBuilder(t *testing.T) {
 		},
 		{
 			name: "multiple if conditions",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					When: []v1beta1.Condition{
 						{CEL: stringPtr("context.env.VAR1 == 'value1'")},
 						{CEL: stringPtr("context.env.VAR2 == 'value2'")},

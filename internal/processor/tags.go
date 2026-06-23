@@ -8,7 +8,7 @@ import (
 )
 
 func WithTags(globalTags []Tag) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if len(globalTags) == 0 && len(spec.Tags) == 0 {
 			return nil
 		}
@@ -41,7 +41,7 @@ func (s *Tags) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 	tags = append(tags, s.globalTags...)
 
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		//originTags := slices.Clone(ctx.Tags.tags)
 
 		for _, tag := range tags {

@@ -8,7 +8,7 @@ import (
 )
 
 // VertexStatusRouter fans out a shared BuildKit SolveStatus channel to per-step
-// channels based on vertex digest. Steps register all their LLB vertex digests
+// channels based on vertex digest. Tasks register all their LLB vertex digests
 // before solving and unregister after; unregistered vertices are dropped.
 type VertexStatusRouter struct {
 	mu    sync.RWMutex

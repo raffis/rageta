@@ -15,13 +15,13 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithScript(store secrets.Interface) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Script == nil {
+func WithSteps(store secrets.Interface) ProcessorBuilder {
+	return func(spec *v1beta1.Task) Bootstraper {
+		if spec.Steps == nil {
 			return nil
 		}
-		return &Script{
-			script:   *spec.Script,
+		return &Steps{
+			steps:    *spec.Steps,
 			stepName: spec.Name,
 			store:    store,
 		}
@@ -29,20 +29,19 @@ func WithScript(store secrets.Interface) ProcessorBuilder {
 }
 
 const (
-	defaultShell = "/bin/ash"
-	scriptPath   = "/rageta/script.sh"
-	exitCodePath = "/rageta/exitcode"
-	contextPath  = "/rageta/context.json"
+	defaultShell   = "/bin/ash"
+	contextPath    = "/rageta/context.json"
+	ashHistoryPath = "/rageta/ash_history"
 )
 
-type Script struct {
-	script   string
+type Steps struct {
+	steps    []v1beta1.Step
 	stepName string
 	store    secrets.Interface
 }
 
-func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
@@ -59,18 +58,6 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		ctx.Build.State = ctx.Build.State.Run(
 			llb.Shlex("/bin/busybox --install -s /bin"),
 		).Root()
-
-		script := s.script
-		if err := substitute.Substitute(ctx.ToV1Beta1(), &script); err != nil {
-			return ctx, err
-		}
-		script = strings.TrimSpace(script)
-
-		interpreter := defaultShell
-		if strings.HasPrefix(script, "#!") {
-			lines := strings.SplitN(script, "\n", 2)
-			interpreter = strings.TrimSpace(strings.TrimPrefix(lines[0], "#!"))
-		}
 
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Mkdir("/rageta", 0755),
@@ -96,39 +83,59 @@ func (s *Script) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		s.store.AddSecret(context.Background(), secretID, contextJSON)
 		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(contextPath, llb.SecretID(secretID)))
 
-		ctx.Build.State = ctx.Build.State.File(
-			llb.Mkfile(scriptPath, 0755, []byte(script)),
-		)
+		for k, step := range s.steps {
+			script := step.Script
+			if err := substitute.Substitute(ctx.ToV1Beta1(), &script); err != nil {
+				return ctx, err
+			}
+			script = strings.TrimSpace(script)
 
-		ctx.Build.State = ctx.Build.State.Run(
-			llb.Shlex(fmt.Sprintf("/bin/sh -c 'echo %s >> /rageta/ash_history'", scriptPath)),
-		).Root()
+			interpreter := defaultShell
+			if strings.HasPrefix(script, "#!") {
+				lines := strings.SplitN(script, "\n", 2)
+				interpreter = strings.TrimSpace(strings.TrimPrefix(lines[0], "#!"))
+			}
 
-		// We need the script to always exit 0 in order to get the filesystem state even in case of an error
-		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.Args([]string{
-			"/bin/sh", "-c",
-			fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath),
-		}))
+			scriptPath := fmt.Sprintf("/rageta/script-%d.sh", k)
+			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
+
+			ctx.Build.State = ctx.Build.State.File(
+				llb.Mkfile(scriptPath, 0755, []byte(script)),
+			)
+
+			ctx.Build.State = ctx.Build.State.Run(
+				llb.Shlex(fmt.Sprintf("/bin/sh -c 'echo %s >> %s'", scriptPath, ashHistoryPath)),
+			).Root()
+
+			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
+			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.Args([]string{
+				"/bin/sh", "-c",
+				fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath),
+			}))
+		}
 
 		ctx, err = next(ctx)
 		if err != nil {
 			return ctx, err
 		}
 
-		data, err := ctx.Build.Ref.ReadFile(ctx, gwclient.ReadRequest{Filename: exitCodePath})
-		if err != nil {
-			return ctx, err
-		}
+		for k := range s.steps {
+			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
+			data, err := ctx.Build.Ref.ReadFile(ctx, gwclient.ReadRequest{Filename: exitCodePath})
+			if err != nil {
+				return ctx, err
+			}
 
-		code, err := strconv.Atoi(strings.TrimSpace(string(data)))
-		if err != nil {
-			return ctx, fmt.Errorf("invalid exit code %q: %w", string(data), err)
-		}
+			code, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				return ctx, fmt.Errorf("invalid exit code %q from step #%d: %w", string(data), k, err)
+			}
 
-		if code != 0 {
-			return ctx, &scriptError{
-				exitCode: code,
-				parent:   fmt.Errorf("exited with code %d", code),
+			if code != 0 {
+				return ctx, &scriptError{
+					exitCode: code,
+					parent:   fmt.Errorf("step #%d exited with code %d", k, code),
+				}
 			}
 		}
 

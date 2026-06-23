@@ -15,7 +15,7 @@ func (s *EnvsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Envs, "env", "e", s.Envs, "Pass envs to the pipeline.")
 }
 
-func (s EnvsOptions) Build() Step {
+func (s EnvsOptions) Build() Task {
 	return &Envs{opts: s}
 }
 

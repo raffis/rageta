@@ -9,7 +9,7 @@ import (
 )
 
 func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		return &EnvVars{
 			env: envMap(spec.Env, osEnv, defaultEnv),
 		}
@@ -31,7 +31,7 @@ func newEnvVarsContext() EnvVarsContext {
 }
 
 func (s *EnvVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		originEnvs := make(map[string]string, len(ctx.EnvVars.Envs))
 		maps.Copy(originEnvs, ctx.EnvVars.Envs)
 		maps.Copy(ctx.EnvVars.Envs, s.env)

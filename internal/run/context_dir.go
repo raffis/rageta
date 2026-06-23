@@ -14,7 +14,7 @@ type ContextDirOptions struct {
 	SkipContextGC bool
 }
 
-func (s ContextDirOptions) Build() Step {
+func (s ContextDirOptions) Build() Task {
 	return &ContextDir{
 		opts: s,
 	}

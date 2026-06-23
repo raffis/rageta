@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type StepContext struct {
+type TaskContext struct {
 	context.Context `json:"-"`
 	uniqueID        string
 	uniqueName      string
@@ -21,7 +21,7 @@ type StepContext struct {
 	StartedAt       time.Time
 	EndedAt         time.Time
 	ContextDir      string
-	Steps           map[string]*StepContext `json:"-"`
+	Tasks           map[string]*TaskContext `json:"-"`
 	Tags            TagsContext
 	Streams         StreamsContext
 	Style           StyleContext
@@ -35,15 +35,15 @@ type StepContext struct {
 	Services        ServiceContext
 }
 
-func (c StepContext) UniqueID() string {
+func (c TaskContext) UniqueID() string {
 	return c.uniqueID
 }
 
-func (c StepContext) UniqueName() string {
+func (c TaskContext) UniqueName() string {
 	return c.uniqueName
 }
 
-func (c StepContext) WithNamespace(name string) StepContext {
+func (c TaskContext) WithNamespace(name string) TaskContext {
 	copy := c
 
 	if copy.namespace == "" {
@@ -55,8 +55,8 @@ func (c StepContext) WithNamespace(name string) StepContext {
 	return copy
 }
 
-func NewContext() StepContext {
-	return StepContext{
+func NewContext() TaskContext {
+	return TaskContext{
 		EnvVars:    newEnvVarsContext(),
 		SecretVars: newSecretVarsContext(),
 		Build:      newBuildContext(),
@@ -64,11 +64,11 @@ func NewContext() StepContext {
 		Matrix:     newMatrixContext(),
 		Events:     newEventsContext(),
 		Services:   newServiceContext(),
-		Steps:      make(map[string]*StepContext),
+		Tasks:      make(map[string]*TaskContext),
 	}
 }
 
-func (c StepContext) DeepCopy() StepContext {
+func (c TaskContext) DeepCopy() TaskContext {
 	copy := NewContext()
 	copy.uniqueID = c.uniqueID
 	copy.uniqueName = c.uniqueName
@@ -80,7 +80,7 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Streams.Stdin = c.Streams.Stdin
 	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
 	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
-	copy.Steps = maps.Clone(c.Steps)
+	copy.Tasks = maps.Clone(c.Tasks)
 	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
 	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
@@ -91,26 +91,27 @@ func (c StepContext) DeepCopy() StepContext {
 	copy.Build.Ref = c.Build.Ref
 	copy.Workdir.Path = c.Workdir.Path
 	copy.Services.Status = maps.Clone(c.Services.Status)
+	copy.Style.Style = c.Style.Style
 
 	return copy
 }
 
-func (t StepContext) Merge(c StepContext) StepContext {
+func (t TaskContext) Merge(c TaskContext) TaskContext {
 	maps.Copy(t.EnvVars.Envs, c.EnvVars.Envs)
 	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
 	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
-	maps.Copy(t.Steps, c.Steps)
+	maps.Copy(t.Tasks, c.Tasks)
 	maps.Copy(t.Services.Status, c.Services.Status)
 
 	return t
 }
 
-func (t StepContext) FromV1Beta1(vars *v1beta1.Context) {
+func (t TaskContext) FromV1Beta1(vars *v1beta1.Context) {
 }
 
-func (t StepContext) ToV1Beta1() *v1beta1.Context {
+func (t TaskContext) ToV1Beta1() *v1beta1.Context {
 	vars := &v1beta1.Context{
-		Steps:   make(map[string]*v1beta1.StepResult),
+		Tasks:   make(map[string]*v1beta1.TaskResult),
 		Matrix:  maps.Clone(t.Matrix.Params),
 		Envs:    maps.Clone(t.EnvVars.Envs),
 		Secrets: maps.Clone(t.SecretVars.Secrets),
@@ -121,18 +122,18 @@ func (t StepContext) ToV1Beta1() *v1beta1.Context {
 		Guid:    fmt.Sprintf("%d", os.Getgid()),
 	}
 
-	for k, v := range t.Steps {
-		vars.Steps[k] = &v1beta1.StepResult{
+	for k, v := range t.Tasks {
+		vars.Tasks[k] = &v1beta1.TaskResult{
 			Outputs:   make(map[string]v1beta1.ParamValue),
 			StartedAt: metav1.Time{Time: v.StartedAt},
 			EndedAt:   metav1.Time{Time: v.EndedAt},
 		}
 
 		if v.Error != nil {
-			vars.Steps[k].Error = v.Error.Error()
+			vars.Tasks[k].Error = v.Error.Error()
 		}
 
-		//	maps.Copy(vars.Steps[k].Outputs, v.OutputVars.OutputVars)
+		//	maps.Copy(vars.Tasks[k].Outputs, v.OutputVars.OutputVars)
 	}
 
 	return vars

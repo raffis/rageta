@@ -8,7 +8,7 @@ import (
 )
 
 func WithRecover() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		return &Recover{
 			stepName: spec.Name,
 		}
@@ -20,7 +20,7 @@ type Recover struct {
 }
 
 func (s *Recover) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (out StepContext, err error) {
+	return func(ctx TaskContext) (out TaskContext, err error) {
 		out = ctx
 		defer func() {
 			if r := recover(); r != nil {

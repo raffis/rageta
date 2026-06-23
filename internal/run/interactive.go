@@ -16,51 +16,57 @@ import (
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/utils"
+	"github.com/spf13/pflag"
 	"github.com/tonistiigi/fsutil"
 )
 
-type StepTerminal string
+type TaskInteractive string
 
 var (
-	StepTerminalNever       StepTerminal = "Never"
-	StepTerminalAsk         StepTerminal = "Ask"
-	StepTerminalAskIfFailed StepTerminal = "AskIfFailed"
-	StepTerminalIfFailed    StepTerminal = "IfFailed"
-	StepTerminalAlways      StepTerminal = "Always"
+	TaskInteractiveNever       TaskInteractive = "Never"
+	TaskInteractiveAsk         TaskInteractive = "Ask"
+	TaskInteractiveAskIfFailed TaskInteractive = "AskIfFailed"
+	TaskInteractiveIfFailed    TaskInteractive = "IfFailed"
+	TaskInteractiveAlways      TaskInteractive = "Always"
 )
 
-func (s StepTerminal) String() string {
+func (s TaskInteractive) String() string {
 	return string(s)
 }
 
-func NewTerminalOptions() TerminalOptions {
-	return TerminalOptions{
-		Terminal: string(StepTerminalNever),
+func NewInteractiveOptions() InteractiveOptions {
+	return InteractiveOptions{
+		Interactive: string(TaskInteractiveNever),
 	}
 }
 
-type TerminalOptions struct {
-	Terminal string
+type InteractiveOptions struct {
+	Interactive string
 }
 
-func (s *TerminalOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.Terminal, "terminal", "", s.Terminal, "Run a terminal for each failed step. The step is exported and executed as a container with its entire state and the current tty is attached directly into a /bin/ash shell within the failed step.")
+func (s *InteractiveOptions) BindFlags(flags flagset.Interface) {
+	flags.StringVarP(&s.Interactive, "interactive", "i", s.Interactive, "Run a terminal for each failed task. The task is exported and executed as a container with its entire state and the current tty is attached directly into a /bin/ash shell within the failed task.")
+	if fs, ok := flags.(interface{ Lookup(string) *pflag.Flag }); ok {
+		if f := fs.Lookup("interactive"); f != nil {
+			f.NoOptDefVal = string(TaskInteractiveIfFailed)
+		}
+	}
 }
 
-func (s TerminalOptions) Build() Step {
-	return &Terminal{opts: s}
+func (s InteractiveOptions) Build() Task {
+	return &Interactive{opts: s}
 }
 
-type Terminal struct {
-	opts TerminalOptions
+type Interactive struct {
+	opts InteractiveOptions
 }
 
-func (s *Terminal) Run(rc *RunContext, next Next) error {
+func (s *Interactive) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 	return s.walkError(rc, err)
 }
 
-func (s *Terminal) walkError(rc *RunContext, err error) error {
+func (s *Interactive) walkError(rc *RunContext, err error) error {
 	unwrappedErr := err
 	for unwrappedErr != nil {
 		if uw, ok := unwrappedErr.(interface{ Unwrap() []error }); ok {
@@ -74,16 +80,16 @@ func (s *Terminal) walkError(rc *RunContext, err error) error {
 		unwrappedErr = errors.Unwrap(unwrappedErr)
 	}
 
-	if err := s.openTerminal(rc, err); err != nil {
+	if err := s.openInteractive(rc, err); err != nil {
 		return err
 	}
 
 	return err
 }
 
-func (s *Terminal) openTerminal(rc *RunContext, err error) error {
-	var innerStepErr processor.StepError
-	if !AsInner(err, &innerStepErr) {
+func (s *Interactive) openInteractive(rc *RunContext, err error) error {
+	var innerTaskErr processor.TaskError
+	if !AsInner(err, &innerTaskErr) {
 		return err
 	}
 
@@ -93,19 +99,19 @@ func (s *Terminal) openTerminal(rc *RunContext, err error) error {
 	}
 
 	switch {
-	case s.opts.Terminal == StepTerminalNever.String():
+	case s.opts.Interactive == TaskInteractiveNever.String():
 		return nil
-	case s.opts.Terminal == StepTerminalIfFailed.String():
+	case s.opts.Interactive == TaskInteractiveIfFailed.String():
 
-	case s.opts.Terminal == StepTerminalAsk.String():
+	case s.opts.Interactive == TaskInteractiveAsk.String():
 		return nil
-	case s.opts.Terminal == StepTerminalAskIfFailed.String():
+	case s.opts.Interactive == TaskInteractiveAskIfFailed.String():
 		return nil
 	}
 
 	ctx := context.Background()
 
-	stepCtx := innerStepErr.Context().DeepCopy()
+	stepCtx := innerTaskErr.Context().DeepCopy()
 	def, marshalErr := stepCtx.Build.State.Marshal(ctx)
 	if marshalErr != nil {
 		return marshalErr
@@ -159,9 +165,9 @@ func (s *Terminal) openTerminal(rc *RunContext, err error) error {
 		stepCtx.EnvVars.Envs[fmt.Sprintf("SERVICE_%s", envName)] = service.ContainerIP
 	}
 
-	fmt.Printf("STYLE %#v\n", stepCtx.Style.Style)
 	stepCtx.EnvVars.Envs["PS1"] = fmt.Sprintf("%s$ ", stepCtx.Style.Style.Render(stepCtx.UniqueName()))
 	stepCtx.EnvVars.Envs["HISTFILE"] = "/rageta/ash_history"
+
 	pod := &runtime.Pod{
 		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
 		Spec: runtime.PodSpec{

@@ -12,19 +12,19 @@ import (
 func TestNeedsBuilder(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name:      "no needs returns nil",
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: true,
 		},
 		{
 			name: "needs present returns Needs struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
-					Needs: []v1beta1.StepReference{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
+					Needs: []v1beta1.TaskReference{
 						{Name: "step1"},
 						{Name: "step2"},
 					},
@@ -34,9 +34,9 @@ func TestNeedsBuilder(t *testing.T) {
 		},
 		{
 			name: "empty needs slice returns nil",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
-					Needs: []v1beta1.StepReference{},
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
+					Needs: []v1beta1.TaskReference{},
 				},
 			},
 			expectNil: true,
@@ -69,7 +69,7 @@ func TestNeedsBootstrap(t *testing.T) {
 	tests := []struct {
 		name            string
 		needsRefs       []string
-		existingSteps   map[string]*StepContext
+		existingTasks   map[string]*TaskContext
 		stepError       error
 		entrypointError error
 		expectError     bool
@@ -78,7 +78,7 @@ func TestNeedsBootstrap(t *testing.T) {
 		{
 			name:      "no needs to execute",
 			needsRefs: []string{},
-			existingSteps: map[string]*StepContext{
+			existingTasks: map[string]*TaskContext{
 				"step1": {},
 				"step2": {},
 			},
@@ -88,7 +88,7 @@ func TestNeedsBootstrap(t *testing.T) {
 		{
 			name:      "all needed steps already executed",
 			needsRefs: []string{"step1", "step2"},
-			existingSteps: map[string]*StepContext{
+			existingTasks: map[string]*TaskContext{
 				"step1": {},
 				"step2": {},
 			},
@@ -98,7 +98,7 @@ func TestNeedsBootstrap(t *testing.T) {
 		{
 			name:      "some needed steps not executed",
 			needsRefs: []string{"step1", "step2"},
-			existingSteps: map[string]*StepContext{
+			existingTasks: map[string]*TaskContext{
 				"step1": {},
 			},
 			expectError:   false,
@@ -107,7 +107,7 @@ func TestNeedsBootstrap(t *testing.T) {
 		{
 			name:          "step not found error",
 			needsRefs:     []string{"nonexistent"},
-			existingSteps: map[string]*StepContext{},
+			existingTasks: map[string]*TaskContext{},
 			stepError:     errors.New("step not found"),
 			expectError:   true,
 			expectedCalls: 0, // Should fail before calling next
@@ -115,7 +115,7 @@ func TestNeedsBootstrap(t *testing.T) {
 		{
 			name:            "entrypoint error",
 			needsRefs:       []string{"step1"},
-			existingSteps:   map[string]*StepContext{},
+			existingTasks:   map[string]*TaskContext{},
 			entrypointError: errors.New("entrypoint error"),
 			expectError:     true,
 			expectedCalls:   0, // Should fail before calling next
@@ -128,23 +128,23 @@ func TestNeedsBootstrap(t *testing.T) {
 			callCount := 0
 
 			// Create a mock pipeline that returns mock steps
-			pipeline := &mockPipelineWithSteps{
-				steps: make(map[string]*mockStep),
+			pipeline := &mockPipelineWithTasks{
+				steps: make(map[string]*mockTask),
 			}
 
 			// Set up mock steps for the needs
 			for _, ref := range tt.needsRefs {
-				pipeline.steps[ref] = &mockStep{
+				pipeline.steps[ref] = &mockTask{
 					entrypointError: tt.entrypointError,
 				}
 			}
 
-			// Mock the Step method to return errors when needed
+			// Mock the Task method to return errors when needed
 			if tt.stepError != nil {
 				pipeline.stepError = tt.stepError
 			}
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				callCount++
 				return ctx, nil
 			}
@@ -153,8 +153,8 @@ func TestNeedsBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-		inputCtx := StepContext{
-			Steps:      tt.existingSteps,
+		inputCtx := TaskContext{
+			Tasks:      tt.existingTasks,
 			ContextDir: "/tmp",
 			Template:   TemplateContext{Template: &v1beta1.Template{}},
 		}
@@ -179,11 +179,11 @@ func TestNeedsBootstrap(t *testing.T) {
 
 func TestNeedsContextMerging(t *testing.T) {
 	needs := &Needs{refs: []string{"step1"}}
-	pipeline := &mockPipelineWithSteps{
-		steps: map[string]*mockStep{
+	pipeline := &mockPipelineWithTasks{
+		steps: map[string]*mockTask{
 			"step1": {
 				entrypointError: nil,
-				outputCtx: StepContext{
+				outputCtx: TaskContext{
 					EnvVars: EnvVarsContext{Envs: map[string]string{
 						"STEP1_VAR": "step1_value",
 					}},
@@ -195,7 +195,7 @@ func TestNeedsContextMerging(t *testing.T) {
 		},
 	}
 
-	next := func(ctx StepContext) (StepContext, error) {
+	next := func(ctx TaskContext) (TaskContext, error) {
 		return ctx, nil
 	}
 
@@ -203,8 +203,8 @@ func TestNeedsContextMerging(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextFunc)
 
-	inputCtx := StepContext{
-		Steps:      map[string]*StepContext{},
+	inputCtx := TaskContext{
+		Tasks:      map[string]*TaskContext{},
 		ContextDir: "/tmp",
 		Template:   TemplateContext{Template: &v1beta1.Template{}},
 		EnvVars: EnvVarsContext{Envs: map[string]string{
@@ -226,12 +226,12 @@ func TestNeedsContextMerging(t *testing.T) {
 }
 
 // Mock pipeline with steps for testing
-type mockPipelineWithSteps struct {
-	steps     map[string]*mockStep
+type mockPipelineWithTasks struct {
+	steps     map[string]*mockTask
 	stepError error
 }
 
-func (m *mockPipelineWithSteps) Step(name string) (Step, error) {
+func (m *mockPipelineWithTasks) Task(name string) (Task, error) {
 	if m.stepError != nil {
 		return nil, m.stepError
 	}
@@ -241,37 +241,37 @@ func (m *mockPipelineWithSteps) Step(name string) (Step, error) {
 	return nil, errors.New("step not found")
 }
 
-func (m *mockPipelineWithSteps) Entrypoint(name string) (Next, error) {
+func (m *mockPipelineWithTasks) Entrypoint(name string) (Next, error) {
 	return nil, nil
 }
 
-func (m *mockPipelineWithSteps) EntrypointName() (string, error) {
+func (m *mockPipelineWithTasks) EntrypointName() (string, error) {
 	return "", nil
 }
 
-func (m *mockPipelineWithSteps) Name() string {
+func (m *mockPipelineWithTasks) Name() string {
 	return "mock"
 }
 
-func (m *mockPipelineWithSteps) ID() string {
+func (m *mockPipelineWithTasks) ID() string {
 	return "mock-id"
 }
 
 // Mock step for testing
-type mockStep struct {
+type mockTask struct {
 	entrypointError error
-	outputCtx       StepContext
+	outputCtx       TaskContext
 }
 
-func (m *mockStep) Processors() []Bootstraper {
+func (m *mockTask) Processors() []Bootstraper {
 	return nil
 }
 
-func (m *mockStep) Entrypoint() (Next, error) {
+func (m *mockTask) Entrypoint() (Next, error) {
 	if m.entrypointError != nil {
 		return nil, m.entrypointError
 	}
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		// Ensure the output context has a template to avoid nil pointer
 		if m.outputCtx.Template.Template == nil {
 			m.outputCtx.Template.Template = &v1beta1.Template{}

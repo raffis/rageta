@@ -15,7 +15,7 @@ func refSlice(steps []v1beta1.LocalReference) []string {
 
 func Chain(pipeline Pipeline, s ...Bootstraper) (Next, error) {
 	if len(s) == 0 {
-		return func(ctx StepContext) (StepContext, error) {
+		return func(ctx TaskContext) (TaskContext, error) {
 			return ctx, nil
 		}, nil
 	}

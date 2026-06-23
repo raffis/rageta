@@ -21,13 +21,13 @@ func Markdown(w io.Writer) *markdown {
 	}
 }
 
-func (r *markdown) Report(ctx processor.StepContext, name string) error {
+func (r *markdown) Report(ctx processor.TaskContext, name string) error {
 	r.store.Add(name, ctx)
 	return nil
 }
 
 func (r *markdown) Finalize() error {
-	fmt.Fprintln(r.w, "| # | Step | Status | Duration | Tags | Error |")
+	fmt.Fprintln(r.w, "| # | Task | Status | Duration | Tags | Error |")
 	fmt.Fprintln(r.w, "| --- | --- | --- | --- | --- | --- |")
 
 	for i, step := range r.store.Ordered() {
@@ -50,7 +50,7 @@ func (r *markdown) Finalize() error {
 	return nil
 }
 
-func (r *markdown) stringify(step processor.StepContext) (string, string, string) {
+func (r *markdown) stringify(step processor.TaskContext) (string, string, string) {
 	var (
 		duration time.Duration
 		status   string

@@ -8,7 +8,7 @@ import (
 )
 
 func WithWhen(celEnv *cel.Env) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if len(spec.When) == 0 {
 			return nil
 		}
@@ -50,7 +50,7 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 	}
 
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		vars := ctx.ToV1Beta1()
 		for i, condition := range s.conditions {
 			switch {

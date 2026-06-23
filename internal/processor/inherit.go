@@ -9,7 +9,7 @@ import (
 )
 
 func WithInherit(builder PipelineBuilder, provider provider.Interface) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Inherit == nil {
 			return nil
 		}
@@ -27,11 +27,11 @@ type Inherit struct {
 	builder  PipelineBuilder
 	provider provider.Interface
 	stepName string
-	step     v1beta1.InheritStep
+	step     v1beta1.InheritTask
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		inherit := s.step.DeepCopy()
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(),

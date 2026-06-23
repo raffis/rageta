@@ -13,11 +13,11 @@ import (
 type builder struct {
 	logger      logr.Logger
 	tmpDir      string
-	stepBuilder StepBuilder
+	stepBuilder TaskBuilder
 }
 
 type builderOption func(*builder)
-type StepBuilder func(spec v1beta1.Step) []processor.Bootstraper
+type TaskBuilder func(spec v1beta1.Task) []processor.Bootstraper
 
 func WithLogger(logger logr.Logger) func(*builder) {
 	return func(s *builder) {
@@ -25,7 +25,7 @@ func WithLogger(logger logr.Logger) func(*builder) {
 	}
 }
 
-func WithStepBuilder(stepBuilder StepBuilder) func(*builder) {
+func WithTaskBuilder(stepBuilder TaskBuilder) func(*builder) {
 	return func(s *builder) {
 		s.stepBuilder = stepBuilder
 	}
@@ -86,7 +86,7 @@ func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1bet
 	return result, nil
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.StepContext) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.TaskContext) (processor.Executable, error) {
 	pipeline.SetDefaults()
 
 	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
@@ -108,9 +108,9 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 	contextDir := e.tmpDir
 
-	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
+	return func() (processor.TaskContext, map[string]v1beta1.ParamValue, error) {
 		stepCtx.ContextDir = contextDir
-		stepCtx.Steps = make(map[string]*processor.StepContext)
+		stepCtx.Tasks = make(map[string]*processor.TaskContext)
 		stepCtx.InputVars.Inputs = mappedInputs
 		outputs := make(map[string]v1beta1.ParamValue)
 
@@ -124,7 +124,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		stepCtx, pipelineErr := entrypoint(stepCtx)
 
 		for _, pipelineOutput := range pipeline.Outputs {
-			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {
+			if _, ok := stepCtx.Tasks[pipelineOutput.Task.Name]; !ok {
 				continue
 			}
 
@@ -150,7 +150,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 		entrypoint: command.Entrypoint,
 	}
 
-	steps, err := resolveTemplates(command.Steps, command.Templates)
+	steps, err := resolveTemplates(command.Tasks, command.Templates)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 			refs = append(refs, ref.Name)
 		}
 
-		if err := p.withStep(spec.Name, refs, processors); err != nil {
+		if err := p.withTask(spec.Name, refs, processors); err != nil {
 			return p, err
 		}
 	}

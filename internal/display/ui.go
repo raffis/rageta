@@ -15,18 +15,18 @@ type sender interface {
 }
 
 func UI(sender sender) processor.DisplayFactory {
-	return func(ctx processor.StepContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
+	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		displayName := stepName
 		if short != "" {
 			displayName = short
 		}
 
 		uniqueName := ctx.UniqueName()
-		step := tui.NewStep()
+		step := tui.NewTask()
 		step.Name = uniqueName
 		step.DisplayName = displayName
 		step.Tags = ctx.Tags.Tags()
-		step.Status = tui.StepStatusRunning
+		step.Status = tui.TaskStatusRunning
 		sender.Send(step)
 
 		return step, step, func(err error) error {
@@ -36,24 +36,24 @@ func UI(sender sender) processor.DisplayFactory {
 
 			switch {
 			case err == nil:
-				sender.Send(tui.StepMsg{
+				sender.Send(tui.TaskMsg{
 					Name:   uniqueName,
-					Status: tui.StepStatusDone,
+					Status: tui.TaskStatusDone,
 				})
 			case errors.Is(err, processor.ErrAllowFailure):
-				sender.Send(tui.StepMsg{
+				sender.Send(tui.TaskMsg{
 					Name:   uniqueName,
-					Status: tui.StepStatusSkipped,
+					Status: tui.TaskStatusSkipped,
 				})
 			case errors.Is(err, processor.ErrConditionFalse):
-				sender.Send(tui.StepMsg{
+				sender.Send(tui.TaskMsg{
 					Name:   uniqueName,
-					Status: tui.StepStatusSkipped,
+					Status: tui.TaskStatusSkipped,
 				})
 			default:
-				sender.Send(tui.StepMsg{
+				sender.Send(tui.TaskMsg{
 					Name:   uniqueName,
-					Status: tui.StepStatusFailed,
+					Status: tui.TaskStatusFailed,
 				})
 			}
 

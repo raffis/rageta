@@ -9,7 +9,7 @@ import (
 )
 
 func WithInputVars(celEnv *cel.Env) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if len(spec.Inputs) == 0 {
 			return nil
 		}
@@ -37,7 +37,7 @@ func newInputVarsContext() InputVarsContext {
 }
 
 func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		expr := make(map[string]cel.Program)
 
 		for _, input := range s.inputs {

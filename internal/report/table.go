@@ -25,7 +25,7 @@ func Table(w io.Writer) *table {
 	}
 }
 
-func (r *table) Report(ctx processor.StepContext, name string) error {
+func (r *table) Report(ctx processor.TaskContext, name string) error {
 	r.store.Add(name, ctx)
 	return nil
 }
@@ -85,24 +85,24 @@ func (r *table) Finalize() error {
 	return nil
 }
 
-func (r *table) stringify(step processor.StepContext) (string, string, string) {
+func (r *table) stringify(step processor.TaskContext) (string, string, string) {
 	var (
 		duration time.Duration
-		status   tui.StepStatus
+		status   tui.TaskStatus
 		errMsg   string
 	)
 
 	switch {
 	case step.StartedAt.IsZero():
-		status = tui.StepStatusWaiting
+		status = tui.TaskStatusWaiting
 	case step.Error != nil && !processor.AbortOnError(step.Error):
-		status = tui.StepStatusSkipped
+		status = tui.TaskStatusSkipped
 		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
 	case step.Error != nil:
-		status = tui.StepStatusFailed
+		status = tui.TaskStatusFailed
 		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
 	case step.Error == nil:
-		status = tui.StepStatusDone
+		status = tui.TaskStatusDone
 	}
 
 	if !step.EndedAt.IsZero() {

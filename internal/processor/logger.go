@@ -10,7 +10,7 @@ import (
 type LogBuilder func(w io.Writer) (logr.Logger, error)
 
 func WithLogger(defaultLogger logr.Logger, logBuilder LogBuilder, detached bool) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if logBuilder == nil && defaultLogger.IsZero() {
 			return nil
 		}
@@ -32,7 +32,7 @@ type Logger struct {
 }
 
 func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		logger := s.logger
 
 		if ctx.Streams.Stderr != nil && ctx.Streams.Stderr != io.Discard && !s.detached {

@@ -15,7 +15,7 @@ func (s *TagsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Tags, "tag", "", s.Tags, "Add global custom tags to pipeline steps. Format is `key=value(:#color). Example: `--tags domain=example.com:#FF0000`")
 }
 
-func (s TagsOptions) Build() Step {
+func (s TagsOptions) Build() Task {
 	return &Tags{opts: s}
 }
 

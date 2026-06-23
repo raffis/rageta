@@ -8,7 +8,7 @@ import (
 )
 
 func WithDependsOn() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		/*if len(spec.DependsOn) == 0 {
 			return nil
 		}*/
@@ -26,16 +26,16 @@ type DependsOn struct {
 }
 
 func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
-		var dependsOn []Step
+	return func(ctx TaskContext) (TaskContext, error) {
+		var dependsOn []Task
 
 		for _, name := range s.refs {
-			_, started := ctx.Steps[name]
+			_, started := ctx.Tasks[name]
 			if started {
 				continue
 			}
 
-			step, err := pipeline.Step(name)
+			step, err := pipeline.Task(name)
 			if err != nil {
 				return ctx, err
 			}
@@ -43,7 +43,7 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			dependsOn = append(dependsOn, step)
 		}
 
-		ctx, err := s.processSteps(ctx, dependsOn)
+		ctx, err := s.processTasks(ctx, dependsOn)
 
 		if err != nil {
 			return ctx, err
@@ -54,12 +54,28 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		return ctx, nil
-		//return s.processSteps(ctx, pipeline.DependantSteps(s.stepName))
+		var ready []Task
+		for _, candidate := range pipeline.DependantTasks(s.stepName) {
+			allSatisfied := true
+			for _, dep := range pipeline.TaskDependencies(candidate.Name()) {
+				if dep == s.stepName {
+					continue
+				}
+				if _, ok := ctx.Tasks[dep]; !ok {
+					allSatisfied = false
+					break
+				}
+			}
+			if allSatisfied {
+				ready = append(ready, candidate)
+			}
+		}
+
+		return s.processTasks(ctx, ready)
 	}, nil
 }
 
-func (s *DependsOn) processSteps(ctx StepContext, steps []Step) (StepContext, error) {
+func (s *DependsOn) processTasks(ctx TaskContext, steps []Task) (TaskContext, error) {
 	if len(steps) == 0 {
 		return ctx, nil
 	}
@@ -72,7 +88,7 @@ func (s *DependsOn) processSteps(ctx StepContext, steps []Step) (StepContext, er
 
 	var launched int
 	for _, step := range steps {
-		if _, alreadyRunning := ctx.Steps[step.Name()]; alreadyRunning {
+		if _, alreadyRunning := ctx.Tasks[step.Name()]; alreadyRunning {
 			continue
 		}
 
@@ -84,7 +100,7 @@ func (s *DependsOn) processSteps(ctx StepContext, steps []Step) (StepContext, er
 		launched++
 		copyCTX := ctx.DeepCopy()
 		copyCTX.Context = cancelCtx
-		copyCTX.Steps[s.stepName] = &copyCTX
+		copyCTX.Tasks[s.stepName] = &copyCTX
 
 		go func() {
 			t, err := next(copyCTX)

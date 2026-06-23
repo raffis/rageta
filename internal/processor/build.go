@@ -14,8 +14,8 @@ import (
 )
 
 func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool, builtRefs *[]gwclient.Reference) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		if spec.Script == nil {
+	return func(spec *v1beta1.Task) Bootstraper {
+		if spec.Steps == nil {
 			return nil
 		}
 
@@ -50,7 +50,7 @@ type BuildContext struct {
 }
 
 func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if s.noCache {
 			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.IgnoreCache)
 		}

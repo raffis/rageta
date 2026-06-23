@@ -11,7 +11,7 @@ import (
 )
 
 func WithContainerLogs(enabled bool, wrap secretMaskWrapper) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		/*if !enabled || spec.Run == nil {
 			return nil
 		}*/
@@ -34,7 +34,7 @@ type ContainerLogs struct {
 }
 
 func (s *ContainerLogs) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		stdoutPath := path.Join(ctx.ContextDir, ctx.UniqueID(), "stdout.out")
 
 		stdout, err := os.OpenFile(stdoutPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)

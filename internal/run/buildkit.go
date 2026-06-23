@@ -26,7 +26,7 @@ type BuildkitOptions struct {
 	NoCache         bool
 }
 
-func (s BuildkitOptions) Build() Step {
+func (s BuildkitOptions) Build() Task {
 	return &Buildkit{
 		opts: s,
 	}

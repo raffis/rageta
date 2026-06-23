@@ -33,7 +33,7 @@ func (s *ReportOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ReportOutput, "report-output", "", s.ReportOutput, "Destination for the report output.")
 }
 
-func (s ReportOptions) Build() Step {
+func (s ReportOptions) Build() Task {
 	return &Report{opts: s}
 }
 

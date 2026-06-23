@@ -14,7 +14,7 @@ type ForkOptions struct {
 	Fork bool
 }
 
-func (s ForkOptions) Build() Step {
+func (s ForkOptions) Build() Task {
 	return &Fork{
 		opts: s,
 	}

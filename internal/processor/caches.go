@@ -12,7 +12,7 @@ import (
 )
 
 func WithCaches() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Caches == nil {
 			return nil
 		}
@@ -27,7 +27,7 @@ type Caches struct {
 }
 
 func (s *Caches) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		caches := make([]v1beta1.Cache, len(s.caches))
 		subst := []any{}
 

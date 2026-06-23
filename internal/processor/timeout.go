@@ -9,7 +9,7 @@ import (
 )
 
 func WithTimeout() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Timeout.Duration == 0 {
 			return nil
 		}
@@ -27,7 +27,7 @@ type Timeout struct {
 }
 
 func (s *Timeout) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		copyCtx := ctx
 
 		var cancel context.CancelFunc

@@ -7,7 +7,7 @@ import (
 )
 
 func WithSkipBlacklist(blacklist []string) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if len(blacklist) == 0 {
 			return nil
 		}
@@ -31,7 +31,7 @@ var ErrSkipBlacklist = &pipelineError{
 }
 
 func (s *SkipBlacklist) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if !slices.Contains(s.blacklist, s.stepName) {
 			return next(ctx)
 		}

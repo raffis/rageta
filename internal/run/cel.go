@@ -11,7 +11,7 @@ import (
 
 type CELOptions struct{}
 
-func (s CELOptions) Build() Step {
+func (s CELOptions) Build() Task {
 	return &CEL{opts: s}
 }
 
@@ -32,7 +32,7 @@ func (s *CEL) Run(rc *RunContext, next Next) error {
 		ext.Sets(),
 		ext.NativeTypes(ext.ParseStructTags(true),
 			reflect.TypeOf(&v1beta1.Context{}),
-			reflect.TypeOf(&v1beta1.StepResult{}),
+			reflect.TypeOf(&v1beta1.TaskResult{}),
 			reflect.TypeOf(&v1beta1.ParamValue{}),
 			//reflect.TypeOf(&v1beta1.Output{}),
 		),

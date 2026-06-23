@@ -20,7 +20,7 @@ func (s *ExecuteOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.Entrypoint, "entrypoint", "t", s.Entrypoint, "Entrypoint for the given pipeline. The pipelines default is used otherwise.")
 }
 
-func (s ExecuteOptions) Build() Step {
+func (s ExecuteOptions) Build() Task {
 	return &Execute{opts: s}
 }
 

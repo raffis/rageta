@@ -33,7 +33,7 @@ type ContainerRuntimeOptions struct {
 	DockerQuiet      bool
 }
 
-func (s ContainerRuntimeOptions) Build() Step {
+func (s ContainerRuntimeOptions) Build() Task {
 	return &ContainerRuntime{
 		opts: s,
 	}

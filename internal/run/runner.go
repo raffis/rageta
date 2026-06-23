@@ -8,17 +8,17 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type Step interface {
+type Task interface {
 	Run(rc *RunContext, next Next) error
 }
 
 type Next func(rc *RunContext) error
 
 type Runner struct {
-	steps []Step
+	steps []Task
 }
 
-func Builder(steps ...Step) *Runner {
+func Builder(steps ...Task) *Runner {
 	result := &Runner{}
 	result.steps = steps
 	return result
@@ -71,7 +71,7 @@ type Options struct {
 	ContextDirOptions       ContextDirOptions
 	TagsOptions             TagsOptions
 	SummaryOptions          SummaryOptions
-	TerminalOptions         TerminalOptions
+	InteractiveOptions      InteractiveOptions
 	ExitCodeOptions         ExitCodeOptions
 }
 
@@ -89,7 +89,7 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
 	s.ProviderOptions.BindFlags(flags)
-	s.TerminalOptions.BindFlags(flags)
+	s.InteractiveOptions.BindFlags(flags)
 	s.ExitCodeOptions.BindFlags(flags)
 	s.SummaryOptions.BindFlags(flags)
 	s.TagsOptions.BindFlags(pipelineFlags)
@@ -111,7 +111,7 @@ func DefaultOptions() Options {
 		EventsOptions:           NewEventsOptions(),
 		ReportOptions:           NewReportOptions(),
 		BuildkitOptions:         NewBuildkitOptions(),
-		TerminalOptions:         NewTerminalOptions(),
+		InteractiveOptions:      NewInteractiveOptions(),
 	}
 }
 
@@ -119,8 +119,6 @@ func (o Options) Build() *Runner {
 	return Builder(
 		o.ExitCodeOptions.Build(),
 		o.TeardownOptions.Build(),
-		o.TerminalOptions.Build(),
-		o.SummaryOptions.Build(),
 		o.ContextDirOptions.Build(),
 		o.SecretOptions.Build(),
 		o.ReportOptions.Build(),
@@ -135,6 +133,8 @@ func (o Options) Build() *Runner {
 		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
 		o.BuildkitOptions.Build(),
+		o.SummaryOptions.Build(),
+		o.InteractiveOptions.Build(),
 		o.ProviderOptions.Build(),
 		o.PipelineOptions.Build(),
 		o.InputsOptions.Build(),

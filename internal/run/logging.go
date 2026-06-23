@@ -19,7 +19,7 @@ type LoggingOptions struct {
 	Detached  bool
 }
 
-func (s LoggingOptions) Build() Step {
+func (s LoggingOptions) Build() Task {
 	return &Logging{
 		opts: s,
 	}

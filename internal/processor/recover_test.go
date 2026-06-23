@@ -12,17 +12,17 @@ import (
 func TestRecoverBuilder(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name:      "always returns Recover struct",
-			spec:      &v1beta1.Step{Name: "test-step"},
+			spec:      &v1beta1.Task{Name: "test-step"},
 			expectNil: false,
 		},
 		{
 			name:      "empty step name",
-			spec:      &v1beta1.Step{Name: ""},
+			spec:      &v1beta1.Task{Name: ""},
 			expectNil: false,
 		},
 	}
@@ -93,7 +93,7 @@ func TestRecoverBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				nextCalled = true
 				if tt.shouldPanic {
 					panic("test panic")
@@ -105,7 +105,7 @@ func TestRecoverBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			inputCtx := StepContext{}
+			inputCtx := TaskContext{}
 			resultCtx, resultErr := nextFunc(inputCtx)
 
 			assert.True(t, nextCalled)
@@ -132,7 +132,7 @@ func TestRecoverPanicRecovery(t *testing.T) {
 	pipeline := &mockPipeline{}
 	nextCalled := false
 
-	next := func(ctx StepContext) (StepContext, error) {
+	next := func(ctx TaskContext) (TaskContext, error) {
 		nextCalled = true
 		// Simulate different types of panics
 		panic("string panic")
@@ -142,7 +142,7 @@ func TestRecoverPanicRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextFunc)
 
-	inputCtx := StepContext{}
+	inputCtx := TaskContext{}
 	resultCtx, resultErr := nextFunc(inputCtx)
 
 	assert.True(t, nextCalled)
@@ -158,7 +158,7 @@ func TestRecoverContextPreservation(t *testing.T) {
 	pipeline := &mockPipeline{}
 	nextCalled := false
 
-	next := func(ctx StepContext) (StepContext, error) {
+	next := func(ctx TaskContext) (TaskContext, error) {
 		nextCalled = true
 		// Modify context
 		ctx.ContextDir = "/modified"
@@ -170,7 +170,7 @@ func TestRecoverContextPreservation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextFunc)
 
-	inputCtx := StepContext{
+	inputCtx := TaskContext{
 		ContextDir: "/original",
 		EnvVars: EnvVarsContext{Envs: map[string]string{
 			"ORIGINAL": "true",

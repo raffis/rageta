@@ -7,13 +7,13 @@ import (
 )
 
 type DisplayCloser func(err error) error
-type DisplayFactory func(ctx StepContext, stepName, short string) (io.Writer, io.Writer, DisplayCloser)
+type DisplayFactory func(ctx TaskContext, stepName, short string) (io.Writer, io.Writer, DisplayCloser)
 
 func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		/*internalStep := spec.Run == nil && spec.Inherit == nil
+	return func(spec *v1beta1.Task) Bootstraper {
+		/*internalTask := spec.Run == nil && spec.Inherit == nil
 
-		if !withInternals && internalStep {
+		if !withInternals && internalTask {
 			return nil
 		}*/
 
@@ -32,7 +32,7 @@ func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) Pro
 type Display struct {
 	stepName      string
 	short         string
-	spec          *v1beta1.Step
+	spec          *v1beta1.Task
 	outputFactory DisplayFactory
 	decouple      bool
 }
@@ -46,7 +46,7 @@ type StreamsContext struct {
 }
 
 func (s *Display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.Tags.Has("pipeline") && !s.decouple {
 			return next(ctx)
 		}

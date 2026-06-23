@@ -10,7 +10,7 @@ import (
 )
 
 func WithResult() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		return &Result{
 			stepName: spec.Name,
 		}
@@ -22,7 +22,7 @@ type Result struct {
 }
 
 func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		ctx.StartedAt = time.Now()
 
 		ctx.uniqueName = s.stepName
@@ -34,7 +34,7 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		hasher.Write([]byte(ctx.UniqueName()))
 		b := hasher.Sum(nil)
 		ctx.uniqueID = fmt.Sprintf("%x", b)
-		ctx.Steps[s.stepName] = &ctx
+		ctx.Tasks[s.stepName] = &ctx
 
 		ctx, err := next(ctx)
 		ctx.EndedAt = time.Now()
@@ -42,14 +42,14 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		if err != nil {
 			if uw, ok := err.(interface{ Unwrap() []error }); ok {
-				err = &multiStepError{
+				err = &multiTaskError{
 					parents:  uw.Unwrap(),
 					stepName: s.stepName,
 					context:  ctx,
 					uniqueID: ctx.uniqueID,
 				}
 			} else {
-				err = &stepError{
+				err = &taskError{
 					parent:   err,
 					stepName: s.stepName,
 					context:  ctx,
@@ -68,48 +68,48 @@ func (s *Result) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-type stepError struct {
+type taskError struct {
 	parent   error
 	stepName string
 	uniqueID string
-	context  StepContext
+	context  TaskContext
 }
 
-func (e *stepError) Error() string {
+func (e *taskError) Error() string {
 	return fmt.Sprintf("step %s failed: %s", e.stepName, e.parent.Error())
 }
 
-func (e *stepError) Unwrap() error {
+func (e *taskError) Unwrap() error {
 	return e.parent
 }
 
-func (e *stepError) StepName() string {
+func (e *taskError) TaskName() string {
 	return e.stepName
 }
 
-func (e *stepError) Context() StepContext {
+func (e *taskError) Context() TaskContext {
 	return e.context
 }
 
-type multiStepError struct {
+type multiTaskError struct {
 	parents  []error
 	stepName string
 	uniqueID string
-	context  StepContext
+	context  TaskContext
 }
 
-func (e *multiStepError) Error() string {
-	return fmt.Sprintf("step %s failed: %s", e.stepName, errors.Join(e.parents...).Error())
+func (e *multiTaskError) Error() string {
+	return fmt.Sprintf("task %s failed: %s", e.stepName, errors.Join(e.parents...).Error())
 }
 
-func (e *multiStepError) Unwrap() []error {
+func (e *multiTaskError) Unwrap() []error {
 	return e.parents
 }
 
-func (e *multiStepError) StepName() string {
+func (e *multiTaskError) TaskName() string {
 	return e.stepName
 }
 
-func (e *multiStepError) Context() StepContext {
+func (e *multiTaskError) Context() TaskContext {
 	return e.context
 }

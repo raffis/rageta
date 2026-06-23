@@ -9,9 +9,9 @@ import (
 )
 
 func TestResolveTemplates_NoTemplates(t *testing.T) {
-	steps := []v1beta1.Step{
-		{Name: "a", Run: &v1beta1.RunStep{Container: v1beta1.Container{Image: "alpine"}}},
-		{Name: "b", Run: &v1beta1.RunStep{Container: v1beta1.Container{Image: "ubuntu"}}},
+	steps := []v1beta1.Task{
+		{Name: "a", Run: &v1beta1.RunTask{Container: v1beta1.Container{Image: "alpine"}}},
+		{Name: "b", Run: &v1beta1.RunTask{Container: v1beta1.Container{Image: "ubuntu"}}},
 	}
 
 	resolved, err := resolveTemplates(steps)
@@ -20,15 +20,15 @@ func TestResolveTemplates_NoTemplates(t *testing.T) {
 }
 
 func TestResolveTemplates_SimpleTemplates(t *testing.T) {
-	template := v1beta1.Step{
+	template := v1beta1.Task{
 		Name: "base",
-		Run: &v1beta1.RunStep{
+		Run: &v1beta1.RunTask{
 			Container: v1beta1.Container{
 				Image:  "alpine",
 				Script: "echo base",
 			},
 		},
-		StepOptions: v1beta1.StepOptions{
+		TaskOptions: v1beta1.TaskOptions{
 			AllowFailure: true,
 			Env: []v1beta1.EnvVar{
 				{Name: "FOO", Value: strPtr("bar")},
@@ -36,9 +36,9 @@ func TestResolveTemplates_SimpleTemplates(t *testing.T) {
 		},
 	}
 
-	Templatesing := v1beta1.Step{
+	Templatesing := v1beta1.Task{
 		Name: "child",
-		StepOptions: v1beta1.StepOptions{
+		TaskOptions: v1beta1.TaskOptions{
 			Templates: []v1beta1.LocalReference{{Name: "base"}},
 			Env: []v1beta1.EnvVar{
 				{Name: "EXTRA", Value: strPtr("val")},
@@ -46,7 +46,7 @@ func TestResolveTemplates_SimpleTemplates(t *testing.T) {
 		},
 	}
 
-	resolved, err := resolveTemplates([]v1beta1.Step{template, Templatesing})
+	resolved, err := resolveTemplates([]v1beta1.Task{template, Templatesing})
 	require.NoError(t, err)
 	require.Len(t, resolved, 2)
 
@@ -61,24 +61,24 @@ func TestResolveTemplates_SimpleTemplates(t *testing.T) {
 }
 
 func TestResolveTemplates_OverrideFields(t *testing.T) {
-	template := v1beta1.Step{
+	template := v1beta1.Task{
 		Name: "base",
-		Run: &v1beta1.RunStep{
+		Run: &v1beta1.RunTask{
 			Container: v1beta1.Container{Image: "alpine", Script: "echo template"},
 		},
 	}
 
-	Templatesing := v1beta1.Step{
+	Templatesing := v1beta1.Task{
 		Name: "child",
-		StepOptions: v1beta1.StepOptions{
+		TaskOptions: v1beta1.TaskOptions{
 			Templates: []v1beta1.LocalReference{{Name: "base"}},
 		},
-		Run: &v1beta1.RunStep{
+		Run: &v1beta1.RunTask{
 			Container: v1beta1.Container{Image: "ubuntu"},
 		},
 	}
 
-	resolved, err := resolveTemplates([]v1beta1.Step{template, Templatesing})
+	resolved, err := resolveTemplates([]v1beta1.Task{template, Templatesing})
 	require.NoError(t, err)
 
 	child := resolved[1]
@@ -88,46 +88,46 @@ func TestResolveTemplates_OverrideFields(t *testing.T) {
 }
 
 func TestResolveTemplates_ChainedTemplates(t *testing.T) {
-	grandparent := v1beta1.Step{
+	grandparent := v1beta1.Task{
 		Name: "grandparent",
-		Run:  &v1beta1.RunStep{Container: v1beta1.Container{Image: "alpine"}},
-		StepOptions: v1beta1.StepOptions{
+		Run:  &v1beta1.RunTask{Container: v1beta1.Container{Image: "alpine"}},
+		TaskOptions: v1beta1.TaskOptions{
 			AllowFailure: true,
 		},
 	}
 
-	parent := v1beta1.Step{
+	parent := v1beta1.Task{
 		Name: "parent",
-		StepOptions: v1beta1.StepOptions{
+		TaskOptions: v1beta1.TaskOptions{
 			Templates: []v1beta1.LocalReference{{Name: "grandparent"}},
 			Env:       []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("parent")}},
 		},
 	}
 
-	child := v1beta1.Step{
+	child := v1beta1.Task{
 		Name: "child",
-		StepOptions: v1beta1.StepOptions{
+		TaskOptions: v1beta1.TaskOptions{
 			Templates: []v1beta1.LocalReference{{Name: "parent"}},
 			Env:       []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}},
 		},
 	}
 
-	resolved, err := resolveTemplates([]v1beta1.Step{grandparent, parent, child})
+	resolved, err := resolveTemplates([]v1beta1.Task{grandparent, parent, child})
 	require.NoError(t, err)
 
-	childStep := resolved[2]
-	assert.Equal(t, "child", childStep.Name)
-	assert.Nil(t, childStep.Templates)
-	assert.Equal(t, "alpine", childStep.Run.Image)
-	assert.True(t, childStep.AllowFailure)
-	assert.Equal(t, []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}}, childStep.Env)
+	childTask := resolved[2]
+	assert.Equal(t, "child", childTask.Name)
+	assert.Nil(t, childTask.Templates)
+	assert.Equal(t, "alpine", childTask.Run.Image)
+	assert.True(t, childTask.AllowFailure)
+	assert.Equal(t, []v1beta1.EnvVar{{Name: "LEVEL", Value: strPtr("child")}}, childTask.Env)
 }
 
 func TestResolveTemplates_UnknownTemplate(t *testing.T) {
-	steps := []v1beta1.Step{
+	steps := []v1beta1.Task{
 		{
 			Name: "child",
-			StepOptions: v1beta1.StepOptions{
+			TaskOptions: v1beta1.TaskOptions{
 				Templates: []v1beta1.LocalReference{{Name: "nonexistent"}},
 			},
 		},
@@ -138,16 +138,16 @@ func TestResolveTemplates_UnknownTemplate(t *testing.T) {
 }
 
 func TestResolveTemplates_CircularTemplates(t *testing.T) {
-	steps := []v1beta1.Step{
+	steps := []v1beta1.Task{
 		{
 			Name: "a",
-			StepOptions: v1beta1.StepOptions{
+			TaskOptions: v1beta1.TaskOptions{
 				Templates: []v1beta1.LocalReference{{Name: "b"}},
 			},
 		},
 		{
 			Name: "b",
-			StepOptions: v1beta1.StepOptions{
+			TaskOptions: v1beta1.TaskOptions{
 				Templates: []v1beta1.LocalReference{{Name: "a"}},
 			},
 		},

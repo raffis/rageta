@@ -10,12 +10,12 @@ import (
 
 const (
 	stepDurationName        = "rageta.step.duration"
-	stepDurationDescription = "Step execution duration in seconds"
+	stepDurationDescription = "Task execution duration in seconds"
 	stepDurationUnit        = "s"
 )
 
 func WithOtelMetrics(meter metric.Meter) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if meter == nil {
 			return nil
 		}
@@ -40,7 +40,7 @@ func (s *OtelMetrics) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return nil, err
 	}
 
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		start := time.Now()
 		ctx, err := next(ctx)
 		duration := time.Since(start).Seconds()

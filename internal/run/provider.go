@@ -32,7 +32,7 @@ func (s *ProviderOptions) BindFlags(flags flagset.Interface) {
 	flags.AddFlagSet(ociFlags)
 }
 
-func (s ProviderOptions) Build() Step {
+func (s ProviderOptions) Build() Task {
 	return &Provider{opts: s}
 }
 

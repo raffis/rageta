@@ -9,7 +9,7 @@ import (
 )
 
 func WithImage() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Image == "" {
 			return nil
 		}
@@ -25,7 +25,7 @@ type Image struct {
 }
 
 func (s *Image) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		image := s.image
 		if err := substitute.Substitute(ctx.ToV1Beta1(), &image); err != nil {
 			return ctx, err

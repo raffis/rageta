@@ -27,7 +27,7 @@ func (s *OtelOptions) BindFlags(flags flagset.Interface) {
 	flags.AddFlagSet(otelFlags)
 }
 
-func (s OtelOptions) Build() Step {
+func (s OtelOptions) Build() Task {
 	return &Otel{opts: s}
 }
 

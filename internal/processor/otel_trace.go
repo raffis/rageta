@@ -8,7 +8,7 @@ import (
 )
 
 func WithOtelTrace(logger logr.Logger, tracer trace.Tracer) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if tracer == nil {
 			return nil
 		}
@@ -28,7 +28,7 @@ type OtelTrace struct {
 }
 
 func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		var span trace.Span
 		ctx.Context, span = s.tracer.Start(ctx, s.stepName, trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()

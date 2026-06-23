@@ -10,7 +10,7 @@ import (
 )
 
 func WithSecretVars(osEnv map[string]string, store secrets.Interface) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		secrets := secretMap(spec.Secrets, osEnv)
 		for k, v := range secrets {
 			store.AddSecret(context.Background(), k, []byte(v))
@@ -37,7 +37,7 @@ func newSecretVarsContext() SecretVarsContext {
 }
 
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		for k, _ := range ctx.SecretVars.Secrets {
 			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
 		}

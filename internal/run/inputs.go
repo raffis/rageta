@@ -17,12 +17,12 @@ type InputsOptions struct {
 	Args []string
 }
 
-func (s InputsOptions) Build() Step {
+func (s InputsOptions) Build() Task {
 	return &Inputs{opts: s}
 }
 
 func (s *InputsOptions) BindFlags(flags flagset.Interface) {
-	flags.StringArrayVarP(&s.Args, "input", "i", s.Args, "Pass inputs to the pipeline.")
+	flags.StringArrayVarP(&s.Args, "set", "s", s.Args, "Pass inputs to the pipeline.")
 }
 
 type Inputs struct {

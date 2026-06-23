@@ -29,8 +29,8 @@ const (
 	DurationColumnPercent = 20
 )
 
-// NewStep creates a new StepMsg with initialized components
-func NewStep() StepMsg {
+// NewTask creates a new TaskMsg with initialized components
+func NewTask() TaskMsg {
 	viewport := pager.New(0, 0)
 	viewport.ShowLineNumbers = true
 	viewport.AutoScroll = true
@@ -40,22 +40,22 @@ func NewStep() StepMsg {
 	loader.Spinner = spinner.MiniDot
 	loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 
-	return StepMsg{
+	return TaskMsg{
 		w:        xio.NewLineWriter(&viewport),
 		viewport: &viewport,
 		loader:   loader,
 	}
 }
 
-// StepMsg represents a pipeline step with its state and UI components
-type StepMsg struct {
+// TaskMsg represents a pipeline step with its state and UI components
+type TaskMsg struct {
 	w           *xio.LineWriter
 	viewport    *pager.Model
 	loader      spinner.Model
 	Name        string
 	DisplayName string
 	Tags        []processor.Tag
-	Status      StepStatus
+	Status      TaskStatus
 	ready       bool
 	started     time.Time
 	finished    time.Time
@@ -63,27 +63,27 @@ type StepMsg struct {
 	listHeight  int
 }
 
-func (t StepMsg) Flush() error {
+func (t TaskMsg) Flush() error {
 	return t.w.Flush()
 }
 
 // Write implements io.Writer interface for the step's viewport
-func (t StepMsg) Write(b []byte) (int, error) {
+func (t TaskMsg) Write(b []byte) (int, error) {
 	return t.w.Write(b)
 }
 
 // GetName returns the display name of the step
-func (t StepMsg) GetName() string {
+func (t TaskMsg) GetName() string {
 	return t.DisplayName
 }
 
-// WithStatus creates a new StepMsg with the given status, updating timestamps
-func (t StepMsg) WithStatus(status StepStatus) StepMsg {
-	if t.started.IsZero() && status == StepStatusRunning {
+// WithStatus creates a new TaskMsg with the given status, updating timestamps
+func (t TaskMsg) WithStatus(status TaskStatus) TaskMsg {
+	if t.started.IsZero() && status == TaskStatusRunning {
 		t.started = time.Now()
 	}
 
-	if t.finished.IsZero() && status > StepStatusRunning {
+	if t.finished.IsZero() && status > TaskStatusRunning {
 		t.finished = time.Now()
 	}
 
@@ -92,7 +92,7 @@ func (t StepMsg) WithStatus(status StepStatus) StepMsg {
 }
 
 // TagsAsString returns a formatted string representation of all tags
-func (t *StepMsg) TagsAsString() string {
+func (t *TaskMsg) TagsAsString() string {
 	if len(t.Tags) == 0 {
 		return ""
 	}
@@ -112,7 +112,7 @@ func (t *StepMsg) TagsAsString() string {
 }
 
 // shortTags returns a compact representation of tags using colored dots
-func (t *StepMsg) shortTags() string {
+func (t *TaskMsg) shortTags() string {
 	if len(t.Tags) == 0 {
 		return ""
 	}
@@ -129,11 +129,11 @@ func (t *StepMsg) shortTags() string {
 }
 
 // Title returns the formatted title for list display
-func (t StepMsg) Title() string {
+func (t TaskMsg) Title() string {
 	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
 
 	var status string
-	if t.Status == StepStatusRunning {
+	if t.Status == TaskStatusRunning {
 		status = t.loader.View()
 	} else {
 		status = t.Status.Render()
@@ -152,7 +152,7 @@ func (t StepMsg) Title() string {
 }
 
 // duration returns a formatted duration string for the step
-func (t *StepMsg) duration() string {
+func (t *TaskMsg) duration() string {
 	if t.started.IsZero() {
 		return NotStartedDuration
 	}
@@ -165,7 +165,7 @@ func (t *StepMsg) duration() string {
 }
 
 // Description returns the description for list display (used in narrow layouts)
-func (t StepMsg) Description() string {
+func (t TaskMsg) Description() string {
 	if t.listWidth-5 < ShortListThreshold {
 		return t.duration()
 	}
@@ -187,7 +187,7 @@ func ellipsis(s string, maxLen int) string {
 }
 
 // FilterValue returns the value used for filtering
-func (t StepMsg) FilterValue() string {
+func (t TaskMsg) FilterValue() string {
 	values := []string{
 		t.DisplayName,
 		t.Name,
@@ -201,18 +201,18 @@ func (t StepMsg) FilterValue() string {
 	return strings.Join(values, " ")
 }
 
-// StepStatus represents the current state of a pipeline step
-type StepStatus int
+// TaskStatus represents the current state of a pipeline step
+type TaskStatus int
 
 const (
-	StepStatusWaiting StepStatus = iota
-	StepStatusRunning
-	StepStatusFailed
-	StepStatusDone
-	StepStatusSkipped
+	TaskStatusWaiting TaskStatus = iota
+	TaskStatusRunning
+	TaskStatusFailed
+	TaskStatusDone
+	TaskStatusSkipped
 )
 
-// Step status string representations
+// Task status string representations
 var stepStatusStrings = []string{
 	"waiting",
 	"running",
@@ -222,7 +222,7 @@ var stepStatusStrings = []string{
 }
 
 // String returns the string representation of the step status
-func (e StepStatus) String() string {
+func (e TaskStatus) String() string {
 	if int(e) >= len(stepStatusStrings) {
 		return "unknown"
 	}
@@ -230,17 +230,17 @@ func (e StepStatus) String() string {
 }
 
 // Render returns the styled visual representation of the step status
-func (e StepStatus) Render() string {
+func (e TaskStatus) Render() string {
 	switch e {
-	case StepStatusRunning:
+	case TaskStatusRunning:
 		return stepRunningStyle.Render("◴")
-	case StepStatusDone:
+	case TaskStatusDone:
 		return stepOkStyle.Render("✔")
-	case StepStatusFailed:
+	case TaskStatusFailed:
 		return stepFailedStyle.Render("✗")
-	case StepStatusWaiting:
+	case TaskStatusWaiting:
 		return stepWaitingStyle.Render("◎")
-	case StepStatusSkipped:
+	case TaskStatusSkipped:
 		return stepWarningStyle.Render("⚠")
 	default:
 		return stepWaitingStyle.Render("?")

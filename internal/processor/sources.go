@@ -13,7 +13,7 @@ import (
 )
 
 func WithSources() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Sources == nil {
 			return nil
 		}
@@ -28,7 +28,7 @@ type Sources struct {
 }
 
 func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		sources := make([]v1beta1.Source, len(s.sources))
 		subst := []any{}
 
@@ -37,8 +37,8 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			switch {
 			case sources[i].Local != nil:
 				subst = append(subst, &sources[i].Local.Path, &sources[i].Local.To)
-			case sources[i].Step != nil:
-				subst = append(subst, &sources[i].Step.Name, &sources[i].Step.Path, &sources[i].Step.To)
+			case sources[i].Task != nil:
+				subst = append(subst, &sources[i].Task.Name, &sources[i].Task.Path, &sources[i].Task.To)
 			default:
 				return ctx, errors.New("no source type given")
 			}
@@ -77,17 +77,17 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					llb.WithCustomNamef("copy CONTEXT:%s → %s", srcPath, copyTo),
 				)
 
-			case source.Step != nil:
-				stepCtx, ok := ctx.Steps[source.Step.Name]
+			case source.Task != nil:
+				stepCtx, ok := ctx.Tasks[source.Task.Name]
 				if !ok {
-					return ctx, fmt.Errorf("source step %q dependency not found", source.Step.Name)
+					return ctx, fmt.Errorf("source step %q dependency not found", source.Task.Name)
 				}
 
-				srcPath := source.Step.Path
+				srcPath := source.Task.Path
 				if srcPath == "" {
 					srcPath = "/"
 				}
-				dst := source.Step.To
+				dst := source.Task.To
 				if dst == "" {
 					dst = srcPath
 				}
@@ -99,7 +99,7 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 				ctx.Build.State = ctx.Build.State.File(
 					llb.Copy(stepCtx.Build.State, srcPath, dst, copyInfo),
-					llb.WithCustomNamef("copy %s:%s → %s", source.Step.Name, srcPath, dst),
+					llb.WithCustomNamef("copy %s:%s → %s", source.Task.Name, srcPath, dst),
 				)
 			default:
 				return ctx, errors.New("no source type given")

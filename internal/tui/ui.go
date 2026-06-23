@@ -45,7 +45,7 @@ const (
 type UI struct {
 	list         list.Model
 	loader       spinner.Model
-	status       StepStatus
+	status       TaskStatus
 	scanInput    textinput.Model
 	width        int
 	height       int
@@ -59,7 +59,7 @@ type UI struct {
 type TickMsg time.Time
 
 type PipelineDoneMsg struct {
-	Status StepStatus
+	Status TaskStatus
 	Error  error
 }
 
@@ -72,7 +72,7 @@ func NewUI(logger logr.Logger) UI {
 	delegate.ShowDescription = false
 
 	ui := UI{
-		status:      StepStatusWaiting,
+		status:      TaskStatusWaiting,
 		list:        list.New(nil, delegate, 0, 0),
 		mu:          &sync.Mutex{},
 		activePanel: PanelList,
@@ -116,14 +116,14 @@ func (m *UI) initializeLoader() {
 func (m *UI) sortList() {
 	items := m.list.Items()
 	sort.Slice(items, func(i, j int) bool {
-		iTags := m.formatTagsForSorting(items[i].(StepMsg).Tags)
-		jTags := m.formatTagsForSorting(items[j].(StepMsg).Tags)
+		iTags := m.formatTagsForSorting(items[i].(TaskMsg).Tags)
+		jTags := m.formatTagsForSorting(items[j].(TaskMsg).Tags)
 
 		iTagsKey := strings.Join(iTags, "-")
 		jTagsKey := strings.Join(jTags, "-")
 
 		if iTagsKey == jTagsKey {
-			return items[i].(StepMsg).started.Before(items[j].(StepMsg).started)
+			return items[i].(TaskMsg).started.Before(items[j].(TaskMsg).started)
 		}
 
 		return iTagsKey < jTagsKey
@@ -150,33 +150,33 @@ func (m *UI) findCurrentSelection(items []list.Item) int {
 	}
 
 	for i, item := range items {
-		if item.(StepMsg).Name == m.lastSelected.(StepMsg).Name {
+		if item.(TaskMsg).Name == m.lastSelected.(TaskMsg).Name {
 			return i
 		}
 	}
 	return 0
 }
 
-// getStepMsg retrieves a step message by name
-func (m *UI) getStepMsg(name string) (StepMsg, error) {
+// getTaskMsg retrieves a step message by name
+func (m *UI) getTaskMsg(name string) (TaskMsg, error) {
 	for _, step := range m.list.Items() {
-		if v, ok := step.(StepMsg); ok && v.Name == name {
+		if v, ok := step.(TaskMsg); ok && v.Name == name {
 			return v, nil
 		}
 	}
-	return StepMsg{}, fmt.Errorf("no such step: %s", name)
+	return TaskMsg{}, fmt.Errorf("no such step: %s", name)
 }
 
 // renderStatus renders the current pipeline status
 func (m *UI) renderStatus() string {
 	switch m.status {
-	case StepStatusDone:
+	case TaskStatusDone:
 		return pipelineOkStyle.Render("SUCCESS")
-	case StepStatusFailed:
+	case TaskStatusFailed:
 		return pipelineFailedStyle.Render("FAILED")
-	case StepStatusWaiting:
+	case TaskStatusWaiting:
 		return pipelineWaitingStyle.Render("INITIALIZING")
-	case StepStatusRunning:
+	case TaskStatusRunning:
 		return pipelineWaitingStyle.Render("RUNNING")
 	}
 	return ""
@@ -201,8 +201,8 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case PipelineDoneMsg:
 		cmds = append(cmds, m.handlePipelineDone(msg)...)
-	case StepMsg:
-		cmds = append(cmds, m.handleStepMessage(msg)...)
+	case TaskMsg:
+		cmds = append(cmds, m.handleTaskMessage(msg)...)
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
 	case tea.KeyPressMsg:
@@ -219,18 +219,18 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handlePipelineDone handles pipeline completion
 func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
-	if m.status == StepStatusWaiting {
+	if m.status == TaskStatusWaiting {
 		return []tea.Cmd{tea.Quit}
 	}
 
 	m.status = msg.Status
 	m.exitErr = msg.Error
 
-	if msg.Status == StepStatusFailed {
+	if msg.Status == TaskStatusFailed {
 		items := slices.Clone(m.list.Items())
 		for i, listItem := range items {
-			if item, ok := listItem.(StepMsg); ok && item.Status == StepStatusRunning {
-				items[i] = item.WithStatus(StepStatusFailed)
+			if item, ok := listItem.(TaskMsg); ok && item.Status == TaskStatusRunning {
+				items[i] = item.WithStatus(TaskStatusFailed)
 			}
 		}
 		m.list.SetItems(items)
@@ -239,15 +239,15 @@ func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
 	return nil
 }
 
-// handleStepMessage handles step status updates
-func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
+// handleTaskMessage handles step status updates
+func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	var cmds []tea.Cmd
 	items := slices.Clone(m.list.Items())
 
-	_, err := m.getStepMsg(msg.Name)
+	_, err := m.getTaskMsg(msg.Name)
 	if err != nil {
 		// New step
 		msg.ready = true
@@ -266,15 +266,15 @@ func (m *UI) handleStepMessage(msg StepMsg) []tea.Cmd {
 	} else {
 		// Update existing step
 		for i, listItem := range items {
-			if item, ok := listItem.(StepMsg); ok && item.Name == msg.Name {
+			if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
 				items[i] = item.WithStatus(msg.Status)
 			}
 		}
 		m.list.SetItems(items)
 	}
 
-	if msg.Status == StepStatusRunning {
-		m.status = StepStatusRunning
+	if msg.Status == TaskStatusRunning {
+		m.status = TaskStatusRunning
 	}
 
 	return cmds
@@ -360,9 +360,9 @@ func (m UI) handleListPanelKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m *UI) updateSelectedViewport(msg tea.Msg) tea.Cmd {
 	items := slices.Clone(m.list.Items())
 	for i, listItem := range items {
-		if m.lastSelected != nil && listItem.(StepMsg).Name == m.lastSelected.(StepMsg).Name {
-			viewport, cmd := m.lastSelected.(StepMsg).viewport.Update(msg)
-			last := m.lastSelected.(StepMsg)
+		if m.lastSelected != nil && listItem.(TaskMsg).Name == m.lastSelected.(TaskMsg).Name {
+			viewport, cmd := m.lastSelected.(TaskMsg).viewport.Update(msg)
+			last := m.lastSelected.(TaskMsg)
 			last.viewport = &viewport
 			items[i] = last
 
@@ -389,7 +389,7 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 
 	items := slices.Clone(m.list.Items())
 	for i, listItem := range items {
-		if item, ok := listItem.(StepMsg); ok {
+		if item, ok := listItem.(TaskMsg); ok {
 			item.listWidth = m.list.Width()
 			item.listHeight = m.list.Height()
 			items[i] = item
@@ -404,7 +404,7 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 	items := slices.Clone(m.list.Items())
 	for i, listItem := range items {
-		if item, ok := listItem.(StepMsg); ok {
+		if item, ok := listItem.(TaskMsg); ok {
 			loader, _ := item.loader.Update(item.loader.Tick())
 			item.loader = loader
 			items[i] = item
@@ -417,7 +417,7 @@ func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 // updateLastSelected updates the last selected item
 func (m *UI) updateLastSelected() {
 	if selectedItem := m.list.SelectedItem(); selectedItem != nil {
-		step := selectedItem.(StepMsg)
+		step := selectedItem.(TaskMsg)
 		if step.viewport != nil {
 			// Initialize viewport dimensions if not set
 			if step.viewport.Width == 0 || step.viewport.Height == 0 {
@@ -504,7 +504,7 @@ func (m UI) renderHeaderPanel() string {
 		Render(strings.Repeat("─", m.list.Width()-2))
 
 	if m.lastSelected != nil {
-		step := m.lastSelected.(StepMsg)
+		step := m.lastSelected.(TaskMsg)
 		headerWidth := step.viewport.Width - 10 - lipgloss.Width(step.GetName())
 		pagerHeader = fmt.Sprintf("%s %s %s %s",
 			pagerStyle.Render("─── ·"),
@@ -542,7 +542,7 @@ func (m UI) renderListPanel() string {
 
 // renderPagerPanel renders the right details panel
 func (m UI) renderPagerPanel() string {
-	step := m.lastSelected.(StepMsg)
+	step := m.lastSelected.(TaskMsg)
 
 	m.updatePanelStyles()
 	m.updateViewportDimensions(&step)
@@ -561,18 +561,18 @@ func (m *UI) updatePanelStyles() {
 		topStyle = topStyle.Foreground(inactivePanelColor)
 		topTitleStyle = topTitleStyle.Foreground(inactivePanelColor)
 		viewportStyle = viewportStyle.BorderForeground(inactivePanelColor)
-		m.lastSelected.(StepMsg).viewport.Styles.LineNumber = lineNumberInactiveStyle
+		m.lastSelected.(TaskMsg).viewport.Styles.LineNumber = lineNumberInactiveStyle
 		return
 	}
 
 	topStyle = topStyle.Foreground(activePanelColor)
 	topTitleStyle = newStyle()
 	viewportStyle = viewportStyle.BorderForeground(activePanelColor)
-	m.lastSelected.(StepMsg).viewport.Styles.LineNumber = lineNumberActiveStyle
+	m.lastSelected.(TaskMsg).viewport.Styles.LineNumber = lineNumberActiveStyle
 }
 
 // updateViewportDimensions updates the viewport dimensions
-func (m *UI) updateViewportDimensions(step *StepMsg) {
+func (m *UI) updateViewportDimensions(step *TaskMsg) {
 	// Set viewport width based on layout
 	if m.width < AlignHorizontalBreakpoint {
 		// In vertical layout, viewport takes full width
@@ -591,7 +591,7 @@ func (m *UI) updateViewportDimensions(step *StepMsg) {
 }
 
 // buildPagerContent builds the content for the details panel
-func (m UI) buildPagerContent(step StepMsg) []string {
+func (m UI) buildPagerContent(step TaskMsg) []string {
 	var content []string
 
 	// Add tags if present
@@ -611,7 +611,7 @@ func (m UI) buildPagerContent(step StepMsg) []string {
 func (m UI) renderBottomPanel() string {
 	status := m.renderStatus()
 	scrollPercentage := scrollPercentageStyle.Render(
-		fmt.Sprintf("%3.f%%", m.lastSelected.(StepMsg).viewport.ScrollPercent()*100))
+		fmt.Sprintf("%3.f%%", m.lastSelected.(TaskMsg).viewport.ScrollPercent()*100))
 
 	helpWidth := m.width - lipgloss.Width(status) - lipgloss.Width(scrollPercentage)
 

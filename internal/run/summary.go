@@ -20,7 +20,7 @@ func (s *SummaryOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.SkipSummary, "skip-summary", "", s.SkipSummary, "Do not print an execution summary at the end of the pipeline execution.")
 }
 
-func (s SummaryOptions) Build() Step {
+func (s SummaryOptions) Build() Task {
 	return &Summary{opts: s}
 }
 
@@ -76,18 +76,18 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	}
 
 	fmt.Printf("\n───────\n")
-	var stepErr processor.StepError
+	var stepErr processor.TaskError
 	if errors.As(err, &stepErr) {
-		fmt.Fprintf(rc.Display.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
+		fmt.Fprintf(rc.Display.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.TaskName()))
 	}
 
 	var tags []string
 	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
-	var innerStepErr processor.StepError
-	if AsInner(err, &innerStepErr) {
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
+	var innerTaskErr processor.TaskError
+	if AsInner(err, &innerTaskErr) {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Task:"), innerTaskErr.TaskName())
 
-		for _, tag := range innerStepErr.Context().Tags.Tags() {
+		for _, tag := range innerTaskErr.Context().Tags.Tags() {
 			tags = append(tags, styles.TagLabel.
 				Background(lipgloss.Color(tag.HEXColor)).
 				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
@@ -121,9 +121,9 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	fmt.Fprintf(w, "%s\n", styles.Highlight.Render("Trace:"))
 	i := 0
 	for _, parentErr := range parents {
-		var stepErr processor.StepError
+		var stepErr processor.TaskError
 		if errors.As(parentErr, &stepErr) {
-			fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.StepName())))
+			fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.TaskName())))
 		}
 
 		i++

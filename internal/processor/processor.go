@@ -8,27 +8,28 @@ import (
 )
 
 type PipelineBuilder interface {
-	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx StepContext) (Executable, error)
+	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx TaskContext) (Executable, error)
 }
 
-type Executable func() (StepContext, map[string]v1beta1.ParamValue, error)
+type Executable func() (TaskContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
-	Step(name string) (Step, error)
-	DependantSteps(name string) []Step
+	Task(name string) (Task, error)
+	DependantTasks(name string) []Task
+	TaskDependencies(name string) []string
 	Entrypoint(name string) (Next, error)
 	EntrypointName() (string, error)
 	Name() string
 	ID() string
 }
 
-type Next func(ctx StepContext) (StepContext, error)
+type Next func(ctx TaskContext) (TaskContext, error)
 
 type Bootstraper interface {
 	Bootstrap(pipeline Pipeline, next Next) (Next, error)
 }
 
-type Step interface {
+type Task interface {
 	Processors() []Bootstraper
 	Entrypoint() (Next, error)
 	Name() string
@@ -37,6 +38,6 @@ type Step interface {
 type Teardown func(ctx context.Context, timeout time.Duration) error
 
 type result struct {
-	ctx StepContext
+	ctx TaskContext
 	err error
 }

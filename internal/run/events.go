@@ -21,7 +21,7 @@ func (s *EventsOptions) BindFlags(flags flagset.Interface) {
 	flags.BoolVarP(&s.Disabled, "skip-events", "", s.Disabled, "Do not emit events")
 }
 
-func (s EventsOptions) Build() Step {
+func (s EventsOptions) Build() Task {
 	return &Events{opts: s}
 }
 

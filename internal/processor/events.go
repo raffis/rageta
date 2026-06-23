@@ -12,7 +12,7 @@ import (
 )
 
 func WithEvents(enabled bool, interval time.Duration, dev io.Writer) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if !enabled {
 			return nil
 		}
@@ -42,7 +42,7 @@ func newEventsContext() EventsContext {
 }
 
 func (s *Events) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.StartedAt.IsZero() {
 			return ctx, errors.New("step not started, missing startedAt")
 		}

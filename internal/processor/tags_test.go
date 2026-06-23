@@ -12,13 +12,13 @@ func TestTagsBuilder(t *testing.T) {
 	tests := []struct {
 		name       string
 		globalTags []Tag
-		spec       *v1beta1.Step
+		spec       *v1beta1.Task
 		expectNil  bool
 	}{
 		{
 			name:       "no global tags and no spec tags returns nil",
 			globalTags: []Tag{},
-			spec:       &v1beta1.Step{},
+			spec:       &v1beta1.Task{},
 			expectNil:  true,
 		},
 		{
@@ -26,14 +26,14 @@ func TestTagsBuilder(t *testing.T) {
 			globalTags: []Tag{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: false,
 		},
 		{
 			name:       "spec tags only returns Tags struct",
 			globalTags: []Tag{},
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Tags: []v1beta1.Tag{
 						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
@@ -46,8 +46,8 @@ func TestTagsBuilder(t *testing.T) {
 			globalTags: []Tag{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Tags: []v1beta1.Tag{
 						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
@@ -82,18 +82,18 @@ func TestTagsBootstrap(t *testing.T) {
 		name          string
 		specTags      []v1beta1.Tag
 		globalTags    []Tag
-		inputContext  StepContext
-		expectedNext  StepContext
-		expectedAfter StepContext
+		inputContext  TaskContext
+		expectedNext  TaskContext
+		expectedAfter TaskContext
 		shouldError   bool
 	}{
 		{
 			name:          "empty tags and global tags",
 			specTags:      []v1beta1.Tag{},
 			globalTags:    []Tag{},
-			inputContext:  StepContext{},
-			expectedNext:  StepContext{},
-			expectedAfter: StepContext{},
+			inputContext:  TaskContext{},
+			expectedNext:  TaskContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -103,14 +103,14 @@ func TestTagsBootstrap(t *testing.T) {
 				{Name: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 			},
 			globalTags:   []Tag{},
-			inputContext: StepContext{},
-			expectedNext: StepContext{
+			inputContext: TaskContext{},
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 					{Key: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 				}},
 			},
-			expectedAfter: StepContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -120,14 +120,14 @@ func TestTagsBootstrap(t *testing.T) {
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
-			inputContext: StepContext{},
-			expectedNext: StepContext{
+			inputContext: TaskContext{},
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 					{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 				}},
 			},
-			expectedAfter: StepContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -138,14 +138,14 @@ func TestTagsBootstrap(t *testing.T) {
 			globalTags: []Tag{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
-			inputContext: StepContext{},
-			expectedNext: StepContext{
+			inputContext: TaskContext{},
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
-			expectedAfter: StepContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -154,18 +154,18 @@ func TestTagsBootstrap(t *testing.T) {
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags: []Tag{},
-			inputContext: StepContext{
+			inputContext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
-			expectedNext: StepContext{
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
-			expectedAfter: StepContext{
+			expectedAfter: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
@@ -178,9 +178,9 @@ func TestTagsBootstrap(t *testing.T) {
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags:    []Tag{},
-			inputContext:  StepContext{},
-			expectedNext:  StepContext{},
-			expectedAfter: StepContext{},
+			inputContext:  TaskContext{},
+			expectedNext:  TaskContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   true,
 		},
 		{
@@ -189,19 +189,19 @@ func TestTagsBootstrap(t *testing.T) {
 				{Name: "service", Value: "new-api", HEXColor: "#00FF00"},
 			},
 			globalTags: []Tag{},
-			inputContext: StepContext{
+			inputContext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
-			expectedNext: StepContext{
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "new-api", HEXColor: "#00FF00"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
-			expectedAfter: StepContext{
+			expectedAfter: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
@@ -215,13 +215,13 @@ func TestTagsBootstrap(t *testing.T) {
 			globalTags: []Tag{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
-			inputContext: StepContext{},
-			expectedNext: StepContext{
+			inputContext: TaskContext{},
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
-			expectedAfter: StepContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -230,13 +230,13 @@ func TestTagsBootstrap(t *testing.T) {
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
 			globalTags:   []Tag{},
-			inputContext: StepContext{},
-			expectedNext: StepContext{
+			inputContext: TaskContext{},
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
-			expectedAfter: StepContext{},
+			expectedAfter: TaskContext{},
 			shouldError:   false,
 		},
 		{
@@ -250,12 +250,12 @@ func TestTagsBootstrap(t *testing.T) {
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
-			inputContext: StepContext{
+			inputContext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
-			expectedNext: StepContext{
+			expectedNext: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
@@ -265,7 +265,7 @@ func TestTagsBootstrap(t *testing.T) {
 					{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 				}},
 			},
-			expectedAfter: StepContext{
+			expectedAfter: TaskContext{
 				Tags: TagsContext{tags: []Tag{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
@@ -287,7 +287,7 @@ func TestTagsBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				nextCalled = true
 
 				if tt.shouldError {

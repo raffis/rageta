@@ -29,7 +29,7 @@ func NewImagePolicyOptions() ImagePolicyOptions {
 	}
 }
 
-func (s ImagePolicyOptions) Build() Step {
+func (s ImagePolicyOptions) Build() Task {
 	return &ImagePolicy{
 		opts: s,
 	}
