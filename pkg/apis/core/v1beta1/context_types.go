@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type StepResult struct {
+type TaskResult struct {
 	Outputs   map[string]ParamValue `cel:"outputs"`
 	Error     string                `cel:"error"`
 	StartedAt metav1.Time           `cel:"startedAt"`
@@ -18,7 +18,7 @@ type Context struct {
 	Inputs  map[string]ParamValue  `cel:"inputs"`
 	Envs    map[string]string      `cel:"envs"`
 	Secrets map[string]string      `cel:"secrets"`
-	Steps   map[string]*StepResult `cel:"steps"`
+	Tasks   map[string]*TaskResult `cel:"steps"`
 	Matrix  map[string]string      `cel:"matrix"`
 	Secret  string                 `cel:"secret"`
 	Env     string                 `cel:"env"`
@@ -63,7 +63,7 @@ func (v *Context) Index() map[string]string {
 		vars[fmt.Sprintf("context.matrix.%s", k)] = v
 	}
 
-	for k, v := range v.Steps {
+	for k, v := range v.Tasks {
 		vars[fmt.Sprintf("context.steps.%s.error", k)] = v.Error
 		vars[fmt.Sprintf("context.steps.%s.startedAt", k)] = fmt.Sprintf("%d", v.StartedAt.Unix())
 		vars[fmt.Sprintf("context.steps.%s.endedAt", k)] = fmt.Sprintf("%d", v.EndedAt.Unix())

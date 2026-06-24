@@ -114,7 +114,7 @@ spec:
             x-kubernetes-list-type: atomic
           shortDescription:
             type: string
-          steps:
+          tasks:
             items:
               properties:
                 allowFailure:
@@ -338,8 +338,6 @@ spec:
                   - constant
                   - exponential
                   type: object
-                script:
-                  type: string
                 secrets:
                   items:
                     properties:
@@ -393,6 +391,13 @@ spec:
                         type: object
                     type: object
                   type: array
+                steps:
+                  items:
+                    properties:
+                      script:
+                        type: string
+                    type: object
+                  type: array
                 tags:
                   items:
                     properties:
@@ -416,7 +421,7 @@ spec:
                 when:
                   items:
                     properties:
-                      cel:
+                      celExpression:
                         type: string
                     type: object
                   type: array
@@ -650,8 +655,6 @@ spec:
                   - constant
                   - exponential
                   type: object
-                script:
-                  type: string
                 secrets:
                   items:
                     properties:
@@ -705,6 +708,13 @@ spec:
                         type: object
                     type: object
                   type: array
+                steps:
+                  items:
+                    properties:
+                      script:
+                        type: string
+                    type: object
+                  type: array
                 tags:
                   items:
                     properties:
@@ -728,7 +738,7 @@ spec:
                 when:
                   items:
                     properties:
-                      cel:
+                      celExpression:
                         type: string
                     type: object
                   type: array

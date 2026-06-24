@@ -35,15 +35,15 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	expr := make([]cel.Program, len(s.conditions))
 
 	for i, condition := range s.conditions {
-		if condition.CEL != nil {
-			ast, issues := s.celEnv.Compile(*condition.CEL)
+		if condition.CelExpression != nil {
+			ast, issues := s.celEnv.Compile(*condition.CelExpression)
 			if issues != nil && issues.Err() != nil {
-				return nil, fmt.Errorf("if expression compilation `%s` failed: %w", *condition.CEL, issues.Err())
+				return nil, fmt.Errorf("if expression compilation `%s` failed: %w", *condition.CelExpression, issues.Err())
 			}
 
 			prg, err := s.celEnv.Program(ast)
 			if err != nil {
-				return nil, fmt.Errorf("if expression ast `%s` failed: %w", *condition.CEL, err)
+				return nil, fmt.Errorf("if expression ast `%s` failed: %w", *condition.CelExpression, err)
 			}
 
 			expr[i] = prg
@@ -54,13 +54,13 @@ func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		vars := ctx.ToV1Beta1()
 		for i, condition := range s.conditions {
 			switch {
-			case condition.CEL != nil:
+			case condition.CelExpression != nil:
 				value, _, err := expr[i].ContextEval(ctx, map[string]any{
 					"context": vars,
 				})
 
 				if err != nil {
-					return ctx, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CEL, err)
+					return ctx, fmt.Errorf("if expression evaluation `%s` failed: %w", *condition.CelExpression, err)
 				}
 
 				// if expression evaluates to false the next step is called in the pipeline without calling the

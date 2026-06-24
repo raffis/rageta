@@ -71,13 +71,13 @@ type OutputParam struct {
 	// Name declares the name by which a parameter is referenced.
 	Name string         `json:"name"`
 	From string         `json:"from,omitempty"`
-	Step LocalReference `json:"step"`
+	Task LocalReference `json:"step"`
 }
 
-type StepOutputParam struct {
+type TaskOutputParam struct {
 	// Name declares the name by which a parameter is referenced.
 	Name string         `json:"name"`
-	Step LocalReference `json:"step"`
+	Task LocalReference `json:"step"`
 }
 
 // PropertySpec defines the struct for object keys

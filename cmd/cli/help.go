@@ -184,7 +184,7 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 	}
 
 	var targetBlocks []string
-	for _, step := range command.Steps {
+	for _, step := range command.Tasks {
 		if step.Hide {
 			continue
 		}

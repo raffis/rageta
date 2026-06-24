@@ -33,8 +33,8 @@ type PipelineSpec struct {
 	LongDescription  string       `json:"longDescription,omitempty"`
 	Inputs           InputParams  `json:"inputs,omitempty"`
 	Outputs          OutputParams `json:"outputs,omitempty"`
-	Steps            []Step       `json:"steps,omitempty"`
-	Templates        []Step       `json:"templates,omitempty"`
+	Tasks            []Task       `json:"tasks,omitempty"`
+	Templates        []Task       `json:"templates,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -43,7 +43,7 @@ func (p Pipeline) SetDefaults() {
 	}
 }
 
-type StepOptions struct {
+type TaskOptions struct {
 	Templates    []LocalReference  `json:"templates,omitempty"`
 	When         []Condition       `json:"when,omitempty"`
 	Hide         bool              `json:"expose,omitempty"`
@@ -51,7 +51,7 @@ type StepOptions struct {
 	Timeout      metav1.Duration   `json:"timeout"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
-	Outputs      []StepOutputParam `json:"outputs,omitempty"`
+	Outputs      []TaskOutputParam `json:"outputs,omitempty"`
 	DependsOn    []LocalReference  `json:"dependsOn,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
@@ -66,7 +66,7 @@ type StepOptions struct {
 
 type Source struct {
 	Local *SourceLocal `json:"local,omitempty"`
-	Step  *SourceStep  `json:"step,omitempty"`
+	Task  *SourceTask  `json:"step,omitempty"`
 }
 
 type SourceLocal struct {
@@ -74,7 +74,7 @@ type SourceLocal struct {
 	To   string `json:"to,omitempty"`
 }
 
-type SourceStep struct {
+type SourceTask struct {
 	Name string `json:"name,omitempty"`
 	Path string `json:"path,omitempty"`
 	To   string `json:"to,omitempty"`
@@ -120,7 +120,7 @@ type EnvVar struct {
 }
 
 type Condition struct {
-	CEL *string `json:"cel,omitempty"`
+	CelExpression *string `json:"celExpression,omitempty"`
 }
 
 type Matrix struct {
@@ -147,14 +147,18 @@ type Retry struct {
 	MaxRetries  int             `json:"maxRetries,omitempty"`
 }
 
-type Step struct {
+type Task struct {
 	Name        string `json:"name,omitempty"`
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
-	StepOptions `json:",inline"`
-	Script      *string      `json:"script,omitempty"`
-	Service     *ServiceStep `json:"service,omitempty"`
-	Inherit     *InheritStep `json:"inherit,omitempty"`
+	TaskOptions `json:",inline"`
+	Steps       *[]Step      `json:"steps,omitempty"`
+	Service     *ServiceTask `json:"service,omitempty"`
+	Inherit     *InheritTask `json:"inherit,omitempty"`
+}
+
+type Step struct {
+	Script string `json:"script,omitempty"`
 }
 
 type LocalReference struct {
@@ -171,14 +175,14 @@ type Cache struct {
 	Sharing string `json:"sharing,omitempty"`
 }
 
-type ServiceStep struct {
+type ServiceTask struct {
 	Command []string            `json:"command,omitempty"`
 	Args    []string            `json:"args,omitempty"`
 	Uid     *intstr.IntOrString `json:"uid,omitempty"`
 	Guid    *intstr.IntOrString `json:"guid,omitempty"`
 }
 
-type InheritStep struct {
+type InheritTask struct {
 	Pipeline   string  `json:"pipeline,omitempty"`
 	Entrypoint string  `json:"entrypoint,omitempty"`
 	Inputs     []Param `json:"inputs,omitempty"`
