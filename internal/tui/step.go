@@ -25,7 +25,7 @@ const (
 // Column width percentages for wide layouts
 const (
 	NameColumnPercent     = 65
-	TagsColumnPercent     = 15
+	LabelsColumnPercent   = 15
 	DurationColumnPercent = 20
 )
 
@@ -54,7 +54,7 @@ type TaskMsg struct {
 	loader      spinner.Model
 	Name        string
 	DisplayName string
-	Tags        []processor.Tag
+	Labels      []processor.Label
 	Status      TaskStatus
 	ready       bool
 	started     time.Time
@@ -91,15 +91,15 @@ func (t TaskMsg) WithStatus(status TaskStatus) TaskMsg {
 	return t
 }
 
-// TagsAsString returns a formatted string representation of all tags
-func (t *TaskMsg) TagsAsString() string {
-	if len(t.Tags) == 0 {
+// LabelsAsString returns a formatted string representation of all tags
+func (t *TaskMsg) LabelsAsString() string {
+	if len(t.Labels) == 0 {
 		return ""
 	}
 
 	var tags []string
-	for _, tag := range t.Tags {
-		tagLabel := styles.TagLabel.
+	for _, tag := range t.Labels {
+		tagLabel := styles.Label.
 			Background(lipgloss.Color(tag.HEXColor)).
 			Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
 			PaddingLeft(1).
@@ -111,15 +111,15 @@ func (t *TaskMsg) TagsAsString() string {
 	return strings.Join(tags, "")
 }
 
-// shortTags returns a compact representation of tags using colored dots
-func (t *TaskMsg) shortTags() string {
-	if len(t.Tags) == 0 {
+// shortLabels returns a compact representation of tags using colored dots
+func (t *TaskMsg) shortLabels() string {
+	if len(t.Labels) == 0 {
 		return ""
 	}
 
 	var tags []string
-	for _, tag := range t.Tags {
-		dot := listTagLabelStyle.
+	for _, tag := range t.Labels {
+		dot := listLabelStyle.
 			Foreground(lipgloss.Color(tag.HEXColor)).
 			Render("●")
 		tags = append(tags, dot)
@@ -140,13 +140,13 @@ func (t TaskMsg) Title() string {
 	}
 
 	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
-	tagsWidth := int(float64(listWidth) * TagsColumnPercent / 100)
+	tagsWidth := int(float64(listWidth) * LabelsColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
 	return fmt.Sprintf("%s %s %s %s",
 		status,
 		listColumnStyle.Width(nameWidth).Render(ellipsis(t.DisplayName, nameWidth)),
-		listColumnStyle.Width(tagsWidth).Render(t.shortTags()),
+		listColumnStyle.Width(tagsWidth).Render(t.shortLabels()),
 		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration()),
 	)
 }
@@ -193,7 +193,7 @@ func (t TaskMsg) FilterValue() string {
 		t.Name,
 	}
 
-	for _, tag := range t.Tags {
+	for _, tag := range t.Labels {
 		values = append(values, tag.Key)
 		values = append(values, tag.Value)
 	}

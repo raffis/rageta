@@ -8,33 +8,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTagsBuilder(t *testing.T) {
+func TestLabelsBuilder(t *testing.T) {
 	tests := []struct {
-		name       string
-		globalTags []Tag
-		spec       *v1beta1.Task
-		expectNil  bool
+		name         string
+		globalLabels []Label
+		spec         *v1beta1.Task
+		expectNil    bool
 	}{
 		{
-			name:       "no global tags and no spec tags returns nil",
-			globalTags: []Tag{},
-			spec:       &v1beta1.Task{},
-			expectNil:  true,
+			name:         "no global tags and no spec tags returns nil",
+			globalLabels: []Label{},
+			spec:         &v1beta1.Task{},
+			expectNil:    true,
 		},
 		{
-			name: "global tags only returns Tags struct",
-			globalTags: []Tag{
+			name: "global tags only returns Labels struct",
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			spec:      &v1beta1.Task{},
 			expectNil: false,
 		},
 		{
-			name:       "spec tags only returns Tags struct",
-			globalTags: []Tag{},
+			name:         "spec tags only returns Labels struct",
+			globalLabels: []Label{},
 			spec: &v1beta1.Task{
 				TaskOptions: v1beta1.TaskOptions{
-					Tags: []v1beta1.Tag{
+					Labels: []v1beta1.Label{
 						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
 				},
@@ -42,13 +42,13 @@ func TestTagsBuilder(t *testing.T) {
 			expectNil: false,
 		},
 		{
-			name: "both global and spec tags returns Tags struct",
-			globalTags: []Tag{
+			name: "both global and spec tags returns Labels struct",
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			spec: &v1beta1.Task{
 				TaskOptions: v1beta1.TaskOptions{
-					Tags: []v1beta1.Tag{
+					Labels: []v1beta1.Label{
 						{Name: "service", Value: "api", HEXColor: "#00FF00"},
 					},
 				},
@@ -59,29 +59,29 @@ func TestTagsBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := WithTags(tt.globalTags)
+			builder := WithLabels(tt.globalLabels)
 			bootstraper := builder(tt.spec)
 
 			if tt.expectNil {
 				assert.Nil(t, bootstraper)
 			} else {
 				assert.NotNil(t, bootstraper)
-				tags, ok := bootstraper.(*Tags)
+				tags, ok := bootstraper.(*Labels)
 				assert.True(t, ok)
-				assert.Equal(t, tt.globalTags, tags.globalTags)
+				assert.Equal(t, tt.globalLabels, tags.globalLabels)
 				if tt.spec != nil {
-					assert.Equal(t, tt.spec.Tags, tags.tags)
+					assert.Equal(t, tt.spec.Labels, tags.tags)
 				}
 			}
 		})
 	}
 }
 
-func TestTagsBootstrap(t *testing.T) {
+func TestLabelsBootstrap(t *testing.T) {
 	tests := []struct {
 		name          string
-		specTags      []v1beta1.Tag
-		globalTags    []Tag
+		specLabels    []v1beta1.Label
+		globalLabels  []Label
 		inputContext  TaskContext
 		expectedNext  TaskContext
 		expectedAfter TaskContext
@@ -89,8 +89,8 @@ func TestTagsBootstrap(t *testing.T) {
 	}{
 		{
 			name:          "empty tags and global tags",
-			specTags:      []v1beta1.Tag{},
-			globalTags:    []Tag{},
+			specLabels:    []v1beta1.Label{},
+			globalLabels:  []Label{},
 			inputContext:  TaskContext{},
 			expectedNext:  TaskContext{},
 			expectedAfter: TaskContext{},
@@ -98,14 +98,14 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "only spec tags",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 				{Name: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 			},
-			globalTags:   []Tag{},
+			globalLabels: []Label{},
 			inputContext: TaskContext{},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 					{Key: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 				}},
@@ -114,15 +114,15 @@ func TestTagsBootstrap(t *testing.T) {
 			shouldError:   false,
 		},
 		{
-			name:     "only global tags",
-			specTags: []v1beta1.Tag{},
-			globalTags: []Tag{
+			name:       "only global tags",
+			specLabels: []v1beta1.Label{},
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
 			inputContext: TaskContext{},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 					{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 				}},
@@ -132,15 +132,15 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "both spec and global tags",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
-			globalTags: []Tag{
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			inputContext: TaskContext{},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
@@ -150,23 +150,23 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "existing context tags are preserved after execution",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
-			globalTags: []Tag{},
+			globalLabels: []Label{},
 			inputContext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
 			expectedAfter: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
@@ -174,10 +174,10 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "error handling - error propagation",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
-			globalTags:    []Tag{},
+			globalLabels:  []Label{},
 			inputContext:  TaskContext{},
 			expectedNext:  TaskContext{},
 			expectedAfter: TaskContext{},
@@ -185,24 +185,24 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "tag overwriting - same key overwrites existing",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "new-api", HEXColor: "#00FF00"},
 			},
-			globalTags: []Tag{},
+			globalLabels: []Label{},
 			inputContext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "new-api", HEXColor: "#00FF00"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
 			expectedAfter: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "old-api", HEXColor: "#CCCCCC"},
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
@@ -210,14 +210,14 @@ func TestTagsBootstrap(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:     "empty spec tags with global tags",
-			specTags: []v1beta1.Tag{},
-			globalTags: []Tag{
+			name:       "empty spec tags with global tags",
+			specLabels: []v1beta1.Label{},
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 			},
 			inputContext: TaskContext{},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				}},
 			},
@@ -226,13 +226,13 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "empty global tags with spec tags",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 			},
-			globalTags:   []Tag{},
+			globalLabels: []Label{},
 			inputContext: TaskContext{},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 				}},
 			},
@@ -241,22 +241,22 @@ func TestTagsBootstrap(t *testing.T) {
 		},
 		{
 			name: "complex tag mapping - multiple tags and proper mapping",
-			specTags: []v1beta1.Tag{
+			specLabels: []v1beta1.Label{
 				{Name: "service", Value: "api", HEXColor: "#00FF00"},
 				{Name: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
 				{Name: "component", Value: "backend", HEXColor: "#FF00FF"},
 			},
-			globalTags: []Tag{
+			globalLabels: []Label{
 				{Key: "env", Value: "prod", HEXColor: "#FF0000"},
 				{Key: "region", Value: "us-west", HEXColor: "#FFFF00"},
 			},
 			inputContext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
 			expectedNext: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 					{Key: "service", Value: "api", HEXColor: "#00FF00"},
 					{Key: "version", Value: "v1.0.0", HEXColor: "#0000FF"},
@@ -266,7 +266,7 @@ func TestTagsBootstrap(t *testing.T) {
 				}},
 			},
 			expectedAfter: TaskContext{
-				Tags: TagsContext{tags: []Tag{
+				Labels: LabelsContext{tags: []Label{
 					{Key: "existing", Value: "tag", HEXColor: "#CCCCCC"},
 				}},
 			},
@@ -276,9 +276,9 @@ func TestTagsBootstrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tags := &Tags{
-				tags:       tt.specTags,
-				globalTags: tt.globalTags,
+			tags := &Labels{
+				tags:         tt.specLabels,
+				globalLabels: tt.globalLabels,
 			}
 
 			ctx := tt.inputContext
@@ -295,9 +295,9 @@ func TestTagsBootstrap(t *testing.T) {
 				}
 
 				// Verify that tags were added during execution
-				actualTags := ctx.Tags.Tags()
-				expectedTags := tt.expectedNext.Tags.Tags()
-				assert.ElementsMatch(t, expectedTags, actualTags)
+				actualLabels := ctx.Labels.Labels()
+				expectedLabels := tt.expectedNext.Labels.Labels()
+				assert.ElementsMatch(t, expectedLabels, actualLabels)
 				return ctx, nil
 			}
 
@@ -316,8 +316,8 @@ func TestTagsBootstrap(t *testing.T) {
 
 			assert.True(t, nextCalled)
 			// Verify that original tags are restored after execution
-			expectedTags := tt.expectedAfter.Tags.Tags()
-			assert.Equal(t, expectedTags, resultCtx.Tags.Tags())
+			expectedLabels := tt.expectedAfter.Labels.Labels()
+			assert.Equal(t, expectedLabels, resultCtx.Labels.Labels())
 
 		})
 	}

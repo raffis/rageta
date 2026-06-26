@@ -3,6 +3,7 @@ package processor
 import (
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -27,7 +28,9 @@ type Sources struct {
 	sources []v1beta1.Source
 }
 
-func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
+var ErrUnknownSourceType = errors.New("unknown source type")
+
+func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		sources := make([]v1beta1.Source, len(s.sources))
 		subst := []any{}
@@ -39,8 +42,12 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				subst = append(subst, &sources[i].Local.Path, &sources[i].Local.To)
 			case sources[i].Task != nil:
 				subst = append(subst, &sources[i].Task.Name, &sources[i].Task.Path, &sources[i].Task.To)
+			case sources[i].Tasks != nil:
+				subst = append(subst, &sources[i].Tasks.Path, &sources[i].Tasks.To)
+			case sources[i].Context != nil:
+				subst = append(subst, &sources[i].Context.Path, &sources[i].Context.To)
 			default:
-				return ctx, errors.New("no source type given")
+				return ctx, ErrUnknownSourceType
 			}
 		}
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -85,7 +92,7 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 				srcPath := source.Task.Path
 				if srcPath == "" {
-					srcPath = "/"
+					srcPath = "."
 				}
 				dst := source.Task.To
 				if dst == "" {
@@ -93,7 +100,7 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				}
 
 				copyInfo := &llb.CopyInfo{CreateDestPath: true}
-				if srcPath == "/" || strings.HasSuffix(srcPath, "/") {
+				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
 					copyInfo.CopyDirContentsOnly = true
 				}
 
@@ -101,8 +108,66 @@ func (s *Sources) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					llb.Copy(stepCtx.Build.State, srcPath, dst, copyInfo),
 					llb.WithCustomNamef("copy %s:%s → %s", source.Task.Name, srcPath, dst),
 				)
+
+			case source.Tasks != nil:
+				srcPath := source.Tasks.Path
+				if srcPath == "" {
+					srcPath = "."
+				}
+				dst := source.Tasks.To
+				if dst == "" {
+					dst = srcPath
+				}
+
+				copyInfo := &llb.CopyInfo{CreateDestPath: true}
+				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
+					copyInfo.CopyDirContentsOnly = true
+				}
+
+				var matched int
+				for name, stepCtx := range ctx.Tasks {
+					if !stepCtx.Labels.Match(source.Tasks.MatchLabels) {
+						continue
+					}
+
+					dstPath := path.Join(dst, stepCtx.uniqueName)
+
+					matched++
+					ctx.Build.State = ctx.Build.State.File(
+						llb.Copy(stepCtx.Build.State, srcPath, dstPath, copyInfo),
+						llb.WithCustomNamef("copy %s:%s → %s", name, srcPath, dstPath),
+					)
+				}
+				if matched == 0 {
+					return ctx, fmt.Errorf("no tasks matched label selector %v", source.Tasks.MatchLabels)
+				}
+
+			case source.Context != nil:
+				if ctx.Build.ContextState == nil {
+					return ctx, fmt.Errorf("context source requires running inside an inherit")
+				}
+
+				srcPath := source.Context.Path
+				if srcPath == "" {
+					srcPath = "."
+				}
+				dst := source.Context.To
+				if dst == "" {
+					dst = srcPath
+				}
+
+				copyInfo := &llb.CopyInfo{CreateDestPath: true}
+				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
+					copyInfo.CopyDirContentsOnly = true
+				}
+
+				ctx.Build.State = ctx.Build.State.File(
+					llb.Copy(*ctx.Build.ContextState, srcPath, dst, copyInfo),
+					llb.WithCustomNamef("copy INHERIT:%s → %s", srcPath, dst),
+				)
+
 			default:
-				return ctx, errors.New("no source type given")
+				return ctx, ErrUnknownSourceType
 			}
 		}
 

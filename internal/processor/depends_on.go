@@ -14,33 +14,48 @@ func WithDependsOn() ProcessorBuilder {
 		}*/
 
 		return &DependsOn{
-			refs:     refSlice(spec.DependsOn),
+			refs:     spec.DependsOn,
 			stepName: spec.Name,
 		}
 	}
 }
 
 type DependsOn struct {
-	refs     []string
+	refs     []v1beta1.TaskReference
 	stepName string
+}
+
+func (s *DependsOn) resolveRef(pipeline Pipeline, ref v1beta1.TaskReference) ([]Task, error) {
+	switch {
+	case ref.Name != nil:
+		task, err := pipeline.Task(*ref.Name)
+		if err != nil {
+			return nil, err
+		}
+		return []Task{task}, nil
+	case ref.MatchLabels != nil:
+		return pipeline.TasksByLabels(ref.MatchLabels), nil
+	default:
+		return nil, errors.New("invalid task reference")
+	}
 }
 
 func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		var dependsOn []Task
 
-		for _, name := range s.refs {
-			_, started := ctx.Tasks[name]
-			if started {
-				continue
-			}
-
-			step, err := pipeline.Task(name)
+		for _, ref := range s.refs {
+			tasks, err := s.resolveRef(pipeline, ref)
 			if err != nil {
 				return ctx, err
 			}
 
-			dependsOn = append(dependsOn, step)
+			for _, step := range tasks {
+				if _, started := ctx.Tasks[step.Name()]; started {
+					continue
+				}
+				dependsOn = append(dependsOn, step)
+			}
 		}
 
 		ctx, err := s.processTasks(ctx, dependsOn)

@@ -42,7 +42,7 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return ctx, err
 			}
 
-			for _, tag := range ctx.Tags.Tags() {
+			for _, tag := range ctx.Labels.Labels() {
 				logger = logger.WithValues(tag.Key, tag.Value)
 			}
 		}

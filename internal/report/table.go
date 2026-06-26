@@ -37,8 +37,8 @@ func (r *table) Finalize() error {
 		errMsg, status, duration := r.stringify(step.result)
 
 		var tags []string
-		for _, tag := range step.result.Tags.Tags() {
-			tags = append(tags, styles.TagLabel.
+		for _, tag := range step.result.Labels.Labels() {
+			tags = append(tags, styles.Label.
 				Background(lipgloss.Color(tag.HEXColor)).
 				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
 				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),

@@ -52,11 +52,11 @@ type TaskOptions struct {
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []TaskOutputParam `json:"outputs,omitempty"`
-	DependsOn    []LocalReference  `json:"dependsOn,omitempty"`
+	DependsOn    []TaskReference   `json:"dependsOn,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Env          []EnvVar          `json:"env,omitempty"`
-	Tags         []Tag             `json:"tags,omitempty"`
+	Labels       []Label           `json:"labels,omitempty"`
 	Sources      []Source          `json:"sources,omitempty"`
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`
 	Caches       []Cache           `json:"caches,omitempty"`
@@ -64,9 +64,21 @@ type TaskOptions struct {
 	WorkingDir   string            `json:"workingDir,omitempty"`
 }
 
+type TaskReference struct {
+	Name        *string           `json:"name,omitempty"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
 type Source struct {
-	Local *SourceLocal `json:"local,omitempty"`
-	Task  *SourceTask  `json:"step,omitempty"`
+	Local   *SourceLocal   `json:"local,omitempty"`
+	Task    *SourceTask    `json:"task,omitempty"`
+	Tasks   *SourceTasks   `json:"tasks,omitempty"`
+	Context *SourceContext `json:"context,omitempty"`
+}
+
+type SourceContext struct {
+	Path string `json:"path,omitempty"`
+	To   string `json:"to,omitempty"`
 }
 
 type SourceLocal struct {
@@ -78,6 +90,12 @@ type SourceTask struct {
 	Name string `json:"name,omitempty"`
 	Path string `json:"path,omitempty"`
 	To   string `json:"to,omitempty"`
+}
+
+type SourceTasks struct {
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	To          string            `json:"to,omitempty"`
 }
 
 type Artifact struct {
@@ -103,7 +121,7 @@ type ArtifactLocal struct {
 type ArtifactImage struct {
 }
 
-type Tag struct {
+type Label struct {
 	Name     string `json:"name,omitempty"`
 	Value    string `json:"value,omitempty"`
 	HEXColor string `json:"hexColor,omitempty"`
@@ -131,12 +149,12 @@ type Matrix struct {
 }
 
 type IncludeParam struct {
-	Name   string    `json:"name,omitempty"`
-	Params []Param   `json:"params,omitempty"`
-	Tag    MatrixTag `json:"tag"`
+	Name   string      `json:"name,omitempty"`
+	Params []Param     `json:"params,omitempty"`
+	Label  MatrixLabel `json:"label"`
 }
 
-type MatrixTag struct {
+type MatrixLabel struct {
 	Value    string `json:"value,omitempty"`
 	HEXColor string `json:"hexColor,omitempty"`
 }

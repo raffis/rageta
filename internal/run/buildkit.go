@@ -133,7 +133,6 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	_, err = c.Build(rc, buildOpt, "", func(ctx context.Context, gwc gwclient.Client) (*gwclient.Result, error) {
 		rc.Buildkit.GatewayClient = gwc
 		err := next(rc)
-		rc.Logging.Logger.Info("cache export refs", "count", len(rc.Buildkit.BuiltRefs), "pipelineErr", err)
 		res := gwclient.NewResult()
 		if len(rc.Buildkit.BuiltRefs) > 0 {
 			res.SetRef(rc.Buildkit.BuiltRefs[len(rc.Buildkit.BuiltRefs)-1])

@@ -44,9 +44,10 @@ func newBuildContext() BuildContext {
 }
 
 type BuildContext struct {
-	State   llb.State
-	RunOpts []llb.RunOption
-	Ref     gwclient.Reference
+	State        llb.State
+	ContextState *llb.State // initial inherited state, set when entering a sub-pipeline via inherit
+	RunOpts      []llb.RunOption
+	Ref          gwclient.Reference
 }
 
 func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {

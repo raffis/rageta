@@ -46,7 +46,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		inheritCtx := ctx.DeepCopy().WithNamespace(s.stepName)
-		inheritCtx.Tags.Add(Tag{
+		inheritCtx.Labels.Add(Label{
 			Key:   "pipeline",
 			Value: pipe.Name,
 		})

@@ -29,7 +29,7 @@ const (
 	ListWidthPercentage       = 30.0
 	LayoutAreaHeight          = 3
 	FilterInputHeightOffset   = 1
-	TagsHeightOffset          = 1
+	LabelsHeightOffset        = 1
 	AlignHorizontalBreakpoint = 130
 )
 
@@ -116,17 +116,17 @@ func (m *UI) initializeLoader() {
 func (m *UI) sortList() {
 	items := m.list.Items()
 	sort.Slice(items, func(i, j int) bool {
-		iTags := m.formatTagsForSorting(items[i].(TaskMsg).Tags)
-		jTags := m.formatTagsForSorting(items[j].(TaskMsg).Tags)
+		iLabels := m.formatLabelsForSorting(items[i].(TaskMsg).Labels)
+		jLabels := m.formatLabelsForSorting(items[j].(TaskMsg).Labels)
 
-		iTagsKey := strings.Join(iTags, "-")
-		jTagsKey := strings.Join(jTags, "-")
+		iLabelsKey := strings.Join(iLabels, "-")
+		jLabelsKey := strings.Join(jLabels, "-")
 
-		if iTagsKey == jTagsKey {
+		if iLabelsKey == jLabelsKey {
 			return items[i].(TaskMsg).started.Before(items[j].(TaskMsg).started)
 		}
 
-		return iTagsKey < jTagsKey
+		return iLabelsKey < jLabelsKey
 	})
 
 	current := m.findCurrentSelection(items)
@@ -134,13 +134,13 @@ func (m *UI) sortList() {
 	m.list.Select(current)
 }
 
-// formatTagsForSorting formats tags for sorting purposes
-func (m *UI) formatTagsForSorting(tags []processor.Tag) []string {
-	var formattedTags []string
+// formatLabelsForSorting formats tags for sorting purposes
+func (m *UI) formatLabelsForSorting(tags []processor.Label) []string {
+	var formattedLabels []string
 	for _, tag := range tags {
-		formattedTags = append(formattedTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+		formattedLabels = append(formattedLabels, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
 	}
-	return formattedTags
+	return formattedLabels
 }
 
 // findCurrentSelection finds the index of the currently selected item
@@ -585,8 +585,8 @@ func (m *UI) updateViewportDimensions(step *TaskMsg) {
 		step.viewport.Height = m.height - LayoutAreaHeight
 	}
 
-	if step.TagsAsString() != "" {
-		step.viewport.Height -= TagsHeightOffset
+	if step.LabelsAsString() != "" {
+		step.viewport.Height -= LabelsHeightOffset
 	}
 }
 
@@ -595,7 +595,7 @@ func (m UI) buildPagerContent(step TaskMsg) []string {
 	var content []string
 
 	// Add tags if present
-	if tags := step.TagsAsString(); tags != "" {
+	if tags := step.LabelsAsString(); tags != "" {
 		content = append(content, lipgloss.NewStyle().
 			Width(step.viewport.Width).
 			Render(tags))

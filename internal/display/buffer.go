@@ -17,7 +17,7 @@ type bufferVars struct {
 	Buffer      string
 	Error       error
 	Skipped     bool
-	Tags        []processor.Tag
+	Labels      []processor.Label
 }
 
 func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
@@ -42,7 +42,7 @@ func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
 				Buffer:      strings.TrimRight(buffer.String(), "\n"),
 				Error:       err,
 				Skipped:     err != nil && !processor.AbortOnError(err),
-				Tags:        ctx.Tags.Tags(),
+				Labels:      ctx.Labels.Labels(),
 			})
 
 			return err

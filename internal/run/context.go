@@ -13,7 +13,7 @@ type RunContext struct {
 	Envs             EnvsContext
 	Inputs           InputsContext
 	Secrets          SecretsContext
-	Tags             TagsContext
+	Labels           LabelsContext
 	Events           EventsContext
 	ImagePolicy      ImagePolicyContext
 	Otel             OtelContext

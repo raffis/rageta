@@ -81,17 +81,17 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		fmt.Fprintf(rc.Display.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.TaskName()))
 	}
 
-	var tags []string
+	var labels []string
 	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
 	var innerTaskErr processor.TaskError
 	if AsInner(err, &innerTaskErr) {
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Task:"), innerTaskErr.TaskName())
 
-		for _, tag := range innerTaskErr.Context().Tags.Tags() {
-			tags = append(tags, styles.TagLabel.
-				Background(lipgloss.Color(tag.HEXColor)).
-				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.HEXColor))).
-				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
+		for _, label := range innerTaskErr.Context().Labels.Labels() {
+			labels = append(labels, styles.Label.
+				Background(lipgloss.Color(label.HEXColor)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(label.HEXColor))).
+				Render(fmt.Sprintf("%s: %s", label.Key, label.Value)),
 			)
 		}
 	}
@@ -111,8 +111,8 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), err.Error())
 	}
 
-	if len(tags) > 0 {
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
+	if len(labels) > 0 {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Labels:"), strings.Join(labels, " "))
 	}
 
 	fmt.Fprint(w, "\n")

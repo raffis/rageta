@@ -27,12 +27,12 @@ func (r *markdown) Report(ctx processor.TaskContext, name string) error {
 }
 
 func (r *markdown) Finalize() error {
-	fmt.Fprintln(r.w, "| # | Task | Status | Duration | Tags | Error |")
+	fmt.Fprintln(r.w, "| # | Task | Status | Duration | Labels | Error |")
 	fmt.Fprintln(r.w, "| --- | --- | --- | --- | --- | --- |")
 
 	for i, step := range r.store.Ordered() {
 		var tags []string
-		for _, tag := range step.result.Tags.Tags() {
+		for _, tag := range step.result.Labels.Labels() {
 			tags = append(tags, fmt.Sprintf("`%s: %s`", tag.Key, tag.Value))
 		}
 

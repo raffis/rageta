@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 type pipeline struct {
@@ -20,6 +21,7 @@ type pipelineTask struct {
 	name       string
 	pipeline   *pipeline
 	dependsOn  []string
+	labels     map[string]string
 }
 
 func (p *pipelineTask) Processors() []processor.Bootstraper {
@@ -52,6 +54,33 @@ func (p *pipeline) Task(name string) (processor.Task, error) {
 	return nil, fmt.Errorf("no such step exists: %s", name)
 }
 
+func (p *pipeline) TasksByLabels(labels map[string]string) []processor.Task {
+	var tasks []processor.Task
+	for _, step := range p.steps {
+		if matchLabels(step.labels, labels) {
+			tasks = append(tasks, step)
+		}
+	}
+	return tasks
+}
+
+func specLabels(spec v1beta1.Task) map[string]string {
+	labels := make(map[string]string, len(spec.Labels))
+	for _, l := range spec.Labels {
+		labels[l.Name] = l.Value
+	}
+	return labels
+}
+
+func matchLabels(taskLabels map[string]string, selector map[string]string) bool {
+	for k, v := range selector {
+		if taskLabels[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func (p *pipeline) DependantTasks(name string) []processor.Task {
 	var steps []processor.Task
 	for _, step := range p.steps {
@@ -74,7 +103,7 @@ func (p *pipeline) TaskDependencies(name string) []string {
 	return nil
 }
 
-func (p *pipeline) withTask(name string, dependsOn []string, processors []processor.Bootstraper) error {
+func (p *pipeline) withTask(name string, dependsOn []string, labels map[string]string, processors []processor.Bootstraper) error {
 	if slices.ContainsFunc(p.steps, func(s *pipelineTask) bool {
 		return s.name == name
 	}) {
@@ -86,6 +115,7 @@ func (p *pipeline) withTask(name string, dependsOn []string, processors []proces
 		processors: processors,
 		pipeline:   p,
 		dependsOn:  dependsOn,
+		labels:     labels,
 	})
 
 	return nil

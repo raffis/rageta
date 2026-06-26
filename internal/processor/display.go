@@ -47,7 +47,7 @@ type StreamsContext struct {
 
 func (s *Display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		if ctx.Tags.Has("pipeline") && !s.decouple {
+		if ctx.Labels.Has("pipeline") && !s.decouple {
 			return next(ctx)
 		}
 

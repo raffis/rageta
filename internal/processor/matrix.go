@@ -202,7 +202,7 @@ func (s *Matrix) extendMatrix(ctx TaskContext, matrixParams map[string]string, i
 	includeParams := make(map[string]string)
 
 	for currentMatrixKey, currentMatrixValue := range matrixParams {
-		tag := Tag{
+		label := Label{
 			Key:   fmt.Sprintf("matrix/%s", currentMatrixKey),
 			Value: currentMatrixValue,
 		}
@@ -216,10 +216,10 @@ func (s *Matrix) extendMatrix(ctx TaskContext, matrixParams map[string]string, i
 			}
 
 			if combine {
-				tag.HEXColor = includeGroup.Tag.HEXColor
+				label.HEXColor = includeGroup.Label.HEXColor
 
-				if includeGroup.Tag.Value != "" {
-					tag.Value = includeGroup.Tag.Value
+				if includeGroup.Label.Value != "" {
+					label.Value = includeGroup.Label.Value
 				}
 
 				for _, includeParam := range includeGroup.Params {
@@ -228,7 +228,7 @@ func (s *Matrix) extendMatrix(ctx TaskContext, matrixParams map[string]string, i
 			}
 		}
 
-		ctx.Tags.Add(tag)
+		ctx.Labels.Add(label)
 	}
 
 	maps.Copy(matrixParams, includeParams)

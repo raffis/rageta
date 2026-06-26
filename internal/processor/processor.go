@@ -15,6 +15,7 @@ type Executable func() (TaskContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
 	Task(name string) (Task, error)
+	TasksByLabels(labels map[string]string) []Task
 	DependantTasks(name string) []Task
 	TaskDependencies(name string) []string
 	Entrypoint(name string) (Next, error)

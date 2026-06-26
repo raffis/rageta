@@ -40,7 +40,7 @@ var (
 
 	lineNumberActiveStyle   lipgloss.Style
 	lineNumberInactiveStyle lipgloss.Style
-	listTagLabelStyle       lipgloss.Style
+	listLabelStyle          lipgloss.Style
 
 	activePanelColor = lipgloss.Color("#7D56F4")
 	lightGrey        = compat.AdaptiveColor{
@@ -79,7 +79,7 @@ func init() {
 	pipelineFailedStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#D22B2B"))
 	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#0000FF"))
 
-	listTagLabelStyle = newStyle().PaddingRight(1)
+	listLabelStyle = newStyle().PaddingRight(1)
 	listStyle = newStyle().
 		BorderForeground(activePanelColor).
 		Border(lipgloss.NormalBorder(), false, true, true, false)

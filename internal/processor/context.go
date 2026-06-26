@@ -22,7 +22,7 @@ type TaskContext struct {
 	EndedAt         time.Time
 	ContextDir      string
 	Tasks           map[string]*TaskContext `json:"-"`
-	Tags            TagsContext
+	Labels          LabelsContext
 	Streams         StreamsContext
 	Style           StyleContext
 	EnvVars         EnvVarsContext
@@ -81,13 +81,14 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
 	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
 	copy.Tasks = maps.Clone(c.Tasks)
-	copy.Tags.tags = append(copy.Tags.tags, c.Tags.tags...)
+	copy.Labels.labels = append(copy.Labels.labels, c.Labels.labels...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
 	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
 	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
 	copy.Build.RunOpts = append(copy.Build.RunOpts, c.Build.RunOpts...)
 	copy.Build.State = c.Build.State
+	copy.Build.ContextState = c.Build.ContextState
 	copy.Build.Ref = c.Build.Ref
 	copy.Workdir.Path = c.Workdir.Path
 	copy.Services.Status = maps.Clone(c.Services.Status)

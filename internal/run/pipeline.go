@@ -64,7 +64,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithWhen(rc.CEL.Env),
 			processor.WithArtifacts(rc.Buildkit.GatewayClient),
 			processor.WithInputVars(rc.CEL.Env),
-			processor.WithTags(rc.Tags.Tags),
+			processor.WithLabels(rc.Labels.Labels),
 			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
 			processor.WithSecretVars(osEnvMap(), rc.Secrets.Store),
 			processor.WithService(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),

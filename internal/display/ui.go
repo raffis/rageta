@@ -25,7 +25,7 @@ func UI(sender sender) processor.DisplayFactory {
 		step := tui.NewTask()
 		step.Name = uniqueName
 		step.DisplayName = displayName
-		step.Tags = ctx.Tags.Tags()
+		step.Labels = ctx.Labels.Labels()
 		step.Status = tui.TaskStatusRunning
 		sender.Send(step)
 

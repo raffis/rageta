@@ -112,6 +112,8 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		stepCtx.ContextDir = contextDir
 		stepCtx.Tasks = make(map[string]*processor.TaskContext)
 		stepCtx.InputVars.Inputs = mappedInputs
+		inheritedState := stepCtx.Build.State
+		stepCtx.Build.ContextState = &inheritedState
 		outputs := make(map[string]v1beta1.ParamValue)
 
 		/*if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
@@ -160,10 +162,19 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 
 		var refs []string
 		for _, ref := range spec.DependsOn {
-			refs = append(refs, ref.Name)
+			if ref.Name != nil {
+				refs = append(refs, *ref.Name)
+			} else if ref.MatchLabels != nil {
+				for _, s := range steps {
+					if matchLabels(specLabels(s), ref.MatchLabels) {
+						refs = append(refs, s.Name)
+					}
+				}
+			}
 		}
 
-		if err := p.withTask(spec.Name, refs, processors); err != nil {
+		labels := specLabels(spec)
+		if err := p.withTask(spec.Name, refs, labels, processors); err != nil {
 			return p, err
 		}
 	}

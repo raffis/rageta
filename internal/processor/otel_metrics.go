@@ -49,7 +49,7 @@ func (s *OtelMetrics) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			attribute.String("step", s.stepName),
 			attribute.String("result", ErrorResult(err)),
 		}
-		for _, tag := range ctx.Tags.Tags() {
+		for _, tag := range ctx.Labels.Labels() {
 			attrs = append(attrs, attribute.String(tag.Key, tag.Value))
 		}
 

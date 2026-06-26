@@ -162,6 +162,10 @@ spec:
                 dependsOn:
                   items:
                     properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
                       name:
                         type: string
                     type: object
@@ -254,6 +258,17 @@ spec:
                     - name
                     type: object
                   type: array
+                labels:
+                  items:
+                    properties:
+                      hexColor:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
                 long:
                   type: string
                 matrix:
@@ -263,6 +278,13 @@ spec:
                     include:
                       items:
                         properties:
+                          label:
+                            properties:
+                              hexColor:
+                                type: string
+                              value:
+                                type: string
+                            type: object
                           name:
                             type: string
                           params:
@@ -279,15 +301,8 @@ spec:
                               - value
                               type: object
                             type: array
-                          tag:
-                            properties:
-                              hexColor:
-                                type: string
-                              value:
-                                type: string
-                            type: object
                         required:
-                        - tag
+                        - label
                         type: object
                       type: array
                     maxConcurrent:
@@ -380,10 +395,21 @@ spec:
                           to:
                             type: string
                         type: object
-                      step:
+                      task:
                         properties:
                           name:
                             type: string
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                      tasks:
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
                           path:
                             type: string
                           to:
@@ -395,17 +421,6 @@ spec:
                   items:
                     properties:
                       script:
-                        type: string
-                    type: object
-                  type: array
-                tags:
-                  items:
-                    properties:
-                      hexColor:
-                        type: string
-                      name:
-                        type: string
-                      value:
                         type: string
                     type: object
                   type: array
@@ -479,6 +494,10 @@ spec:
                 dependsOn:
                   items:
                     properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
                       name:
                         type: string
                     type: object
@@ -571,6 +590,17 @@ spec:
                     - name
                     type: object
                   type: array
+                labels:
+                  items:
+                    properties:
+                      hexColor:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
                 long:
                   type: string
                 matrix:
@@ -580,6 +610,13 @@ spec:
                     include:
                       items:
                         properties:
+                          label:
+                            properties:
+                              hexColor:
+                                type: string
+                              value:
+                                type: string
+                            type: object
                           name:
                             type: string
                           params:
@@ -596,15 +633,8 @@ spec:
                               - value
                               type: object
                             type: array
-                          tag:
-                            properties:
-                              hexColor:
-                                type: string
-                              value:
-                                type: string
-                            type: object
                         required:
-                        - tag
+                        - label
                         type: object
                       type: array
                     maxConcurrent:
@@ -697,10 +727,21 @@ spec:
                           to:
                             type: string
                         type: object
-                      step:
+                      task:
                         properties:
                           name:
                             type: string
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
+                      tasks:
+                        properties:
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            type: object
                           path:
                             type: string
                           to:
@@ -712,17 +753,6 @@ spec:
                   items:
                     properties:
                       script:
-                        type: string
-                    type: object
-                  type: array
-                tags:
-                  items:
-                    properties:
-                      hexColor:
-                        type: string
-                      name:
-                        type: string
-                      value:
                         type: string
                     type: object
                   type: array
