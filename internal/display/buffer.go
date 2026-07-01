@@ -26,7 +26,7 @@ func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
 	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
 		buffer := &bytes.Buffer{}
 
-		return buffer, buffer, func(err error) error {
+		return buffer, buffer, func(_ processor.TaskContext, err error) error {
 			mu.Lock()
 			defer mu.Unlock()
 

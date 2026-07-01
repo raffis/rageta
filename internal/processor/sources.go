@@ -63,7 +63,7 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 				copyTo := source.Local.To
 				if copyTo == "" {
-					copyTo = srcPath
+					copyTo = "."
 				}
 
 				var contextSrc llb.State
@@ -96,13 +96,10 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 				dst := source.Task.To
 				if dst == "" {
-					dst = srcPath
+					dst = "."
 				}
 
-				copyInfo := &llb.CopyInfo{CreateDestPath: true}
-				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
-					copyInfo.CopyDirContentsOnly = true
-				}
+				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
 
 				ctx.Build.State = ctx.Build.State.File(
 					llb.Copy(stepCtx.Build.State, srcPath, dst, copyInfo),
@@ -116,13 +113,10 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 				dst := source.Tasks.To
 				if dst == "" {
-					dst = srcPath
+					dst = "."
 				}
 
-				copyInfo := &llb.CopyInfo{CreateDestPath: true}
-				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
-					copyInfo.CopyDirContentsOnly = true
-				}
+				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
 
 				var matched int
 				for name, stepCtx := range ctx.Tasks {
@@ -153,13 +147,10 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 				dst := source.Context.To
 				if dst == "" {
-					dst = srcPath
+					dst = "."
 				}
 
-				copyInfo := &llb.CopyInfo{CreateDestPath: true}
-				if srcPath == "/" || strings.HasSuffix(srcPath, "/") || srcPath == "." {
-					copyInfo.CopyDirContentsOnly = true
-				}
+				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
 
 				ctx.Build.State = ctx.Build.State.File(
 					llb.Copy(*ctx.Build.ContextState, srcPath, dst, copyInfo),

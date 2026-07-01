@@ -6,7 +6,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type DisplayCloser func(err error) error
+type DisplayCloser func(ctx TaskContext, err error) error
 type DisplayFactory func(ctx TaskContext, stepName, short string) (io.Writer, io.Writer, DisplayCloser)
 
 func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) ProcessorBuilder {
@@ -62,7 +62,7 @@ func (s *Display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 		}
 
 		ctx, err := next(ctx)
-		if err := close(err); err != nil {
+		if err := close(ctx, err); err != nil {
 			return ctx, err
 		}
 

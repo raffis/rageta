@@ -102,7 +102,11 @@ func (r *table) stringify(step processor.TaskContext) (string, string, string) {
 		status = tui.TaskStatusFailed
 		errMsg = strings.ReplaceAll(step.Error.Error(), "\n", "")
 	case step.Error == nil:
-		status = tui.TaskStatusDone
+		if step.Build.Cached {
+			status = tui.TaskStatusCached
+		} else {
+			status = tui.TaskStatusDone
+		}
 	}
 
 	if !step.EndedAt.IsZero() {

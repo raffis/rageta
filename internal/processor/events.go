@@ -86,6 +86,8 @@ func (s *Events) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		duration := time.Since(ctx.StartedAt).Round(time.Millisecond * 100)
 
 		switch {
+		case err == nil && ctx.Build.Cached:
+			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q cached [%s]\n", ctx.UniqueName(), duration)
 		case err == nil:
 			_, _ = fmt.Fprintf(ctx.Events.Dev, "Task %q done [%s]\n", ctx.UniqueName(), duration)
 		case errors.Is(err, ErrAllowFailure):

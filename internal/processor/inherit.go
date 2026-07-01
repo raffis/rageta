@@ -56,14 +56,15 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		_, _, err = cmd()
+		outputCtx, _, err := cmd()
 
 		if err != nil {
 			return ctx, fmt.Errorf("failed to execute pipeline: %w", err)
 		}
 
-		//s.mergeContext(outputContext, ctx)
-		//maps.Copy(ctx.OutputVars.OutputVars, outputs)
+		ctx.Build.State = outputCtx.Build.State
+		ctx.Build.Ref = outputCtx.Build.Ref
+		ctx.Build.Cached = outputCtx.Build.Cached
 
 		return next(ctx)
 	}, nil

@@ -17,7 +17,7 @@ func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
 			stderrWrapper = xio.NewLineWriter(stderr)
 		}
 
-		return stdoutWrapper, stderrWrapper, func(err error) error {
+		return stdoutWrapper, stderrWrapper, func(_ processor.TaskContext, err error) error {
 			if err := stdoutWrapper.Flush(); err != nil {
 				return fmt.Errorf("error flushing stdout: %w", err)
 			}

@@ -209,6 +209,7 @@ const (
 	TaskStatusRunning
 	TaskStatusFailed
 	TaskStatusDone
+	TaskStatusCached
 	TaskStatusSkipped
 )
 
@@ -218,6 +219,7 @@ var stepStatusStrings = []string{
 	"running",
 	"failed",
 	"done",
+	"cached",
 	"skipped",
 }
 
@@ -240,6 +242,8 @@ func (e TaskStatus) Render() string {
 		return stepFailedStyle.Render("✗")
 	case TaskStatusWaiting:
 		return stepWaitingStyle.Render("◎")
+	case TaskStatusCached:
+		return stepCachedStyle.Render("◈")
 	case TaskStatusSkipped:
 		return stepWarningStyle.Render("⚠")
 	default:

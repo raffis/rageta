@@ -48,16 +48,17 @@ type BuildContext struct {
 	ContextState *llb.State // initial inherited state, set when entering a sub-pipeline via inherit
 	RunOpts      []llb.RunOption
 	Ref          gwclient.Reference
+	Cached       bool
 }
 
 func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
-	return func(ctx TaskContext) (TaskContext, error) {
+	return func(ctx TaskContext) (outCtx TaskContext, outErr error) {
 		if s.noCache {
 			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.IgnoreCache)
 		}
 
 		if ctx.Build.RunOpts == nil {
-			return ctx, nil
+			return next(ctx)
 		}
 
 		exec := ctx.Build.State.Run(ctx.Build.RunOpts...)
@@ -66,29 +67,46 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("marshal root failed: %w", err)
 		}
 
+		var allCached bool
 		if s.statusRouter != nil {
 			if _, herr := def.Head(); herr == nil {
 				var digests []digest.Digest
 				for _, dt := range def.ToPB().Def {
 					digests = append(digests, digest.FromBytes(dt))
 				}
-				stepCh := make(chan *bkclient.SolveStatus, 16)
-				s.statusRouter.Register(digests, stepCh)
+				rawCh := make(chan *bkclient.SolveStatus, 16)
+				s.statusRouter.Register(digests, rawCh)
 
 				d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Streams.Stdout, progressui.PlainMode)
 				if derr != nil {
 					s.statusRouter.Unregister(digests)
 					return ctx, derr
 				}
+
+				displayCh := make(chan *bkclient.SolveStatus, 16)
+				teeDone := make(chan struct{})
+				go func() {
+					defer close(teeDone)
+					defer close(displayCh)
+					for ss := range rawCh {
+						for _, v := range ss.Vertexes {
+							allCached = v.Cached
+						}
+						displayCh <- ss
+					}
+				}()
+
 				displayDone := make(chan struct{})
 				go func() {
 					defer close(displayDone)
-					d.UpdateFrom(ctx, stepCh)
+					d.UpdateFrom(ctx, displayCh)
 				}()
 				defer func() {
 					s.statusRouter.Unregister(digests)
-					close(stepCh)
+					close(rawCh)
+					<-teeDone
 					<-displayDone
+					outCtx.Build.Cached = allCached
 				}()
 			}
 		}
@@ -110,7 +128,8 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		ctx.Build.State = state
 		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path))
 
-		return next(ctx)
+		outCtx, outErr = next(ctx)
+		return
 	}, nil
 }
 

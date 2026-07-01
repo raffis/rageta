@@ -83,6 +83,7 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		s.store.AddSecret(context.Background(), secretID, contextJSON)
 		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(contextPath, llb.SecretID(secretID)))
 
+		var scriptCmds []string
 		for k, step := range s.steps {
 			script := step.Script
 			if err := substitute.Substitute(ctx.ToV1Beta1(), &script); err != nil {
@@ -108,11 +109,14 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			).Root()
 
 			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
-			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.Args([]string{
-				"/bin/sh", "-c",
-				fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath),
-			}))
+			scriptCmds = append(scriptCmds, fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath))
 		}
+
+		// All scripts must be combined into a single Args call — multiple llb.Args in one Run only keeps the last.
+		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.Args([]string{
+			"/bin/sh", "-c",
+			strings.Join(scriptCmds, "; "),
+		}))
 
 		ctx, err = next(ctx)
 		if err != nil {

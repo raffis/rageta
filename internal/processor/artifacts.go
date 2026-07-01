@@ -75,14 +75,14 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			case artifact.Outputvars != nil:
 				srcPath = artifact.Outputvars.Path
 			case artifact.Local != nil:
-				srcPath := artifact.Local.Path
+				srcPath = artifact.Local.Path
 				if srcPath == "" {
 					srcPath = "."
 				}
 
-				hostPath := artifact.Local.To
+				hostPath = artifact.Local.To
 				if hostPath == "" {
-					hostPath = srcPath
+					hostPath = "."
 				}
 			case artifact.Image != nil:
 				continue
@@ -91,8 +91,9 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 
 			exportDef, err := llb.Scratch().File(llb.Copy(ctx.Build.State, srcPath, "/", &llb.CopyInfo{
-				CreateDestPath: true,
-				AllowWildcard:  strings.ContainsAny(srcPath, "*?["),
+				CreateDestPath:      true,
+				CopyDirContentsOnly: true,
+				AllowWildcard:       strings.ContainsAny(srcPath, "*?["),
 			})).Marshal(ctx)
 
 			if err != nil {

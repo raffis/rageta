@@ -17,7 +17,7 @@ func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
 			stderrWrapper = xio.NewLineWriter(xio.NewPrefixWriter(stderr, fmt.Appendf(nil, "%s ", ctx.Style.Style.Render(ctx.UniqueName()))))
 		}
 
-		return stdoutWrapper, stderrWrapper, func(err error) error {
+		return stdoutWrapper, stderrWrapper, func(_ processor.TaskContext, err error) error {
 			if err := stdoutWrapper.Flush(); err != nil {
 				return fmt.Errorf("error flushing stdout: %w", err)
 			}

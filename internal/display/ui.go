@@ -29,16 +29,20 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Status = tui.TaskStatusRunning
 		sender.Send(step)
 
-		return step, step, func(err error) error {
+		return step, step, func(ctx processor.TaskContext, err error) error {
 			if err := step.Flush(); err != nil {
 				return fmt.Errorf("error flushing stdout: %w", err)
 			}
 
 			switch {
 			case err == nil:
+				status := tui.TaskStatusDone
+				if ctx.Build.Cached {
+					status = tui.TaskStatusCached
+				}
 				sender.Send(tui.TaskMsg{
 					Name:   uniqueName,
-					Status: tui.TaskStatusDone,
+					Status: status,
 				})
 			case errors.Is(err, processor.ErrAllowFailure):
 				sender.Send(tui.TaskMsg{

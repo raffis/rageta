@@ -22,6 +22,7 @@ func newStyle() lipgloss.Style {
 
 var (
 	stepOkStyle           lipgloss.Style
+	stepCachedStyle       lipgloss.Style
 	stepFailedStyle       lipgloss.Style
 	stepWaitingStyle      lipgloss.Style
 	stepWarningStyle      lipgloss.Style
@@ -58,6 +59,7 @@ func init() {
 	uiDebug = os.Getenv("RAGETA_TUI_DEBUG") != ""
 
 	stepOkStyle = newStyle().Foreground(lipgloss.Color("#008000"))
+	stepCachedStyle = newStyle().Foreground(lipgloss.Color("#00AACC"))
 	stepFailedStyle = newStyle().Foreground(lipgloss.Color("#D22B2B"))
 	stepWaitingStyle = newStyle().Foreground(lipgloss.Color("#0000FF"))
 	stepWarningStyle = newStyle().Foreground(lipgloss.Color("#FFC300"))
