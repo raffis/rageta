@@ -36,13 +36,15 @@ type Otel struct {
 }
 
 type OtelContext struct {
-	Tracer trace.Tracer
-	Meter  metric.Meter
-	Logger log.Logger
+	Endpoint string
+	Tracer   trace.Tracer
+	Meter    metric.Meter
+	Logger   log.Logger
 }
 
 func (s *Otel) Run(rc *RunContext, next Next) error {
 	ctx := context.Background()
+	rc.Otel.Endpoint = s.opts.OtelOpts.Endpoint
 
 	traceProvider, err := s.opts.OtelOpts.BuildTraceProvider(ctx)
 	if err != nil {

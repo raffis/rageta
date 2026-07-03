@@ -9,23 +9,41 @@ import (
 )
 
 func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
-	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
-		stdoutWrapper := xio.NewLineWriter(stdout)
-		stderrWrapper := stdoutWrapper
-
-		if stdout != stderr {
-			stderrWrapper = xio.NewLineWriter(stderr)
+	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
+		d := &passthroughDisplay{
+			stdout: xio.NewLineWriter(stdout),
 		}
-
-		return stdoutWrapper, stderrWrapper, func(_ processor.TaskContext, err error) error {
-			if err := stdoutWrapper.Flush(); err != nil {
-				return fmt.Errorf("error flushing stdout: %w", err)
-			}
-			if err := stderrWrapper.Flush(); err != nil {
-				return fmt.Errorf("error flushing stderr: %w", err)
-			}
-
-			return nil
+		if stdout == stderr {
+			d.stderr = d.stdout
+		} else {
+			d.stderr = xio.NewLineWriter(stderr)
 		}
+		return d
 	}
+}
+
+type passthroughDisplay struct {
+	stdout, stderr *xio.LineWriter
+}
+
+func (d *passthroughDisplay) Stdout() io.Writer {
+	return d.stdout
+}
+
+func (d *passthroughDisplay) Stderr() io.Writer {
+	return d.stderr
+}
+
+func (d *passthroughDisplay) Close(_ processor.TaskContext, _ error) error {
+	if err := d.stdout.Flush(); err != nil {
+		return fmt.Errorf("error flushing stdout: %w", err)
+	}
+	if err := d.stderr.Flush(); err != nil {
+		return fmt.Errorf("error flushing stderr: %w", err)
+	}
+	return nil
+}
+
+func (d *passthroughDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+	return nil
 }

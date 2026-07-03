@@ -77,7 +77,7 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				rawCh := make(chan *bkclient.SolveStatus, 16)
 				s.statusRouter.Register(digests, rawCh)
 
-				d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Streams.Stdout, progressui.PlainMode)
+				d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Display.Stdout, progressui.PlainMode)
 				if derr != nil {
 					s.statusRouter.Unregister(digests)
 					return ctx, derr

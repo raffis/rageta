@@ -68,7 +68,6 @@ type Options struct {
 	CELOptions              CELOptions
 	PipelineOptions         PipelineOptions
 	InputsOptions           InputsOptions
-	ContextDirOptions       ContextDirOptions
 	LabelsOptions           LabelsOptions
 	SummaryOptions          SummaryOptions
 	InteractiveOptions      InteractiveOptions
@@ -77,7 +76,6 @@ type Options struct {
 
 func (s *Options) BindFlags(flags flagset.Interface) {
 	pipelineFlags := pflag.NewFlagSet("Pipeline", pflag.ExitOnError)
-	s.ContextDirOptions.BindFlags(flags)
 	s.ImagePolicyOptions.BindFlags(flags)
 	s.DisplayOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
@@ -119,7 +117,6 @@ func (o Options) Build() *Runner {
 	return Builder(
 		o.ExitCodeOptions.Build(),
 		o.TeardownOptions.Build(),
-		o.ContextDirOptions.Build(),
 		o.SecretOptions.Build(),
 		o.ReportOptions.Build(),
 		o.OtelOptions.Build(),

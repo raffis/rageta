@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"strings"
 	"time"
@@ -130,11 +129,7 @@ func (s *Service) exec(ctx TaskContext, pod *runtime.Pod) (TaskContext, error) {
 		w.Flush()
 	}
 
-	await, err := s.driver.CreatePod(ctx, pod, ctx.Streams.Stdin,
-		io.MultiWriter(append(ctx.Streams.AdditionalStdout, ctx.Streams.Stdout)...),
-		io.MultiWriter(append(ctx.Streams.AdditionalStderr, ctx.Streams.Stderr)...),
-	)
-
+	await, err := s.driver.CreatePod(ctx, pod, nil, ctx.Display.Stdout, ctx.Display.Stderr)
 	if err != nil {
 		return ctx, err
 	}

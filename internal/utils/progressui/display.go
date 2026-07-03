@@ -132,6 +132,7 @@ type vertex struct {
 
 	logs          [][]byte
 	logsPartial   bool
+	logsPartialFD int
 	logsOffset    int
 	logsBuffer    *ring.Ring
 	prev          *client.Vertex
@@ -483,7 +484,15 @@ func (t *trace) update(s *client.SolveStatus) {
 		}
 		i := 0
 		complete := split(l.Data, byte('\n'), func(dt []byte) {
-			if v.logsPartial && len(v.logs) != 0 && i == 0 {
+			if v.logsPartial && v.logsPartialFD == l.Stream && len(v.logs) != 0 && i == 0 {
+				// Only continue a partial (not-yet-newline-terminated) line if
+				// this chunk is from the same stream (stdout/stderr) that left
+				// it open. Tools like curl repeatedly rewrite a progress line
+				// with '\r' instead of '\n', which can leave a line "open" on
+				// one stream for a long time; without this check, a complete
+				// line arriving on the OTHER stream in the meantime (e.g. our
+				// stats-reporter's stderr line) gets spliced onto the end of
+				// that still-open line instead of staying separate.
 				v.logs[len(v.logs)-1] = append(v.logs[len(v.logs)-1], dt...)
 			} else {
 				ts := time.Duration(0)
@@ -502,6 +511,7 @@ func (t *trace) update(s *client.SolveStatus) {
 			i++
 		})
 		v.logsPartial = !complete
+		v.logsPartialFD = l.Stream
 		t.updates[v.Digest] = struct{}{}
 		v.update(1)
 	}
@@ -546,4 +556,3 @@ func split(dt []byte, sep byte, fn func([]byte)) bool {
 		dt = dt[idx+1:]
 	}
 }
-

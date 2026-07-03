@@ -10,12 +10,8 @@ import (
 	"github.com/raffis/rageta/internal/tui"
 )
 
-type sender interface {
-	Send(msg tea.Msg)
-}
-
 func UI(sender sender) processor.DisplayFactory {
-	return func(ctx processor.TaskContext, stepName, short string) (io.Writer, io.Writer, processor.DisplayCloser) {
+	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
 		displayName := stepName
 		if short != "" {
 			displayName = short
@@ -29,39 +25,54 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Status = tui.TaskStatusRunning
 		sender.Send(step)
 
-		return step, step, func(ctx processor.TaskContext, err error) error {
-			if err := step.Flush(); err != nil {
-				return fmt.Errorf("error flushing stdout: %w", err)
-			}
-
-			switch {
-			case err == nil:
-				status := tui.TaskStatusDone
-				if ctx.Build.Cached {
-					status = tui.TaskStatusCached
-				}
-				sender.Send(tui.TaskMsg{
-					Name:   uniqueName,
-					Status: status,
-				})
-			case errors.Is(err, processor.ErrAllowFailure):
-				sender.Send(tui.TaskMsg{
-					Name:   uniqueName,
-					Status: tui.TaskStatusSkipped,
-				})
-			case errors.Is(err, processor.ErrConditionFalse):
-				sender.Send(tui.TaskMsg{
-					Name:   uniqueName,
-					Status: tui.TaskStatusSkipped,
-				})
-			default:
-				sender.Send(tui.TaskMsg{
-					Name:   uniqueName,
-					Status: tui.TaskStatusFailed,
-				})
-			}
-
-			return nil
-		}
+		return &uiDisplay{step: step, uniqueName: uniqueName, sender: sender}
 	}
+}
+
+type sender interface {
+	Send(msg tea.Msg)
+}
+
+type uiDisplay struct {
+	step       tui.TaskMsg
+	uniqueName string
+	sender     sender
+}
+
+func (d *uiDisplay) Stdout() io.Writer {
+	return &d.step
+}
+
+func (d *uiDisplay) Stderr() io.Writer {
+	return &d.step
+}
+
+func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
+	if err := d.step.Flush(); err != nil {
+		return fmt.Errorf("error flushing stdout: %w", err)
+	}
+	switch {
+	case err == nil:
+		status := tui.TaskStatusDone
+		if ctx.Build.Cached {
+			status = tui.TaskStatusCached
+		}
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: status})
+	case errors.Is(err, processor.ErrAllowFailure):
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped})
+	case errors.Is(err, processor.ErrConditionFalse):
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped})
+	default:
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusFailed})
+	}
+	return nil
+}
+
+func (d *uiDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+	d.sender.Send(tui.ResourceStatsMsg{
+		Name:  d.uniqueName,
+		Stats: tui.ResourceStats{CPUMillicores: cpu, MemBytes: mem, NetRxBytes: netRx, NetTxBytes: netTx},
+	})
+
+	return nil
 }

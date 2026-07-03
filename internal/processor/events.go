@@ -52,8 +52,8 @@ func (s *Events) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		switch {
 		case s.dev != nil:
 			ctx.Events.Dev = s.dev
-		case ctx.Streams.Stderr != nil && ctx.Streams.Stderr != io.Discard:
-			ctx.Events.Dev = ctx.Streams.Stderr
+		case ctx.Display.Stderr != nil && ctx.Display.Stderr != io.Discard:
+			ctx.Events.Dev = ctx.Display.Stderr
 		default:
 			return next(ctx)
 		}

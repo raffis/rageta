@@ -1,8 +1,6 @@
 package pipeline
 
 import (
-	"os"
-
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -12,7 +10,6 @@ import (
 
 type builder struct {
 	logger      logr.Logger
-	tmpDir      string
 	stepBuilder TaskBuilder
 }
 
@@ -31,16 +28,9 @@ func WithTaskBuilder(stepBuilder TaskBuilder) func(*builder) {
 	}
 }
 
-func WithTmpDir(tmpDir string) func(*builder) {
-	return func(s *builder) {
-		s.tmpDir = tmpDir
-	}
-}
-
 func NewBuilder(opts ...builderOption) *builder {
 	e := &builder{
 		logger: logr.Discard(),
-		tmpDir: os.TempDir(),
 	}
 
 	for _, o := range opts {
@@ -106,10 +96,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		return nil, err
 	}
 
-	contextDir := e.tmpDir
-
 	return func() (processor.TaskContext, map[string]v1beta1.ParamValue, error) {
-		stepCtx.ContextDir = contextDir
 		stepCtx.Tasks = make(map[string]*processor.TaskContext)
 		stepCtx.InputVars.Inputs = mappedInputs
 		inheritedState := stepCtx.Build.State

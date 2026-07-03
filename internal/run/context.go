@@ -9,7 +9,6 @@ type RunContext struct {
 	CEL              CELContext
 	Buildkit         BuildkitContext
 	ContainerRuntime ContainerRuntimeContext
-	ContextDir       ContextDirContext
 	Envs             EnvsContext
 	Inputs           InputsContext
 	Secrets          SecretsContext

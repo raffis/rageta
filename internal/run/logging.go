@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/zapr"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/raffis/rageta/internal/utils"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -49,7 +50,7 @@ type LoggingContext struct {
 }
 
 func (s *Logging) Run(rc *RunContext, next Next) error {
-	logFile, err := os.OpenFile(path.Join(rc.ContextDir.Path, "main.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
+	logFile, err := os.OpenFile(path.Join(os.TempDir(), fmt.Sprintf("rageta-%s.log", utils.RandString(5))), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 	if err != nil {
 		return err
 	}

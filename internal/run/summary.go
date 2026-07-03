@@ -133,7 +133,7 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 func (s *Summary) writeSuccessToStderr(rc *RunContext) {
 	fmt.Fprintf(rc.Display.Stderr, "\nThe pipeline was successfully executed.\n\n")
 	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
+	//fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
 	w.Flush()
 }
 

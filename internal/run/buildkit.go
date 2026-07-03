@@ -154,6 +154,13 @@ func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
 					ImagePullPolicy: cruntime.PullImagePolicyMissing,
 					Privileged:      true,
 					RestartPolicy:   cruntime.RestartPolicyAlways,
+					Args: []string{
+						"--oci-worker-net=bridge",
+					},
+					Env: map[string]string{
+						"OTEL_TRACES_EXPORTER":        "otlp",
+						"OTEL_EXPORTER_OTLP_ENDPOINT": rc.Otel.Endpoint,
+					},
 				},
 			},
 		},

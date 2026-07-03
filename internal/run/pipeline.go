@@ -34,7 +34,6 @@ func (s *Pipeline) Run(rc *RunContext, next Next) error {
 	builder = pipeline.NewBuilder(
 		pipeline.WithTaskBuilder(s.stepPipeline(rc, &builder)),
 		pipeline.WithLogger(rc.Logging.Logger),
-		pipeline.WithTmpDir(rc.ContextDir.Path),
 	)
 
 	rc.Pipeline.Builder = builder
@@ -52,6 +51,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithWorkdir(),
 			processor.WithStyle(),
 			processor.WithDisplay(rc.Display.Factory, rc.Display.InternalSteps, rc.Display.Expand),
+			processor.WithStats(),
 			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
 			processor.WithMatrix(),
 			processor.WithDependsOn(),

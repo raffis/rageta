@@ -20,10 +20,9 @@ type TaskContext struct {
 	Error           error
 	StartedAt       time.Time
 	EndedAt         time.Time
-	ContextDir      string
 	Tasks           map[string]*TaskContext `json:"-"`
 	Labels          LabelsContext
-	Streams         StreamsContext
+	Display         DisplayContext
 	Style           StyleContext
 	EnvVars         EnvVarsContext
 	SecretVars      SecretVarsContext
@@ -33,6 +32,7 @@ type TaskContext struct {
 	Build           BuildContext
 	Workdir         WorkdirContext
 	Services        ServiceContext
+	Stats           StatsContext
 }
 
 func (c TaskContext) UniqueID() string {
@@ -64,6 +64,7 @@ func NewContext() TaskContext {
 		Matrix:     newMatrixContext(),
 		Events:     newEventsContext(),
 		Services:   newServiceContext(),
+		Stats:      newStatsContext(),
 		Tasks:      make(map[string]*TaskContext),
 	}
 }
@@ -74,12 +75,9 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.uniqueName = c.uniqueName
 	copy.namespace = c.namespace
 	copy.Context = c.Context
-	copy.ContextDir = c.ContextDir
-	copy.Streams.Stdout = c.Streams.Stdout
-	copy.Streams.Stderr = c.Streams.Stderr
-	copy.Streams.Stdin = c.Streams.Stdin
-	copy.Streams.AdditionalStdout = append(copy.Streams.AdditionalStdout, c.Streams.AdditionalStdout...)
-	copy.Streams.AdditionalStderr = append(copy.Streams.AdditionalStderr, c.Streams.AdditionalStderr...)
+	copy.Display.Stdout = c.Display.Stdout
+	copy.Display.Stderr = c.Display.Stderr
+	copy.Display.WriteStats = c.Display.WriteStats
 	copy.Tasks = maps.Clone(c.Tasks)
 	copy.Labels.labels = append(copy.Labels.labels, c.Labels.labels...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)

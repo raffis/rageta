@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -16,7 +17,7 @@ type EventsOptions struct {
 }
 
 func (s *EventsOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.EventsOutput, "events-output", "", s.EventsOutput, "Destination for the events. By default this depends on the output (-o) set.")
+	flags.StringVarP(&s.EventsOutput, "events-output", "", s.EventsOutput, "Destination for the events. By default this depends on the display (-o).")
 	flags.DurationVarP(&s.WaitUpdateInterval, "events-interval", "", s.WaitUpdateInterval, "Print event for a running step at intervals.")
 	flags.BoolVarP(&s.Disabled, "skip-events", "", s.Disabled, "Do not emit events")
 }
@@ -62,6 +63,7 @@ func (s *Events) Run(rc *RunContext, next Next) error {
 		rc.Events.Dev = nil
 	}
 
+	fmt.Printf("EveBEFnts: %s\n", rc.Events.Dev)
 	rc.Events.Enabled = !s.opts.Disabled
 	rc.Events.WaitUpdateInterval = s.opts.WaitUpdateInterval
 	return next(rc)

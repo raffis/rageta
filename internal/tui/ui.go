@@ -203,6 +203,8 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handlePipelineDone(msg)...)
 	case TaskMsg:
 		cmds = append(cmds, m.handleTaskMessage(msg)...)
+	case ResourceStatsMsg:
+		m.handleResourceStats(msg)
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
 	case tea.KeyPressMsg:
@@ -267,6 +269,10 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 		// Update existing step
 		for i, listItem := range items {
 			if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
+				if msg.Status != TaskStatusRunning {
+					item.Stats = ResourceStats{}
+				}
+
 				items[i] = item.WithStatus(msg.Status)
 			}
 		}
@@ -398,6 +404,22 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	m.list.SetItems(items)
 
 	return nil
+}
+
+// handleResourceStats updates the Stats field of a running task
+func (m *UI) handleResourceStats(msg ResourceStatsMsg) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	items := slices.Clone(m.list.Items())
+	for i, listItem := range items {
+		if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
+			item.Stats = msg.Stats
+			items[i] = item
+			break
+		}
+	}
+	m.list.SetItems(items)
 }
 
 // handleTick handles tick messages for animations

@@ -6,8 +6,14 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type DisplayCloser func(ctx TaskContext, err error) error
-type DisplayFactory func(ctx TaskContext, stepName, short string) (io.Writer, io.Writer, DisplayCloser)
+type Display interface {
+	Stdout() io.Writer
+	Stderr() io.Writer
+	Close(ctx TaskContext, err error) error
+	WriteStats(cpu, mem, netRx, netTx int64) error
+}
+
+type DisplayFactory func(ctx TaskContext, stepName, short string) Display
 
 func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
@@ -17,7 +23,7 @@ func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) Pro
 			return nil
 		}*/
 
-		stdio := &Display{
+		stdio := &displayBootstraper{
 			stepName:      spec.Name,
 			short:         spec.Short,
 			spec:          spec,
@@ -29,7 +35,7 @@ func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) Pro
 	}
 }
 
-type Display struct {
+type displayBootstraper struct {
 	stepName      string
 	short         string
 	spec          *v1beta1.Task
@@ -37,37 +43,34 @@ type Display struct {
 	decouple      bool
 }
 
-type StreamsContext struct {
-	Stdin            io.Reader
-	Stdout           io.Writer
-	Stderr           io.Writer
-	AdditionalStdout []io.Writer
-	AdditionalStderr []io.Writer
+type DisplayContext struct {
+	Stdout     io.Writer
+	Stderr     io.Writer
+	WriteStats func(cpu, mem, netRx, netTx int64) error
 }
 
-func (s *Display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
+func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.Labels.Has("pipeline") && !s.decouple {
 			return next(ctx)
 		}
 
-		stdout, stderr, close := s.outputFactory(ctx, s.stepName, s.short)
+		d := s.outputFactory(ctx, s.stepName, s.short)
 
-		if ctx.Streams.Stdout != io.Discard {
-			ctx.Streams.Stdout = stdout
+		ctx.Display.WriteStats = d.WriteStats
+
+		if ctx.Display.Stdout != io.Discard {
+			ctx.Display.Stdout = d.Stdout()
 		}
 
-		if ctx.Streams.Stderr != io.Discard {
-			ctx.Streams.Stderr = stderr
+		if ctx.Display.Stderr != io.Discard {
+			ctx.Display.Stderr = d.Stderr()
 		}
 
 		ctx, err := next(ctx)
-		if err := close(ctx, err); err != nil {
+		if err := d.Close(ctx, err); err != nil {
 			return ctx, err
 		}
-
-		//ctx.Streams.Stderr = nil
-		//ctx.Streams.Stdout = nil
 
 		return ctx, err
 	}, nil

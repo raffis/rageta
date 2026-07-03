@@ -35,9 +35,9 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		logger := s.logger
 
-		if ctx.Streams.Stderr != nil && ctx.Streams.Stderr != io.Discard && !s.detached {
+		if ctx.Display.Stderr != nil && ctx.Display.Stderr != io.Discard && !s.detached {
 			var err error
-			logger, err = s.logBuilder(ctx.Streams.Stderr)
+			logger, err = s.logBuilder(ctx.Display.Stderr)
 			if err != nil {
 				return ctx, err
 			}
