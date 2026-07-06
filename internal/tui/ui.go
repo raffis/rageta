@@ -26,11 +26,11 @@ const (
 )
 
 const (
-	ListWidthPercentage       = 30.0
+	ListWidthPercentage       = 35.0
 	LayoutAreaHeight          = 3
 	FilterInputHeightOffset   = 1
 	LabelsHeightOffset        = 1
-	AlignHorizontalBreakpoint = 130
+	AlignHorizontalBreakpoint = 250
 )
 
 const (
@@ -256,7 +256,7 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 		// New task
 		msg.ready = true
 		msg.listWidth = m.list.Width()
-		msg.listHeight = m.list.Height() + 1
+		msg.listHeight = m.list.Height()
 
 		// Initialize viewport dimensions
 		if msg.viewport != nil {
@@ -399,7 +399,7 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	for i, listItem := range items {
 		if item, ok := listItem.(TaskMsg); ok {
 			item.listWidth = m.list.Width()
-			item.listHeight = m.list.Height() + 1
+			item.listHeight = m.list.Height()
 			items[i] = item
 		}
 	}
@@ -548,7 +548,7 @@ func (m UI) renderListPanel() string {
 
 	if m.list.FilterState() > 0 {
 		listPanelContent = append(listPanelContent, m.list.FilterInput.View())
-		m.list.SetHeight(m.list.Height() + 1 - FilterInputHeightOffset)
+		m.list.SetHeight(m.list.Height() - FilterInputHeightOffset)
 	}
 
 	var style lipgloss.Style
@@ -569,7 +569,6 @@ func (m UI) renderListPanel() string {
 
 func (m UI) renderListHeader() string {
 	listWidth := m.list.Width() - StatusColumnWidth - 2 // Account for status and padding
-
 	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
 	labelsWidth := int(float64(listWidth) * LabelsColumnPercent / 100)
 	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
@@ -577,8 +576,7 @@ func (m UI) renderListHeader() string {
 	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
-	return listHeaderStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
-		"S",
+	return listHeaderStyle.Render(fmt.Sprintf("  %s %s %s %s %s %s",
 		listColumnStyle.Width(nameWidth).Render(ellipsis("TASK", nameWidth)),
 		listColumnStyle.Width(labelsWidth).Render("LABELS"),
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render("CPU"),
@@ -625,7 +623,7 @@ func (m *UI) updateViewportDimensions(task *TaskMsg) {
 		// In vertical layout, viewport takes full width
 		task.viewport.Width = m.width
 		// Height is reduced by list height and bottom panel
-		task.viewport.Height = m.height - m.list.Height() + 1 - LayoutAreaHeight
+		task.viewport.Height = m.height - m.list.Height() - LayoutAreaHeight
 	} else {
 		// In horizontal layout, viewport takes remaining width
 		task.viewport.Width = m.width - m.list.Width()
