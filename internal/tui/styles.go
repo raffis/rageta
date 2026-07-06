@@ -89,7 +89,8 @@ func init() {
 		PaddingLeft(2).
 		PaddingRight(2).
 		BorderForeground(activePanelColor).
-		Border(lipgloss.NormalBorder(), false, true, false, false)
+		Border(lipgloss.NormalBorder(), false, true, false, false).
+		MaxHeight(1)
 
 	listLabelStyle = newStyle().PaddingRight(1)
 	listStyle = newStyle().

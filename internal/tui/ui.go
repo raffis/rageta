@@ -27,7 +27,9 @@ const (
 
 const (
 	ListWidthPercentage       = 35.0
-	LayoutAreaHeight          = 3
+	ListHeightPercentage      = 40.0
+	LayoutAreaHeight          = 4
+	LayoutAreaHeightNarrow    = 6
 	FilterInputHeightOffset   = 1
 	LabelsHeightOffset        = 1
 	AlignHorizontalBreakpoint = 250
@@ -388,8 +390,8 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	m.width = msg.Width
 
 	if m.width < AlignHorizontalBreakpoint {
-		listHeight := float64(m.height) * 50 / 100
-		m.list.SetSize(m.width, int(listHeight)-LayoutAreaHeight)
+		listHeight := float64(m.height) * ListHeightPercentage / 100
+		m.list.SetSize(m.width, int(listHeight)-LayoutAreaHeightNarrow)
 	} else {
 		listWidth := float64(m.width) * ListWidthPercentage / 100
 		m.list.SetSize(int(listWidth), m.height-LayoutAreaHeight)
@@ -512,7 +514,7 @@ func (m UI) renderHeaderPanel() string {
 
 	if m.width < AlignHorizontalBreakpoint {
 		tab := activeStyle.Render(" ⇅ ")
-		line := strings.Repeat("─", m.width/2-1)
+		line := strings.Repeat("─", max(0, (m.width-4)/2))
 
 		pagerHeader = fmt.Sprintf("%s%s%s%s",
 			pagerStyle.Render("┌"),
@@ -525,11 +527,11 @@ func (m UI) renderHeaderPanel() string {
 	}
 
 	listHeader := listStyle.
-		Render(strings.Repeat("─", m.list.Width()-2))
+		Render(strings.Repeat("─", max(0, m.list.Width()-2)))
 
 	if m.lastSelected != nil {
 		task := m.lastSelected.(TaskMsg)
-		headerWidth := task.viewport.Width - 10 - lipgloss.Width(task.GetName())
+		headerWidth := max(0, task.viewport.Width-10-lipgloss.Width(task.GetName()))
 		pagerHeader = fmt.Sprintf("%s %s %s %s",
 			pagerStyle.Render("─── ·"),
 			topTitleStyle.Render(task.GetName()),
@@ -558,6 +560,12 @@ func (m UI) renderListPanel() string {
 		style = listStyle.BorderForeground(inactivePanelColor)
 	}
 
+	if m.width < AlignHorizontalBreakpoint {
+		// In vertical layout the list panel isn't flanked by the pager, so
+		// mirror the right border on the left for a symmetric box.
+		style = style.Border(lipgloss.NormalBorder(), false, true, true, true)
+	}
+
 	header := m.renderListHeader()
 	list := style.
 		Height(m.list.Height()).
@@ -576,7 +584,15 @@ func (m UI) renderListHeader() string {
 	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
-	return listHeaderStyle.Render(fmt.Sprintf("  %s %s %s %s %s %s",
+	headerStyle := listHeaderStyle
+	if m.width < AlignHorizontalBreakpoint {
+		// Close off the top of the box and mirror the list panel's left
+		// border added in vertical layout. The extra top border line adds
+		// a second line to the block, so bump the height cap to match.
+		headerStyle = headerStyle.Border(lipgloss.NormalBorder(), true, true, false, true).MaxHeight(2)
+	}
+
+	return headerStyle.Width(m.list.Width()).Render(fmt.Sprintf("  %s %s %s %s %s %s",
 		listColumnStyle.Width(nameWidth).Render(ellipsis("TASK", nameWidth)),
 		listColumnStyle.Width(labelsWidth).Render("LABELS"),
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render("CPU"),
@@ -594,9 +610,16 @@ func (m UI) renderPagerPanel() string {
 
 	detailsContent := m.buildPagerContent(task)
 
+	style := viewportStyle
+	if m.width < AlignHorizontalBreakpoint {
+		// In vertical layout the pager isn't flanked by anything on the
+		// right, so add a right border to close off the box.
+		style = style.Border(lipgloss.NormalBorder(), false, true, true, true)
+	}
+
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
-		viewportStyle.Render(lipgloss.JoinVertical(lipgloss.Top, detailsContent...)),
+		style.Render(lipgloss.JoinVertical(lipgloss.Top, detailsContent...)),
 	)
 }
 
@@ -620,10 +643,11 @@ func (m *UI) updatePanelStyles() {
 func (m *UI) updateViewportDimensions(task *TaskMsg) {
 	// Set viewport width based on layout
 	if m.width < AlignHorizontalBreakpoint {
-		// In vertical layout, viewport takes full width
-		task.viewport.Width = m.width
+		// In vertical layout, viewport takes full width, minus the left
+		// and right borders drawn around the pager panel.
+		task.viewport.Width = m.width - 2
 		// Height is reduced by list height and bottom panel
-		task.viewport.Height = m.height - m.list.Height() - LayoutAreaHeight
+		task.viewport.Height = m.height - m.list.Height() - LayoutAreaHeightNarrow
 	} else {
 		// In horizontal layout, viewport takes remaining width
 		task.viewport.Width = m.width - m.list.Width()

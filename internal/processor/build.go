@@ -89,6 +89,10 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					defer close(teeDone)
 					defer close(displayCh)
 					for ss := range rawCh {
+						for _, v := range ss.Statuses {
+							fmt.Printf("BUILD %s %s %#v %d %d\n", v.ID, v.Name, v.Completed, v.Current, v.Total)
+						}
+
 						for _, v := range ss.Vertexes {
 							allCached = v.Cached
 						}

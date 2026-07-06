@@ -28,9 +28,8 @@ func (s *Stats) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		var lastNetRx, lastNetTx int64
 
 		ctx.Display.Stdout = xio.NewStatsFilterWriter(ctx.Display.Stdout, func(cpu, mem, netRx, netTx int64) error {
-			rxBps := netRx - lastNetRx
-			txBps := netTx - lastNetTx
-
+			rxBps := max(netRx-lastNetRx, 0)
+			txBps := max(netTx-lastNetTx, 0)
 			ctx.Display.WriteStats(cpu, mem, rxBps, txBps)
 
 			lastNetRx = netRx
