@@ -112,7 +112,7 @@ func (m *UI) initializeLoader() {
 	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 }
 
-// sortList sorts the list items by tags and start time
+// sortList sorts the list items by labels and start time
 func (m *UI) sortList() {
 	items := m.list.Items()
 	sort.Slice(items, func(i, j int) bool {
@@ -134,11 +134,11 @@ func (m *UI) sortList() {
 	m.list.Select(current)
 }
 
-// formatLabelsForSorting formats tags for sorting purposes
-func (m *UI) formatLabelsForSorting(tags []processor.Label) []string {
+// formatLabelsForSorting formats labels for sorting purposes
+func (m *UI) formatLabelsForSorting(labels []processor.Label) []string {
 	var formattedLabels []string
-	for _, tag := range tags {
-		formattedLabels = append(formattedLabels, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+	for _, label := range labels {
+		formattedLabels = append(formattedLabels, fmt.Sprintf("%s:%s", label.Key, label.Value))
 	}
 	return formattedLabels
 }
@@ -157,19 +157,21 @@ func (m *UI) findCurrentSelection(items []list.Item) int {
 	return 0
 }
 
-// getTaskMsg retrieves a step message by name
+// getTaskMsg retrieves a task message by name
 func (m *UI) getTaskMsg(name string) (TaskMsg, error) {
-	for _, step := range m.list.Items() {
-		if v, ok := step.(TaskMsg); ok && v.Name == name {
+	for _, task := range m.list.Items() {
+		if v, ok := task.(TaskMsg); ok && v.Name == name {
 			return v, nil
 		}
 	}
-	return TaskMsg{}, fmt.Errorf("no such step: %s", name)
+	return TaskMsg{}, fmt.Errorf("no such task: %s", name)
 }
 
 // renderStatus renders the current pipeline status
 func (m *UI) renderStatus() string {
 	switch m.status {
+	case TaskStatusCached:
+		return pipelineCachedStyle.Render("CACHED")
 	case TaskStatusDone:
 		return pipelineOkStyle.Render("SUCCESS")
 	case TaskStatusFailed:
@@ -241,7 +243,7 @@ func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
 	return nil
 }
 
-// handleTaskMessage handles step status updates
+// handleTaskMessage handles task status updates
 func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -251,10 +253,10 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 
 	_, err := m.getTaskMsg(msg.Name)
 	if err != nil {
-		// New step
+		// New task
 		msg.ready = true
 		msg.listWidth = m.list.Width()
-		msg.listHeight = m.list.Height()
+		msg.listHeight = m.list.Height() + 1
 
 		// Initialize viewport dimensions
 		if msg.viewport != nil {
@@ -266,7 +268,7 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 		m.list.InsertItem(-1, msg.WithStatus(msg.Status))
 		m.sortList()
 	} else {
-		// Update existing step
+		// Update existing task
 		for i, listItem := range items {
 			if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
 				if msg.Status != TaskStatusRunning {
@@ -397,7 +399,7 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 	for i, listItem := range items {
 		if item, ok := listItem.(TaskMsg); ok {
 			item.listWidth = m.list.Width()
-			item.listHeight = m.list.Height()
+			item.listHeight = m.list.Height() + 1
 			items[i] = item
 		}
 	}
@@ -439,11 +441,11 @@ func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 // updateLastSelected updates the last selected item
 func (m *UI) updateLastSelected() {
 	if selectedItem := m.list.SelectedItem(); selectedItem != nil {
-		step := selectedItem.(TaskMsg)
-		if step.viewport != nil {
+		task := selectedItem.(TaskMsg)
+		if task.viewport != nil {
 			// Initialize viewport dimensions if not set
-			if step.viewport.Width == 0 || step.viewport.Height == 0 {
-				m.updateViewportDimensions(&step)
+			if task.viewport.Width == 0 || task.viewport.Height == 0 {
+				m.updateViewportDimensions(&task)
 			}
 			m.lastSelected = selectedItem
 		}
@@ -526,11 +528,11 @@ func (m UI) renderHeaderPanel() string {
 		Render(strings.Repeat("─", m.list.Width()-2))
 
 	if m.lastSelected != nil {
-		step := m.lastSelected.(TaskMsg)
-		headerWidth := step.viewport.Width - 10 - lipgloss.Width(step.GetName())
+		task := m.lastSelected.(TaskMsg)
+		headerWidth := task.viewport.Width - 10 - lipgloss.Width(task.GetName())
 		pagerHeader = fmt.Sprintf("%s %s %s %s",
 			pagerStyle.Render("─── ·"),
-			topTitleStyle.Render(step.GetName()),
+			topTitleStyle.Render(task.GetName()),
 			pagerStyle.Render("·"),
 			pagerStyle.Render(strings.Repeat("─", headerWidth)),
 		)
@@ -546,7 +548,7 @@ func (m UI) renderListPanel() string {
 
 	if m.list.FilterState() > 0 {
 		listPanelContent = append(listPanelContent, m.list.FilterInput.View())
-		m.list.SetHeight(m.list.Height() - FilterInputHeightOffset)
+		m.list.SetHeight(m.list.Height() + 1 - FilterInputHeightOffset)
 	}
 
 	var style lipgloss.Style
@@ -556,20 +558,43 @@ func (m UI) renderListPanel() string {
 		style = listStyle.BorderForeground(inactivePanelColor)
 	}
 
-	return style.
+	header := m.renderListHeader()
+	list := style.
 		Height(m.list.Height()).
 		Width(m.list.Width()).
 		Render(lipgloss.JoinVertical(lipgloss.Top, listPanelContent...))
+
+	return lipgloss.JoinVertical(lipgloss.Top, header, list)
 }
 
-// renderPagerPanel renders the right details panel
+func (m UI) renderListHeader() string {
+	listWidth := m.list.Width() - StatusColumnWidth - 2 // Account for status and padding
+
+	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
+	labelsWidth := int(float64(listWidth) * LabelsColumnPercent / 100)
+	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
+	memWidth := int(float64(listWidth) * MemColumnPercent / 100)
+	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
+	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
+
+	return listHeaderStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
+		"S",
+		listColumnStyle.Width(nameWidth).Render(ellipsis("TASK", nameWidth)),
+		listColumnStyle.Width(labelsWidth).Render("LABELS"),
+		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render("CPU"),
+		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render("MEM"),
+		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render("NET"),
+		listColumnStyle.Width(durationWidth).Align(lipgloss.Right).Render("DUR"),
+	))
+}
+
 func (m UI) renderPagerPanel() string {
-	step := m.lastSelected.(TaskMsg)
+	task := m.lastSelected.(TaskMsg)
 
 	m.updatePanelStyles()
-	m.updateViewportDimensions(&step)
+	m.updateViewportDimensions(&task)
 
-	detailsContent := m.buildPagerContent(step)
+	detailsContent := m.buildPagerContent(task)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
@@ -594,37 +619,37 @@ func (m *UI) updatePanelStyles() {
 }
 
 // updateViewportDimensions updates the viewport dimensions
-func (m *UI) updateViewportDimensions(step *TaskMsg) {
+func (m *UI) updateViewportDimensions(task *TaskMsg) {
 	// Set viewport width based on layout
 	if m.width < AlignHorizontalBreakpoint {
 		// In vertical layout, viewport takes full width
-		step.viewport.Width = m.width
+		task.viewport.Width = m.width
 		// Height is reduced by list height and bottom panel
-		step.viewport.Height = m.height - m.list.Height() - LayoutAreaHeight
+		task.viewport.Height = m.height - m.list.Height() + 1 - LayoutAreaHeight
 	} else {
 		// In horizontal layout, viewport takes remaining width
-		step.viewport.Width = m.width - m.list.Width()
-		step.viewport.Height = m.height - LayoutAreaHeight
+		task.viewport.Width = m.width - m.list.Width()
+		task.viewport.Height = m.height - LayoutAreaHeight + 1
 	}
 
-	if step.LabelsAsString() != "" {
-		step.viewport.Height -= LabelsHeightOffset
+	if task.LabelsAsString() != "" {
+		task.viewport.Height -= LabelsHeightOffset
 	}
 }
 
 // buildPagerContent builds the content for the details panel
-func (m UI) buildPagerContent(step TaskMsg) []string {
+func (m UI) buildPagerContent(task TaskMsg) []string {
 	var content []string
 
-	// Add tags if present
-	if tags := step.LabelsAsString(); tags != "" {
+	// Add labels if present
+	if labels := task.LabelsAsString(); labels != "" {
 		content = append(content, lipgloss.NewStyle().
-			Width(step.viewport.Width).
-			Render(tags))
+			Width(task.viewport.Width).
+			Render(labels))
 	}
 
 	// Add viewport content
-	content = append(content, step.viewport.View())
+	content = append(content, task.viewport.View())
 
 	return content
 }

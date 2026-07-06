@@ -1,7 +1,6 @@
 package run
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"time"
@@ -63,7 +62,6 @@ func (s *Events) Run(rc *RunContext, next Next) error {
 		rc.Events.Dev = nil
 	}
 
-	fmt.Printf("EveBEFnts: %s\n", rc.Events.Dev)
 	rc.Events.Enabled = !s.opts.Disabled
 	rc.Events.WaitUpdateInterval = s.opts.WaitUpdateInterval
 	return next(rc)

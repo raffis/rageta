@@ -27,11 +27,13 @@ var (
 	stepWaitingStyle      lipgloss.Style
 	stepWarningStyle      lipgloss.Style
 	stepRunningStyle      lipgloss.Style
+	pipelineCachedStyle   lipgloss.Style
 	pipelineOkStyle       lipgloss.Style
 	pipelineFailedStyle   lipgloss.Style
 	pipelineWaitingStyle  lipgloss.Style
 	listStyle             lipgloss.Style
 	listColumnStyle       lipgloss.Style
+	listHeaderStyle       lipgloss.Style
 	viewportStyle         lipgloss.Style
 	listPaginatorStyle    lipgloss.Style
 	scrollPercentageStyle lipgloss.Style
@@ -80,6 +82,14 @@ func init() {
 	pipelineOkStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#008000"))
 	pipelineFailedStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#D22B2B"))
 	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#0000FF"))
+	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#00AACC"))
+
+	listHeaderStyle = newStyle().Background(lipgloss.Color("#7D56F4")).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		PaddingLeft(2).
+		PaddingRight(2).
+		BorderForeground(activePanelColor).
+		Border(lipgloss.NormalBorder(), false, true, false, false)
 
 	listLabelStyle = newStyle().PaddingRight(1)
 	listStyle = newStyle().
