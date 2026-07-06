@@ -34,14 +34,14 @@ func (d RenderDisplay) String() string {
 
 type DisplayOptions struct {
 	Display       string
-	Expand        bool
 	InternalSteps bool
+	GroupBy       []string
 }
 
 func (s *DisplayOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.Display, "display", "o", s.Display, "Display renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a step name prefix with a distinguished color while `ui` renders the tasks in a terminal ui. `passthrough` dumps all displays directly without any modification.")
-	flags.BoolVarP(&s.Expand, "expand", "", s.Expand, "Expand steps from inherited pipelines and display them as separate entities.")
 	flags.BoolVarP(&s.InternalSteps, "with-internals", "", s.InternalSteps, "Expose internal steps")
+	flags.StringSliceVarP(&s.GroupBy, "group-by", "", s.GroupBy, "Collapse a task's descendants into its own display when the task carries one of these label keys.")
 }
 
 func (s DisplayOptions) Build() Task {
@@ -71,8 +71,8 @@ type Display struct {
 
 type DisplayContext struct {
 	Factory       processor.DisplayFactory
-	Expand        bool
 	InternalSteps bool
+	GroupBy       []string
 	Type          string
 	Stdout        io.Writer
 	Stderr        io.Writer
@@ -90,8 +90,8 @@ func (s *Display) Run(rc *RunContext, next Next) error {
 	}
 
 	rc.Display.Factory = displayFactory
-	rc.Display.Expand = s.opts.Expand
 	rc.Display.InternalSteps = s.opts.InternalSteps
+	rc.Display.GroupBy = s.opts.GroupBy
 	rc.Display.Type = s.opts.Display
 
 	err = next(rc)

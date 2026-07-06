@@ -29,3 +29,7 @@ func (d *discardDisplay) Close(_ processor.TaskContext, _ error) error {
 func (d *discardDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
+
+func (d *discardDisplay) WriteProgress(current, total int64) error {
+	return nil
+}

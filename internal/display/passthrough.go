@@ -47,3 +47,7 @@ func (d *passthroughDisplay) Close(_ processor.TaskContext, _ error) error {
 func (d *passthroughDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
+
+func (d *passthroughDisplay) WriteProgress(current, total int64) error {
+	return nil
+}

@@ -76,3 +76,13 @@ func (d *uiDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 
 	return nil
 }
+
+func (d *uiDisplay) WriteProgress(current, total int64) error {
+	d.sender.Send(tui.PullProgressMsg{
+		Name:    d.uniqueName,
+		Current: current,
+		Total:   total,
+	})
+
+	return nil
+}

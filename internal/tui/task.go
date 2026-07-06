@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/lipgloss/v2"
 
@@ -46,6 +47,19 @@ type ResourceStatsMsg struct {
 	Stats ResourceStats
 }
 
+// PullProgress holds the aggregated byte progress of an image pull.
+type PullProgress struct {
+	Current int64
+	Total   int64
+}
+
+// PullProgressMsg is sent by the build display to update a task's image pull progress.
+type PullProgressMsg struct {
+	Name    string
+	Current int64
+	Total   int64
+}
+
 // NewTask creates a new TaskMsg with initialized components
 func NewTask() TaskMsg {
 	viewport := pager.New(0, 0)
@@ -57,28 +71,41 @@ func NewTask() TaskMsg {
 	loader.Spinner = spinner.MiniDot
 	loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 
+	var (
+		blockFull  rune = '▔'
+		blockEmpty rune = ' '
+	)
+	bar := progress.New(
+		progress.WithDefaultBlend(),
+		progress.WithoutPercentage(),
+		progress.WithFillCharacters(blockFull, blockEmpty),
+	)
+
 	return TaskMsg{
-		w:        xio.NewLineWriter(&viewport),
-		viewport: &viewport,
-		loader:   loader,
+		w:                 xio.NewLineWriter(&viewport),
+		viewport:          &viewport,
+		loader:            loader,
+		pullImageProgress: bar,
 	}
 }
 
 // TaskMsg represents a pipeline step with its state and UI components
 type TaskMsg struct {
-	w           *xio.LineWriter
-	viewport    *pager.Model
-	loader      spinner.Model
-	Name        string
-	DisplayName string
-	Labels      []processor.Label
-	Status      TaskStatus
-	Stats       ResourceStats
-	ready       bool
-	started     time.Time
-	finished    time.Time
-	listWidth   int
-	listHeight  int
+	w                 *xio.LineWriter
+	viewport          *pager.Model
+	loader            spinner.Model
+	pullImageProgress progress.Model
+	Name              string
+	DisplayName       string
+	Labels            []processor.Label
+	Status            TaskStatus
+	Stats             ResourceStats
+	Pull              PullProgress
+	ready             bool
+	started           time.Time
+	finished          time.Time
+	listWidth         int
+	listHeight        int
 }
 
 func (t TaskMsg) Flush() error {
@@ -219,12 +246,16 @@ func (t *TaskMsg) duration() string {
 	return t.finished.Sub(t.started).Round(time.Millisecond * 10).String()
 }
 
-// Description returns the description for list display (used in narrow layouts)
+// Description returns the description line rendered below the task's title,
+// used to display an image pull progress bar while a build step is running.
+// It is hidden once the pull completes (current >= total).
 func (t TaskMsg) Description() string {
-	if t.listWidth-5 < ShortListThreshold {
-		return t.duration()
+	if t.Status != TaskStatusRunning || t.Pull.Total <= 0 || t.Pull.Current >= t.Pull.Total {
+		return ""
 	}
-	return ""
+
+	percent := float64(t.Pull.Current) / float64(t.Pull.Total)
+	return t.pullImageProgress.ViewAs(percent)
 }
 
 // ellipsis truncates a string to maxLen characters, adding "..." if needed

@@ -50,7 +50,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithImage(),
 			processor.WithWorkdir(),
 			processor.WithStyle(),
-			processor.WithDisplay(rc.Display.Factory, rc.Display.InternalSteps, rc.Display.Expand),
+			processor.WithDisplay(rc.Display.Factory),
 			processor.WithStats(),
 			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
 			processor.WithMatrix(),
@@ -72,7 +72,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithSources(),
 			processor.WithCaches(),
 			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.StatusRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),
-			//processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
+			processor.WithGroup(rc.Display.GroupBy),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 		)
 

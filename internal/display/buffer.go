@@ -77,3 +77,7 @@ func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {
 func (d *bufferDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
+
+func (d *bufferDisplay) WriteProgress(current, total int64) error {
+	return nil
+}

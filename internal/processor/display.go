@@ -11,24 +11,18 @@ type Display interface {
 	Stderr() io.Writer
 	Close(ctx TaskContext, err error) error
 	WriteStats(cpu, mem, netRx, netTx int64) error
+	WriteProgress(current, total int64) error
 }
 
 type DisplayFactory func(ctx TaskContext, stepName, short string) Display
 
-func WithDisplay(outputFactory DisplayFactory, withInternals, decouple bool) ProcessorBuilder {
+func WithDisplay(outputFactory DisplayFactory) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		/*internalTask := spec.Run == nil && spec.Inherit == nil
-
-		if !withInternals && internalTask {
-			return nil
-		}*/
-
 		stdio := &displayBootstraper{
 			stepName:      spec.Name,
 			short:         spec.Short,
 			spec:          spec,
 			outputFactory: outputFactory,
-			decouple:      decouple,
 		}
 
 		return stdio
@@ -44,20 +38,23 @@ type displayBootstraper struct {
 }
 
 type DisplayContext struct {
-	Stdout     io.Writer
-	Stderr     io.Writer
-	WriteStats func(cpu, mem, netRx, netTx int64) error
+	Stdout        io.Writer
+	Stderr        io.Writer
+	WriteStats    func(cpu, mem, netRx, netTx int64) error
+	WriteProgress func(current, total int64) error
+	Grouped       bool
 }
 
 func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		if ctx.Labels.Has("pipeline") && !s.decouple {
+		if ctx.Display.Grouped {
 			return next(ctx)
 		}
 
 		d := s.outputFactory(ctx, s.stepName, s.short)
 
 		ctx.Display.WriteStats = d.WriteStats
+		ctx.Display.WriteProgress = d.WriteProgress
 
 		if ctx.Display.Stdout != io.Discard {
 			ctx.Display.Stdout = d.Stdout()

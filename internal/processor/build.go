@@ -88,9 +88,28 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				go func() {
 					defer close(teeDone)
 					defer close(displayCh)
+
+					pullStatuses := map[string]*bkclient.VertexStatus{}
 					for ss := range rawCh {
 						for _, v := range ss.Statuses {
-							fmt.Printf("BUILD %s %s %#v %d %d\n", v.ID, v.Name, v.Completed, v.Current, v.Total)
+							if v.Total <= 0 {
+								continue
+							}
+
+							if v.Completed != nil {
+								delete(pullStatuses, v.ID)
+							} else {
+								pullStatuses[v.ID] = v
+							}
+						}
+
+						if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 {
+							var current, total int64
+							for _, v := range pullStatuses {
+								current += v.Current
+								total += v.Total
+							}
+							ctx.Display.WriteProgress(current, total)
 						}
 
 						for _, v := range ss.Vertexes {

@@ -71,7 +71,19 @@ func NewUI(logger logr.Logger) UI {
 		BorderForeground(activePanelColor).
 		Border(lipgloss.BlockBorder(), false, false, false, true)
 
-	delegate.ShowDescription = false
+	// Render the progress bar (via TaskMsg.Description) in the row that
+	// would otherwise be the blank gap between items, instead of adding an
+	// extra line: reporting Spacing=0 alongside the 2-line item height keeps
+	// the total rows per item (2) identical to the previous single-line +
+	// gap layout. The description row has no content of its own selection
+	// state, so strip the left border the default styles inherit from the
+	// title and keep only the matching left padding for alignment.
+	delegate.ShowDescription = true
+	delegate.SetSpacing(0)
+	noBorderDescPadding := lipgloss.NewStyle().Padding(0, 0, 0, 2)
+	delegate.Styles.SelectedDesc = noBorderDescPadding
+	delegate.Styles.NormalDesc = noBorderDescPadding
+	delegate.Styles.DimmedDesc = noBorderDescPadding
 
 	ui := UI{
 		status:      TaskStatusWaiting,
@@ -209,6 +221,8 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleTaskMessage(msg)...)
 	case ResourceStatsMsg:
 		m.handleResourceStats(msg)
+	case PullProgressMsg:
+		m.handlePullProgress(msg)
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
 	case tea.KeyPressMsg:
@@ -259,6 +273,7 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 		msg.ready = true
 		msg.listWidth = m.list.Width()
 		msg.listHeight = m.list.Height()
+		msg.pullImageProgress.SetWidth(pullImageProgressWidth(msg.listWidth))
 
 		// Initialize viewport dimensions
 		if msg.viewport != nil {
@@ -275,6 +290,7 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 			if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
 				if msg.Status != TaskStatusRunning {
 					item.Stats = ResourceStats{}
+					item.Pull = PullProgress{}
 				}
 
 				items[i] = item.WithStatus(msg.Status)
@@ -402,12 +418,34 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 		if item, ok := listItem.(TaskMsg); ok {
 			item.listWidth = m.list.Width()
 			item.listHeight = m.list.Height()
+			item.pullImageProgress.SetWidth(pullImageProgressWidth(item.listWidth))
 			items[i] = item
 		}
 	}
 	m.list.SetItems(items)
 
 	return nil
+}
+
+// pullImageProgressWidth derives a sensible progress bar width from the list width.
+func pullImageProgressWidth(listWidth int) int {
+	return max(listWidth-StatusColumnWidth-2, 10)
+}
+
+// handlePullProgress updates the pull progress of a running task
+func (m *UI) handlePullProgress(msg PullProgressMsg) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	items := slices.Clone(m.list.Items())
+	for i, listItem := range items {
+		if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
+			item.Pull = PullProgress{Current: msg.Current, Total: msg.Total}
+			items[i] = item
+			break
+		}
+	}
+	m.list.SetItems(items)
 }
 
 // handleResourceStats updates the Stats field of a running task

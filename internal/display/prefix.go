@@ -49,3 +49,8 @@ func (d *prefixDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	d.stderr.Write([]byte(fmt.Sprintf("cpu=%d mem=%d net_rx=%d net_tx=%d\n", cpu, mem, netRx, netTx)))
 	return nil
 }
+
+func (d *prefixDisplay) WriteProgress(current, total int64) error {
+	d.stderr.Write([]byte(fmt.Sprintf("pulling %d/%d bytes\n", current, total)))
+	return nil
+}

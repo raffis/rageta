@@ -78,6 +78,8 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Display.Stdout = c.Display.Stdout
 	copy.Display.Stderr = c.Display.Stderr
 	copy.Display.WriteStats = c.Display.WriteStats
+	copy.Display.WriteProgress = c.Display.WriteProgress
+	copy.Display.Grouped = c.Display.Grouped
 	copy.Tasks = maps.Clone(c.Tasks)
 	copy.Labels.labels = append(copy.Labels.labels, c.Labels.labels...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)

@@ -81,10 +81,6 @@ func debugProfile(opts *run.Options) error {
 		opts.ReportOptions.ReportType = run.ReportTypeTable.String()
 	}
 
-	if !runCmd.Flags().Changed("expand") {
-		opts.DisplayOptions.Expand = true
-	}
-
 	if !runCmd.Flags().Changed("pull") {
 		opts.ImagePolicyOptions.Policy = run.PullImageAlways.String()
 	}
