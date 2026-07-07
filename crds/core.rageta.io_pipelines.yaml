@@ -143,22 +143,6 @@ spec:
                         type: object
                     type: object
                   type: array
-                caches:
-                  items:
-                    properties:
-                      id:
-                        description: ID is the cache namespace. May contain substitution
-                          expressions.
-                        type: string
-                      path:
-                        description: Path is the mount point inside the container.
-                        type: string
-                      sharing:
-                        description: 'Sharing controls concurrent access: "shared"
-                          (default), "private", or "locked".'
-                        type: string
-                    type: object
-                  type: array
                 dependsOn:
                   items:
                     properties:
@@ -388,6 +372,13 @@ spec:
                 sources:
                   items:
                     properties:
+                      context:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
                       local:
                         properties:
                           path:
@@ -433,6 +424,38 @@ spec:
                   type: array
                 timeout:
                   type: string
+                volumeMounts:
+                  items:
+                    properties:
+                      cache:
+                        properties:
+                          name:
+                            description: Name is the cache namespace. May contain
+                              substitution expressions.
+                            type: string
+                          sharing:
+                            description: Sharing controls concurrent access
+                            enum:
+                            - shared
+                            - private
+                            - locked
+                            type: string
+                        type: object
+                      hostPath:
+                        properties:
+                          path:
+                            description: Path is the source path relative to the build
+                              context. May contain substitution expressions.
+                            type: string
+                        type: object
+                      mountPath:
+                        type: string
+                      readOnly:
+                        type: boolean
+                      tmpfs:
+                        type: object
+                    type: object
+                  type: array
                 when:
                   items:
                     properties:
@@ -475,22 +498,6 @@ spec:
                         type: object
                     type: object
                   type: array
-                caches:
-                  items:
-                    properties:
-                      id:
-                        description: ID is the cache namespace. May contain substitution
-                          expressions.
-                        type: string
-                      path:
-                        description: Path is the mount point inside the container.
-                        type: string
-                      sharing:
-                        description: 'Sharing controls concurrent access: "shared"
-                          (default), "private", or "locked".'
-                        type: string
-                    type: object
-                  type: array
                 dependsOn:
                   items:
                     properties:
@@ -720,6 +727,13 @@ spec:
                 sources:
                   items:
                     properties:
+                      context:
+                        properties:
+                          path:
+                            type: string
+                          to:
+                            type: string
+                        type: object
                       local:
                         properties:
                           path:
@@ -765,6 +779,38 @@ spec:
                   type: array
                 timeout:
                   type: string
+                volumeMounts:
+                  items:
+                    properties:
+                      cache:
+                        properties:
+                          name:
+                            description: Name is the cache namespace. May contain
+                              substitution expressions.
+                            type: string
+                          sharing:
+                            description: Sharing controls concurrent access
+                            enum:
+                            - shared
+                            - private
+                            - locked
+                            type: string
+                        type: object
+                      hostPath:
+                        properties:
+                          path:
+                            description: Path is the source path relative to the build
+                              context. May contain substitution expressions.
+                            type: string
+                        type: object
+                      mountPath:
+                        type: string
+                      readOnly:
+                        type: boolean
+                      tmpfs:
+                        type: object
+                    type: object
+                  type: array
                 when:
                   items:
                     properties:

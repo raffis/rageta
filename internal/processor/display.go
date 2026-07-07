@@ -40,8 +40,8 @@ type displayBootstraper struct {
 type DisplayContext struct {
 	Stdout        io.Writer
 	Stderr        io.Writer
-	WriteStats    func(cpu, mem, netRx, netTx int64) error
-	WriteProgress func(current, total int64) error
+	WriteStats    func(cpu, mem, netRx, netTx int64) error `json:"-"`
+	WriteProgress func(current, total int64) error         `json:"-"`
 	Grouped       bool
 }
 

@@ -44,10 +44,10 @@ func newBuildContext() BuildContext {
 }
 
 type BuildContext struct {
-	State        llb.State
-	ContextState *llb.State // initial inherited state, set when entering a sub-pipeline via inherit
-	RunOpts      []llb.RunOption
-	Ref          gwclient.Reference
+	State        llb.State          `json:"-"`
+	ContextState *llb.State         `json:"-"`
+	RunOpts      []llb.RunOption    `json:"-"`
+	Ref          gwclient.Reference `json:"-"`
 	Cached       bool
 }
 

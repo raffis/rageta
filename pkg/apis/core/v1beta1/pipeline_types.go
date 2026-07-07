@@ -59,7 +59,7 @@ type TaskOptions struct {
 	Labels       []Label           `json:"labels,omitempty"`
 	Sources      []Source          `json:"sources,omitempty"`
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`
-	Caches       []Cache           `json:"caches,omitempty"`
+	VolumeMounts []VolumeMount     `json:"volumeMounts,omitempty"`
 	Image        string            `json:"image,omitempty"`
 	WorkingDir   string            `json:"workingDir,omitempty"`
 }
@@ -183,13 +183,28 @@ type LocalReference struct {
 	Name string `json:"name,omitempty"`
 }
 
-type Cache struct {
-	// ID is the cache namespace. May contain substitution expressions.
-	ID string `json:"id,omitempty"`
-	// Path is the mount point inside the container.
+type VolumeMount struct {
+	MountPath string          `json:"mountPath,omitempty"`
+	ReadOnly  bool            `json:"readOnly,omitempty"`
+	HostPath  *HostPathVolume `json:"hostPath,omitempty"`
+	Cache     *CacheVolume    `json:"cache,omitempty"`
+	TmpFS     *TmpFSVolume    `json:"tmpfs,omitempty"`
+}
+
+type HostPathVolume struct {
+	// Path is the source path relative to the build context. May contain substitution expressions.
 	Path string `json:"path,omitempty"`
-	// Sharing controls concurrent access: "shared" (default), "private", or "locked".
+}
+
+type TmpFSVolume struct {
+}
+
+type CacheVolume struct {
+	// Name is the cache namespace. May contain substitution expressions.
+	Name string `json:"name,omitempty"`
+	// Sharing controls concurrent access
 	// +optional
+	// +kubebuilder:validation:Enum=shared;private;locked
 	Sharing string `json:"sharing,omitempty"`
 }
 
