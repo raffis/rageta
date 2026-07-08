@@ -4,18 +4,20 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/raffis/rageta/internal/utils/progressui"
+	"github.com/raffis/rageta/internal/buildkit/progressui"
+	"github.com/raffis/rageta/internal/buildkit/vertex"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
+	"github.com/moby/buildkit/client"
 	bkclient "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	digest "github.com/opencontainers/go-digest"
 )
 
-func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool, builtRefs *[]gwclient.Reference) ProcessorBuilder {
+func WithBuild(gwClient gwclient.Client, statusRouter vertexRouter, cacheImports []gwclient.CacheOptionsEntry, noCache bool, builtRefs *[]gwclient.Reference) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Steps == nil {
+		if spec.Steps == nil || statusRouter == nil {
 			return nil
 		}
 
@@ -29,9 +31,14 @@ func WithBuild(gwClient gwclient.Client, statusRouter *VertexStatusRouter, cache
 	}
 }
 
+type vertexRouter interface {
+	Register(digests []digest.Digest, ch chan<- *client.SolveStatus) *vertex.Sink
+	Unregister(digests []digest.Digest, sink *vertex.Sink)
+}
+
 type Build struct {
 	gwClient     gwclient.Client
-	statusRouter *VertexStatusRouter
+	statusRouter vertexRouter
 	cacheImports []gwclient.CacheOptionsEntry
 	noCache      bool
 	builtRefs    *[]gwclient.Reference
@@ -68,71 +75,71 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		}
 
 		var allCached bool
-		if s.statusRouter != nil {
-			if _, herr := def.Head(); herr == nil {
-				var digests []digest.Digest
-				for _, dt := range def.ToPB().Def {
-					digests = append(digests, digest.FromBytes(dt))
-				}
-				rawCh := make(chan *bkclient.SolveStatus, 16)
-				s.statusRouter.Register(digests, rawCh)
-
-				d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Display.Stdout, progressui.PlainMode)
-				if derr != nil {
-					s.statusRouter.Unregister(digests)
-					return ctx, derr
-				}
-
-				displayCh := make(chan *bkclient.SolveStatus, 16)
-				teeDone := make(chan struct{})
-				go func() {
-					defer close(teeDone)
-					defer close(displayCh)
-
-					pullStatuses := map[string]*bkclient.VertexStatus{}
-					for ss := range rawCh {
-						for _, v := range ss.Statuses {
-							if v.Total <= 0 {
-								continue
-							}
-
-							if v.Completed != nil {
-								delete(pullStatuses, v.ID)
-							} else {
-								pullStatuses[v.ID] = v
-							}
-						}
-
-						if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 {
-							var current, total int64
-							for _, v := range pullStatuses {
-								current += v.Current
-								total += v.Total
-							}
-							ctx.Display.WriteProgress(current, total)
-						}
-
-						for _, v := range ss.Vertexes {
-							allCached = v.Cached
-						}
-						displayCh <- ss
-					}
-				}()
-
-				displayDone := make(chan struct{})
-				go func() {
-					defer close(displayDone)
-					d.UpdateFrom(ctx, displayCh)
-				}()
-				defer func() {
-					s.statusRouter.Unregister(digests)
-					close(rawCh)
-					<-teeDone
-					<-displayDone
-					outCtx.Build.Cached = allCached
-				}()
-			}
+		if _, err := def.Head(); err != nil {
+			return ctx, err
 		}
+
+		var digests []digest.Digest
+		for _, dt := range def.ToPB().Def {
+			digests = append(digests, digest.FromBytes(dt))
+		}
+		rawCh := make(chan *bkclient.SolveStatus, 16)
+		sink := s.statusRouter.Register(digests, rawCh)
+
+		d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Display.Stdout, progressui.PlainMode)
+		if derr != nil {
+			s.statusRouter.Unregister(digests, sink)
+			return ctx, derr
+		}
+
+		displayCh := make(chan *bkclient.SolveStatus, 16)
+		teeDone := make(chan struct{})
+		go func() {
+			defer close(teeDone)
+			defer close(displayCh)
+
+			pullStatuses := map[string]*bkclient.VertexStatus{}
+			for ss := range rawCh {
+				for _, v := range ss.Statuses {
+					if v.Total <= 0 {
+						continue
+					}
+
+					if v.Completed != nil {
+						delete(pullStatuses, v.ID)
+					} else {
+						pullStatuses[v.ID] = v
+					}
+				}
+
+				if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 {
+					var current, total int64
+					for _, v := range pullStatuses {
+						current += v.Current
+						total += v.Total
+					}
+					ctx.Display.WriteProgress(current, total)
+				}
+
+				for _, v := range ss.Vertexes {
+					allCached = v.Cached
+				}
+				displayCh <- ss
+			}
+		}()
+
+		displayDone := make(chan struct{})
+		go func() {
+			defer close(displayDone)
+			d.UpdateFrom(ctx, displayCh)
+		}()
+		defer func() {
+			s.statusRouter.Unregister(digests, sink)
+			close(rawCh)
+			<-teeDone
+			<-displayDone
+			outCtx.Build.Cached = allCached
+		}()
 
 		ref, err := s.solve(ctx, def)
 		if err != nil {

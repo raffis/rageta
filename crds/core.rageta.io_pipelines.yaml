@@ -93,36 +93,20 @@ spec:
             type: string
           metadata:
             type: object
-          outputs:
-            items:
-              properties:
-                from:
-                  type: string
-                name:
-                  description: Name declares the name by which a parameter is referenced.
-                  type: string
-                step:
-                  properties:
-                    name:
-                      type: string
-                  type: object
-              required:
-              - name
-              - step
-              type: object
-            type: array
-            x-kubernetes-list-type: atomic
           shortDescription:
             type: string
           tasks:
+            description: Outputs          OutputParams `json:"outputs,omitempty"`
             items:
               properties:
                 allowFailure:
                   type: boolean
                 artifacts:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
-                      envvars:
+                      envVars:
                         properties:
                           path:
                             type: string
@@ -136,7 +120,7 @@ spec:
                           to:
                             type: string
                         type: object
-                      outputvars:
+                      outputVars:
                         properties:
                           path:
                             type: string
@@ -145,6 +129,8 @@ spec:
                   type: array
                 dependsOn:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       matchLabels:
                         additionalProperties:
@@ -285,8 +271,6 @@ spec:
                               - value
                               type: object
                             type: array
-                        required:
-                        - label
                         type: object
                       type: array
                     maxConcurrent:
@@ -333,9 +317,6 @@ spec:
                       type: string
                     maxRetries:
                       type: integer
-                  required:
-                  - constant
-                  - exponential
                   type: object
                 secrets:
                   items:
@@ -371,6 +352,8 @@ spec:
                   type: string
                 sources:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       context:
                         properties:
@@ -465,8 +448,6 @@ spec:
                   type: array
                 workingDir:
                   type: string
-              required:
-              - timeout
               type: object
             type: array
           templates:
@@ -476,8 +457,10 @@ spec:
                   type: boolean
                 artifacts:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
-                      envvars:
+                      envVars:
                         properties:
                           path:
                             type: string
@@ -491,7 +474,7 @@ spec:
                           to:
                             type: string
                         type: object
-                      outputvars:
+                      outputVars:
                         properties:
                           path:
                             type: string
@@ -500,6 +483,8 @@ spec:
                   type: array
                 dependsOn:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       matchLabels:
                         additionalProperties:
@@ -640,8 +625,6 @@ spec:
                               - value
                               type: object
                             type: array
-                        required:
-                        - label
                         type: object
                       type: array
                     maxConcurrent:
@@ -688,9 +671,6 @@ spec:
                       type: string
                     maxRetries:
                       type: integer
-                  required:
-                  - constant
-                  - exponential
                   type: object
                 secrets:
                   items:
@@ -726,6 +706,8 @@ spec:
                   type: string
                 sources:
                   items:
+                    maxProperties: 1
+                    minProperties: 1
                     properties:
                       context:
                         properties:
@@ -820,8 +802,6 @@ spec:
                   type: array
                 workingDir:
                   type: string
-              required:
-              - timeout
               type: object
             type: array
         type: object

@@ -134,11 +134,18 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}()
 		}
 
-		var done int
+		var (
+			done      int
+			allCached bool = true
+		)
 	WAIT:
 		for res := range results {
 			done++
 			maps.Copy(ctx.Tasks, res.ctx.Tasks)
+
+			if !res.ctx.Build.Cached {
+				allCached = false
+			}
 
 			//Unify matrix outputs into an array output for the current step
 			/*for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
@@ -174,6 +181,8 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				break WAIT
 			}
 		}
+
+		ctx.Build.Cached = allCached
 
 		if len(errs) > 0 {
 			return ctx, errors.Join(errs...)

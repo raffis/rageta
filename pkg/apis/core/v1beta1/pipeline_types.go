@@ -28,13 +28,13 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Entrypoint       string       `json:"entrypoint,omitempty"`
-	ShortDescription string       `json:"shortDescription,omitempty"`
-	LongDescription  string       `json:"longDescription,omitempty"`
-	Inputs           InputParams  `json:"inputs,omitempty"`
-	Outputs          OutputParams `json:"outputs,omitempty"`
-	Tasks            []Task       `json:"tasks,omitempty"`
-	Templates        []Task       `json:"templates,omitempty"`
+	Entrypoint       string      `json:"entrypoint,omitempty"`
+	ShortDescription string      `json:"shortDescription,omitempty"`
+	LongDescription  string      `json:"longDescription,omitempty"`
+	Inputs           InputParams `json:"inputs,omitempty"`
+	//Outputs          OutputParams `json:"outputs,omitempty"`
+	Tasks     []Task `json:"tasks,omitempty"`
+	Templates []Task `json:"templates,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -48,7 +48,7 @@ type TaskOptions struct {
 	When         []Condition       `json:"when,omitempty"`
 	Hide         bool              `json:"expose,omitempty"`
 	Inputs       []InputParam      `json:"inputs,omitempty"`
-	Timeout      metav1.Duration   `json:"timeout"`
+	Timeout      metav1.Duration   `json:"timeout,omitempty"`
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []TaskOutputParam `json:"outputs,omitempty"`
@@ -64,11 +64,15 @@ type TaskOptions struct {
 	WorkingDir   string            `json:"workingDir,omitempty"`
 }
 
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
 type TaskReference struct {
 	Name        *string           `json:"name,omitempty"`
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
 }
 
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
 type Source struct {
 	Local   *SourceLocal   `json:"local,omitempty"`
 	Task    *SourceTask    `json:"task,omitempty"`
@@ -98,18 +102,20 @@ type SourceTasks struct {
 	To          string            `json:"to,omitempty"`
 }
 
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
 type Artifact struct {
 	Local      *ArtifactLocal      `json:"local,omitempty"`
 	Image      *ArtifactImage      `json:"image,omitempty"`
-	Envvars    *ArtifactEnvvars    `json:"envvars,omitempty"`
-	Outputvars *ArtifactOutputvars `json:"outputvars,omitempty"`
+	EnvVars    *ArtifactEnvVars    `json:"envVars,omitempty"`
+	OutputVars *ArtifactOutputVars `json:"outputVars,omitempty"`
 }
 
-type ArtifactEnvvars struct {
+type ArtifactEnvVars struct {
 	Path string `json:"path,omitempty"`
 }
 
-type ArtifactOutputvars struct {
+type ArtifactOutputVars struct {
 	Path string `json:"path,omitempty"`
 }
 
@@ -151,7 +157,7 @@ type Matrix struct {
 type IncludeParam struct {
 	Name   string      `json:"name,omitempty"`
 	Params []Param     `json:"params,omitempty"`
-	Label  MatrixLabel `json:"label"`
+	Label  MatrixLabel `json:"label,omitempty"`
 }
 
 type MatrixLabel struct {
@@ -160,8 +166,8 @@ type MatrixLabel struct {
 }
 
 type Retry struct {
-	Exponential metav1.Duration `json:"exponential"`
-	Constant    metav1.Duration `json:"constant"`
+	Exponential metav1.Duration `json:"exponential,omitempty"`
+	Constant    metav1.Duration `json:"constant,omitempty"`
 	MaxRetries  int             `json:"maxRetries,omitempty"`
 }
 

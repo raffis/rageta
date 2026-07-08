@@ -10,7 +10,7 @@ import (
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
-	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/buildkit/vertex"
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/buildkitsetup"
 	"github.com/raffis/rageta/internal/setup/flagset"
@@ -56,7 +56,7 @@ type Buildkit struct {
 type BuildkitContext struct {
 	Client         *client.Client
 	GatewayClient  gwclient.Client
-	StatusRouter   *processor.VertexStatusRouter
+	VertexRouter   *vertex.Router
 	CacheImports   []client.CacheOptionsEntry
 	GWCacheImports []gwclient.CacheOptionsEntry
 	CacheExports   []client.CacheOptionsEntry
@@ -92,8 +92,7 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 		gwCacheImports[i] = gwclient.CacheOptionsEntry{Type: e.Type, Attrs: e.Attrs}
 	}
 
-	statusRouter := processor.NewVertexStatusRouter()
-
+	vertexRouter := vertex.NewRouter()
 	contextFS, err := fsutil.NewFS(s.opts.BuildContext)
 	if err != nil {
 		return err
@@ -104,7 +103,7 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	rc.Buildkit.GWCacheImports = gwCacheImports
 	rc.Buildkit.CacheExports = cacheExports
 	rc.Buildkit.NoCache = s.opts.NoCache
-	rc.Buildkit.StatusRouter = statusRouter
+	rc.Buildkit.VertexRouter = vertexRouter
 	rc.Buildkit.ContextFS = contextFS
 
 	buildOpt := client.SolveOpt{
@@ -126,7 +125,7 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 
 	go func() {
 		for status := range ch {
-			statusRouter.Route(status)
+			vertexRouter.Route(status)
 		}
 	}()
 
@@ -154,9 +153,6 @@ func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
 					ImagePullPolicy: cruntime.PullImagePolicyMissing,
 					Privileged:      true,
 					RestartPolicy:   cruntime.RestartPolicyAlways,
-					Args: []string{
-						"--oci-worker-net=bridge",
-					},
 					Env: map[string]string{
 						"OTEL_TRACES_EXPORTER":        "otlp",
 						"OTEL_EXPORTER_OTLP_ENDPOINT": rc.Otel.Endpoint,

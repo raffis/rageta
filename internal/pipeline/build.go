@@ -112,20 +112,20 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 		stepCtx, pipelineErr := entrypoint(stepCtx)
 
-		for _, pipelineOutput := range pipeline.Outputs {
-			if _, ok := stepCtx.Tasks[pipelineOutput.Task.Name]; !ok {
+		//for _, pipelineOutput := range pipeline.Outputs {
+		/*	if _, ok := stepCtx.Tasks[pipelineOutput.Task.Name]; !ok {
 				continue
 			}
-
-			/*from := pipelineOutput.Name
-			if pipelineOutput.From != "" {
-				from = pipelineOutput.From
-			}
-
-			if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
-				outputs[pipelineOutput.Name] = output
-			}*/
+		*/
+		/*from := pipelineOutput.Name
+		if pipelineOutput.From != "" {
+			from = pipelineOutput.From
 		}
+
+		if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
+			outputs[pipelineOutput.Name] = output
+		}*/
+		//		}
 
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
 		return stepCtx, outputs, pipelineErr

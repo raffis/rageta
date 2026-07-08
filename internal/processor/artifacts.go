@@ -45,10 +45,10 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		for i := range artifacts {
 			artifacts[i] = *s.artifacts[i].DeepCopy()
 			switch {
-			case artifacts[i].Envvars != nil:
-				subst = append(subst, &artifacts[i].Envvars.Path)
-			case artifacts[i].Outputvars != nil:
-				subst = append(subst, &artifacts[i].Outputvars.Path)
+			case artifacts[i].EnvVars != nil:
+				subst = append(subst, &artifacts[i].EnvVars.Path)
+			case artifacts[i].OutputVars != nil:
+				subst = append(subst, &artifacts[i].OutputVars.Path)
 			case artifacts[i].Local != nil:
 				subst = append(subst, &artifacts[i].Local.Path, &artifacts[i].Local.To)
 			case artifacts[i].Image != nil:
@@ -70,10 +70,10 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			var srcPath, hostPath string
 
 			switch {
-			case artifact.Envvars != nil:
-				srcPath = artifact.Envvars.Path
-			case artifact.Outputvars != nil:
-				srcPath = artifact.Outputvars.Path
+			case artifact.EnvVars != nil:
+				srcPath = artifact.EnvVars.Path
+			case artifact.OutputVars != nil:
+				srcPath = artifact.OutputVars.Path
 			case artifact.Local != nil:
 				srcPath = artifact.Local.Path
 				if srcPath == "" {
@@ -106,14 +106,14 @@ func (s *Artifacts) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 
 			switch {
-			case artifact.Envvars != nil:
+			case artifact.EnvVars != nil:
 				vars, err := readVars(ctx, exportRef, srcPath)
 				if err != nil {
 					return ctx, fmt.Errorf("envvar artifact failed %q: %w", srcPath, err)
 				}
 
 				maps.Copy(ctx.EnvVars.Envs, vars)
-			case artifact.Outputvars != nil:
+			case artifact.OutputVars != nil:
 			case artifact.Local != nil:
 				if err := readObject(ctx, exportRef, "/", hostPath); err != nil {
 					return ctx, fmt.Errorf("local artifact failed %q: %w", hostPath, err)

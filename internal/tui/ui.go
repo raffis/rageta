@@ -193,7 +193,7 @@ func (m *UI) renderStatus() string {
 	case TaskStatusWaiting:
 		return pipelineWaitingStyle.Render("INITIALIZING")
 	case TaskStatusRunning:
-		return pipelineWaitingStyle.Render("RUNNING")
+		return pipelineRunningStyle.Render("RUNNING")
 	}
 	return ""
 }

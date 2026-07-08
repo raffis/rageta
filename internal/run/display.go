@@ -102,7 +102,11 @@ func (s *Display) Run(rc *RunContext, next Next) error {
 	if err != nil {
 		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusFailed, Error: err})
 	} else {
-		s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusDone, Error: nil})
+		if rc.Execute.ResultContext.Build.Cached {
+			s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusCached, Error: nil})
+		} else {
+			s.tuiApp.Send(tui.PipelineDoneMsg{Status: tui.TaskStatusDone, Error: nil})
+		}
 	}
 
 	<-s.tuiDone

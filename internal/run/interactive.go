@@ -45,7 +45,7 @@ type InteractiveOptions struct {
 }
 
 func (s *InteractiveOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.Interactive, "interactive", "i", s.Interactive, "Run a terminal for each failed task. The task is exported and executed as a container with its entire state and the current tty is attached directly into a /bin/ash shell within the failed task.")
+	flags.StringVarP(&s.Interactive, "interactive", "i", s.Interactive, "Exec a shell in failed tasks. The task is exported and executed as a container with its entire state and the current tty is attached directly to a /bin/ash shell within the failed task.")
 	if fs, ok := flags.(interface{ Lookup(string) *pflag.Flag }); ok {
 		if f := fs.Lookup("interactive"); f != nil {
 			f.NoOptDefVal = string(TaskInteractiveIfFailed)

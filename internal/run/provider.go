@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/gofrs/flock"
+	"github.com/raffis/rageta/internal/lint"
 	"github.com/raffis/rageta/internal/provider"
 	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/flagset"
@@ -24,12 +25,17 @@ import (
 type ProviderOptions struct {
 	OCI    *ocisetup.Options
 	DBPath string
+	NoLint bool
 }
 
 func (s *ProviderOptions) BindFlags(flags flagset.Interface) {
 	ociFlags := pflag.NewFlagSet("OCI", pflag.ExitOnError)
 	s.OCI.BindFlags(ociFlags)
 	flags.AddFlagSet(ociFlags)
+
+	validationFlags := pflag.NewFlagSet("Validation", pflag.ExitOnError)
+	validationFlags.BoolVar(&s.NoLint, "no-lint", false, "Skip validating the pipeline against its CRD schema.")
+	flags.AddFlagSet(validationFlags)
 }
 
 func (s ProviderOptions) Build() Task {
@@ -58,6 +64,7 @@ func (s *Provider) Run(rc *RunContext, next Next) error {
 		rc.ImagePolicy.PullPolicy,
 		s.opts.DBPath,
 		s.opts.OCI,
+		s.opts.NoLint,
 	)
 	rc.Provider.Provider = store
 	defer func() {
@@ -86,6 +93,7 @@ func CreateProvider(
 	imagePullPolicy cruntime.PullImagePolicy,
 	dbPath string,
 	ociOptions *ocisetup.Options,
+	noLint bool,
 ) (provider.Interface, func() error) {
 	scheme := kruntime.NewScheme()
 	_ = v1beta1.AddToScheme(scheme)
@@ -157,7 +165,12 @@ func CreateProvider(
 		providers = append(providers, localDBProviderWrapper, ociProviderWrapper)
 	}
 
-	return provider.New(decoder, providers...), func() error {
+	p := provider.New(decoder, providers...)
+	if !noLint {
+		p.WithValidation(lint.Validate)
+	}
+
+	return p, func() error {
 		if localDB == nil {
 			return nil
 		}

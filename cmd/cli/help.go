@@ -49,7 +49,7 @@ func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 		defer cancel()
 	}
 
-	store, persistDB := run.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	store, persistDB := run.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions, false)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err

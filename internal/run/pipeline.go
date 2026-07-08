@@ -71,7 +71,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithSteps(rc.Secrets.Store),
 			processor.WithSources(),
 			processor.WithVolumes(),
-			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.StatusRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),
+			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.VertexRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),
 			processor.WithGroup(rc.Display.GroupBy),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 		)

@@ -23,6 +23,7 @@ type RunContext struct {
 	Teardown         TeardownContext
 	Provider         ProviderContext
 	Pipeline         PipelineContext
+	Execute          ExecuteContext
 }
 
 func NewContext() *RunContext {

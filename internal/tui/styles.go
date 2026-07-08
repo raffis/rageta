@@ -30,6 +30,7 @@ var (
 	pipelineCachedStyle   lipgloss.Style
 	pipelineOkStyle       lipgloss.Style
 	pipelineFailedStyle   lipgloss.Style
+	pipelineRunningStyle  lipgloss.Style
 	pipelineWaitingStyle  lipgloss.Style
 	listStyle             lipgloss.Style
 	listColumnStyle       lipgloss.Style
@@ -63,9 +64,9 @@ func init() {
 	stepOkStyle = newStyle().Foreground(lipgloss.Color("#008000"))
 	stepCachedStyle = newStyle().Foreground(lipgloss.Color("#00AACC"))
 	stepFailedStyle = newStyle().Foreground(lipgloss.Color("#D22B2B"))
-	stepWaitingStyle = newStyle().Foreground(lipgloss.Color("#0000FF"))
+	stepWaitingStyle = newStyle().Foreground(lipgloss.Color("#FFC0CB"))
 	stepWarningStyle = newStyle().Foreground(lipgloss.Color("#FFC300"))
-	stepRunningStyle = newStyle().Foreground(lipgloss.Color("#FFC0CB"))
+	stepRunningStyle = newStyle().Foreground(lipgloss.Color("#0000FF"))
 
 	lineNumberInactiveStyle = newStyle().
 		Background(inactivePanelColor).
@@ -81,8 +82,9 @@ func init() {
 
 	pipelineOkStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#008000"))
 	pipelineFailedStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#D22B2B"))
-	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#0000FF"))
-	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#00AACC"))
+	pipelineRunningStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#0000FF"))
+	pipelineWaitingStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#FFC0CB"))
+	pipelineCachedStyle = newStyle().Padding(0, 1).Height(1).Background(lipgloss.Color("#00AACC"))
 
 	listHeaderStyle = newStyle().Background(lipgloss.Color("#7D56F4")).
 		Foreground(lipgloss.Color("#FFFFFF")).

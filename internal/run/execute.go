@@ -32,6 +32,10 @@ type pipelineExecutionError struct {
 	parent error
 }
 
+type ExecuteContext struct {
+	ResultContext processor.TaskContext
+}
+
 func (e *pipelineExecutionError) Error() string {
 	return fmt.Sprintf("pipeline execution failed: %s", e.parent.Error())
 }
@@ -65,7 +69,8 @@ func (s *Execute) retryRun(rc *RunContext, pipelineCmd processor.Executable) err
 	b := retry.WithMaxRetries(s.opts.MaxRetries, inner)
 
 	return retry.Do(rc.Context, b, func(ctx context.Context) error {
-		_, _, err := pipelineCmd()
+		var err error
+		rc.Execute.ResultContext, _, err = pipelineCmd()
 
 		if err != nil {
 			return retry.RetryableError(err)
