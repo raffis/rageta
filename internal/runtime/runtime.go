@@ -12,6 +12,15 @@ type Interface interface {
 	RunDetached(ctx context.Context, pod *Pod) error
 }
 
+// ContainerdBacked is implemented by runtimes whose images live directly in a
+// containerd content/image store. Callers can use this to skip exporting
+// images through docker (e.g. `docker load`) when the same store is already
+// shared with buildkit.
+type ContainerdBacked interface {
+	Interface
+	IsContainerdBacked()
+}
+
 type Await interface {
 	Wait(ctx context.Context) error
 }

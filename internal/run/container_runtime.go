@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/containerdsetup"
 	"github.com/raffis/rageta/internal/setup/dockersetup"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
@@ -14,7 +15,8 @@ import (
 type containerRuntime string
 
 var (
-	containerRuntimeDocker containerRuntime = "docker"
+	containerRuntimeDocker     containerRuntime = "docker"
+	containerRuntimeContainerd containerRuntime = "containerd"
 )
 
 func (d containerRuntime) String() string {
@@ -23,14 +25,16 @@ func (d containerRuntime) String() string {
 
 func NewContainerRuntimeOptions() ContainerRuntimeOptions {
 	return ContainerRuntimeOptions{
-		ContainerRuntime: containerRuntimeDocker.String(),
+		ContainerRuntime:  containerRuntimeDocker.String(),
+		ContainerdOptions: containerdsetup.NewOptions(),
 	}
 }
 
 type ContainerRuntimeOptions struct {
-	ContainerRuntime string
-	DockerOptions    dockersetup.Options
-	DockerQuiet      bool
+	ContainerRuntime  string
+	DockerOptions     dockersetup.Options
+	DockerQuiet       bool
+	ContainerdOptions containerdsetup.Options
 }
 
 func (s ContainerRuntimeOptions) Build() Task {
@@ -39,13 +43,17 @@ func (s ContainerRuntimeOptions) Build() Task {
 	}
 }
 
-func (s ContainerRuntimeOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. Only docker is supported.")
+func (s *ContainerRuntimeOptions) BindFlags(flags flagset.Interface) {
+	flags.StringVarP(&s.ContainerRuntime, "container-runtime", "", s.ContainerRuntime, "Container runtime. One of docker, containerd.")
 
 	dockerFlags := pflag.NewFlagSet("Docker", pflag.ExitOnError)
 	dockerFlags.BoolVarP(&s.DockerQuiet, "docker-quiet", "q", false, "Suppress the docker pull output.")
 	s.DockerOptions.BindFlags(dockerFlags)
 	flags.AddFlagSet(dockerFlags)
+
+	containerdFlags := pflag.NewFlagSet("Containerd", pflag.ExitOnError)
+	s.ContainerdOptions.BindFlags(containerdFlags)
+	flags.AddFlagSet(containerdFlags)
 }
 
 type ContainerRuntime struct {
@@ -80,6 +88,24 @@ func (s *ContainerRuntime) createContainerRuntime(ctx context.Context, logger lo
 			cruntime.WithContext(ctx),
 			cruntime.WithHidePullOutput(s.opts.DockerQuiet),
 			cruntime.WithLogger(logger),
+		), nil
+	case containerRuntimeContainerd.String():
+		logger.V(1).Info("configuring containerd runtime",
+			"container", s.opts.ContainerdOptions.Container,
+			"address", s.opts.ContainerdOptions.Address,
+			"namespace", s.opts.ContainerdOptions.Namespace,
+			"snapshotter", s.opts.ContainerdOptions.Snapshotter,
+			"cni", s.opts.ContainerdOptions.CNI,
+		)
+
+		return cruntime.NewContainerd(
+			cruntime.WithContainerdContainer(s.opts.ContainerdOptions.Container),
+			cruntime.WithContainerdDockerContext(s.opts.ContainerdOptions.DockerContext),
+			cruntime.WithContainerdCtrAddress(s.opts.ContainerdOptions.Address),
+			cruntime.WithContainerdNamespace(s.opts.ContainerdOptions.Namespace),
+			cruntime.WithContainerdSnapshotter(s.opts.ContainerdOptions.Snapshotter),
+			cruntime.WithContainerdCNI(s.opts.ContainerdOptions.CNI),
+			cruntime.WithContainerdLogger(logger),
 		), nil
 	default:
 		return nil, fmt.Errorf("unknown container runtime: %s", s.opts.ContainerRuntime)

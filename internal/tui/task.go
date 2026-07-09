@@ -101,6 +101,7 @@ type TaskMsg struct {
 	Status            TaskStatus
 	Stats             ResourceStats
 	Pull              PullProgress
+	Context           processor.TaskContext
 	ready             bool
 	started           time.Time
 	finished          time.Time

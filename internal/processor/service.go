@@ -101,7 +101,7 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("🐋 starting %s", container.Image) + "\n"))
+		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("starting %s", container.Image) + "\n"))
 		ctx, err := s.exec(ctx, pod)
 
 		if err != nil {
@@ -133,6 +133,8 @@ func (s *Service) exec(ctx TaskContext, pod *runtime.Pod) (TaskContext, error) {
 	if err != nil {
 		return ctx, err
 	}
+
+	fmt.Printf("%#v  \n  \n", pod.Status)
 
 	for _, v := range pod.Status.Containers {
 		ctx.Services.Status[v.Name] = v

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -156,6 +157,9 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 
 	s.tuiDone = make(chan struct{})
 	model := tui.NewUI(rc.Logging.FileLogger.WithValues("component", "tui"))
+	model.SetDebugShell(func(stepCtx processor.TaskContext) (tea.ExecCommand, error) {
+		return &debugShellExec{rc: rc, stepCtx: stepCtx}, nil
+	})
 	s.tuiApp = tea.NewProgram(model,
 		tea.WithOutput(xio.NewFDWrapper(rc.Display.Stdout, os.Stdout)),
 		tea.WithEnvironment(bubbleTeaProgramEnv()),
@@ -174,6 +178,25 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 		s.tuiDone <- struct{}{}
 	}()
 	return s.tuiApp
+}
+
+// debugShellExec implements tea.ExecCommand so the TUI can spawn a debug shell for a
+// selected task via tea.Exec, which releases the terminal for the duration of the
+// interactive session and restores it to the TUI afterwards.
+type debugShellExec struct {
+	rc      *RunContext
+	stepCtx processor.TaskContext
+	stdin   io.Reader
+	stdout  io.Writer
+	stderr  io.Writer
+}
+
+func (d *debugShellExec) SetStdin(r io.Reader) { d.stdin = r }
+func (d *debugShellExec) SetStdout(w io.Writer) { d.stdout = w }
+func (d *debugShellExec) SetStderr(w io.Writer) { d.stderr = w }
+
+func (d *debugShellExec) Run() error {
+	return RunDebugShell(context.Background(), d.rc, d.stepCtx, d.stdin, d.stdout, d.stderr)
 }
 
 // bubbleTeaProgramEnv is only passed to [tea.NewProgram] (not the whole process).

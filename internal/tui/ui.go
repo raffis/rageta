@@ -36,13 +36,25 @@ const (
 )
 
 const (
-	KeyFilter = "/"
-	KeyEscape = "esc"
-	KeyTab    = "tab"
-	KeyEnter  = "enter"
-	KeyQuit   = "ctrl+c"
-	KeyQ      = "q"
+	KeyFilter     = "/"
+	KeyEscape     = "esc"
+	KeyTab        = "tab"
+	KeyEnter      = "enter"
+	KeyQuit       = "ctrl+c"
+	KeyQ          = "q"
+	KeyDebugShell = "s"
 )
+
+// DebugShellFactory builds the tea.ExecCommand used to run a debug shell for the given
+// task context. It is provided by the run package, which owns the buildkit client and
+// container runtime needed to export and start the task's state as a container.
+type DebugShellFactory func(taskCtx processor.TaskContext) (tea.ExecCommand, error)
+
+// DebugShellDoneMsg is delivered once a debug shell spawned via tea.Exec exits.
+type DebugShellDoneMsg struct {
+	Name string
+	Err  error
+}
 
 type UI struct {
 	list         list.Model
@@ -56,6 +68,12 @@ type UI struct {
 	exitErr      error
 	activePanel  Panel
 	lastSelected list.Item
+	debugShell   DebugShellFactory
+}
+
+// SetDebugShell registers the factory used to spawn a debug shell for the selected task.
+func (m *UI) SetDebugShell(fn DebugShellFactory) {
+	m.debugShell = fn
 }
 
 type TickMsg time.Time
@@ -231,6 +249,10 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleWindowResize(msg)...)
 	case TickMsg:
 		cmds = append(cmds, m.handleTick(msg)...)
+	case DebugShellDoneMsg:
+		if msg.Err != nil {
+			m.logger.Error(msg.Err, "debug shell exited with an error", "task", msg.Name)
+		}
 	}
 
 	m.updateLastSelected()
@@ -291,6 +313,7 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 				if msg.Status != TaskStatusRunning {
 					item.Stats = ResourceStats{}
 					item.Pull = PullProgress{}
+					item.Context = msg.Context
 				}
 
 				items[i] = item.WithStatus(msg.Status)
@@ -340,12 +363,43 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case KeyTab:
 		m.toggleActivePanel()
 		return m, nil
+	case KeyDebugShell:
+		if m.activePanel == PanelDetails {
+			if cmd := m.openDebugShell(); cmd != nil {
+				return m, cmd
+			}
+		}
 	}
 
 	if m.activePanel == PanelList {
 		return m.handleListPanelKeys(msg)
 	}
 	return m, m.updateSelectedViewport(msg)
+}
+
+// openDebugShell spawns a debug shell for the currently selected task, if the task has
+// finished (so its final buildkit state is available) and a debug shell factory has been
+// registered. It uses tea.Exec so bubbletea releases the terminal for the duration of the
+// interactive shell and restores it to the TUI once the shell exits.
+func (m *UI) openDebugShell() tea.Cmd {
+	if m.debugShell == nil || m.lastSelected == nil {
+		return nil
+	}
+
+	task, ok := m.lastSelected.(TaskMsg)
+	if !ok || task.Status == TaskStatusRunning || task.Status == TaskStatusWaiting {
+		return nil
+	}
+
+	execCmd, err := m.debugShell(task.Context)
+	if err != nil {
+		m.logger.Error(err, "failed to prepare debug shell", "task", task.Name)
+		return nil
+	}
+
+	return tea.Exec(execCmd, func(err error) tea.Msg {
+		return DebugShellDoneMsg{Name: task.Name, Err: err}
+	})
 }
 
 // toggleActivePanel switches between the list and details panels

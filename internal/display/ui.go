@@ -51,20 +51,23 @@ func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
 	if err := d.step.Flush(); err != nil {
 		return fmt.Errorf("error flushing stdout: %w", err)
 	}
+	taskCtx := ctx.DeepCopy()
+
 	switch {
 	case err == nil:
 		status := tui.TaskStatusDone
 		if ctx.Build.Cached {
 			status = tui.TaskStatusCached
 		}
-		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: status})
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: status, Context: taskCtx})
 	case errors.Is(err, processor.ErrAllowFailure):
-		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped})
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped, Context: taskCtx})
 	case errors.Is(err, processor.ErrConditionFalse):
-		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped})
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped, Context: taskCtx})
 	default:
-		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusFailed})
+		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusFailed, Context: taskCtx})
 	}
+
 	return nil
 }
 
