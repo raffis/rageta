@@ -7,11 +7,13 @@ import (
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/stopwatch"
 	"charm.land/lipgloss/v2"
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
+	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/internal/xio"
 )
 
@@ -25,10 +27,10 @@ const (
 
 // Column width percentages for wide layouts
 const (
-	NameColumnPercent     = 40
+	NameColumnPercent     = 35
 	LabelsColumnPercent   = 10
 	CPUColumnPercent      = 10
-	MemColumnPercent      = 5
+	MemColumnPercent      = 10
 	NetColumnPercent      = 20
 	DurationColumnPercent = 10
 )
@@ -60,6 +62,28 @@ type PullProgressMsg struct {
 	Total   int64
 }
 
+// TaskMsg represents a pipeline step with its state and UI components
+type TaskMsg struct {
+	w                 *xio.LineWriter
+	viewport          *pager.Model
+	loader            spinner.Model
+	pullImageProgress progress.Model
+	Name              string
+	DisplayName       string
+	Labels            []processor.Label
+	Status            TaskStatus
+	Stats             ResourceStats
+	Pull              PullProgress
+	Context           processor.TaskContext
+	ready             bool
+	started           time.Time
+	finished          time.Time
+	timer             stopwatch.Model
+	listWidth         int
+	listHeight        int
+	shellHintShown    bool
+}
+
 // NewTask creates a new TaskMsg with initialized components
 func NewTask() TaskMsg {
 	viewport := pager.New(0, 0)
@@ -85,28 +109,9 @@ func NewTask() TaskMsg {
 		w:                 xio.NewLineWriter(&viewport),
 		viewport:          &viewport,
 		loader:            loader,
+		timer:             stopwatch.New(stopwatch.WithInterval(time.Millisecond * 300)),
 		pullImageProgress: bar,
 	}
-}
-
-// TaskMsg represents a pipeline step with its state and UI components
-type TaskMsg struct {
-	w                 *xio.LineWriter
-	viewport          *pager.Model
-	loader            spinner.Model
-	pullImageProgress progress.Model
-	Name              string
-	DisplayName       string
-	Labels            []processor.Label
-	Status            TaskStatus
-	Stats             ResourceStats
-	Pull              PullProgress
-	Context           processor.TaskContext
-	ready             bool
-	started           time.Time
-	finished          time.Time
-	listWidth         int
-	listHeight        int
 }
 
 func (t TaskMsg) Flush() error {
@@ -199,7 +204,7 @@ func (t TaskMsg) Title() string {
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
 		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render(t.netString()),
-		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration()),
+		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.timer.View()),
 	)
 }
 
@@ -214,37 +219,14 @@ func (t *TaskMsg) memString() string {
 	if t.Stats.MemBytes == 0 {
 		return "—"
 	}
-	return formatBytes(t.Stats.MemBytes)
+	return utils.FormatBytes(t.Stats.MemBytes)
 }
 
 func (t *TaskMsg) netString() string {
 	if t.Stats.NetRxBytes == 0 && t.Stats.NetTxBytes == 0 {
 		return "—"
 	}
-	return fmt.Sprintf("⇩ %s/s ⇧ %s/s", formatBytes(t.Stats.NetRxBytes), formatBytes(t.Stats.NetTxBytes))
-}
-
-// formatBytes renders a byte count as KB or MB, matching the precision used
-// throughout the resource columns.
-func formatBytes(b int64) string {
-	const mb = 1024 * 1024
-	if b < mb {
-		return fmt.Sprintf("%dKB", b/1024)
-	}
-	return fmt.Sprintf("%dMB", b/mb)
-}
-
-// duration returns a formatted duration string for the step
-func (t *TaskMsg) duration() string {
-	if t.started.IsZero() {
-		return NotStartedDuration
-	}
-
-	if t.finished.IsZero() {
-		return time.Since(t.started).Round(time.Millisecond * 10).String()
-	}
-
-	return t.finished.Sub(t.started).Round(time.Millisecond * 10).String()
+	return fmt.Sprintf("⇩ %s ⇧ %s", utils.FormatBps(t.Stats.NetRxBytes), utils.FormatBps(t.Stats.NetTxBytes))
 }
 
 // Description returns the description line rendered below the task's title,

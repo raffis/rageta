@@ -22,6 +22,14 @@ func (d *discardDisplay) Stderr() io.Writer {
 	return io.Discard
 }
 
+func (d *discardDisplay) Dev() io.Writer {
+	return io.Discard
+}
+
+func (d *discardDisplay) Start(_ processor.TaskContext) error {
+	return nil
+}
+
 func (d *discardDisplay) Close(_ processor.TaskContext, _ error) error {
 	return nil
 }

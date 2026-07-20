@@ -1,13 +1,10 @@
 package run
 
 import (
-	"fmt"
 	"os"
 	"slices"
 
-	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/flagset"
-	"github.com/raffis/rageta/internal/utils"
 )
 
 type ForkOptions struct {
@@ -38,7 +35,7 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 	forkFlags := os.Args[1:]
 	forkFlags = slices.DeleteFunc(forkFlags, func(v string) bool { return v == "--fork" })
 
-	container := cruntime.ContainerSpec{
+	/*container := cruntime.ContainerSpec{
 		Name:  "rageta",
 		Image: "ghcr.io/rageta/rageta:latest",
 		Args:  forkFlags,
@@ -46,23 +43,6 @@ func (s *Fork) Run(rc *RunContext, next Next) error {
 		//TTY:             IsTerm(),
 		Env:             rc.Envs.Envs,
 		ImagePullPolicy: rc.ImagePolicy.PullPolicy,
-	}
-	_ = cruntime.Pod{
-		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
-		Spec: cruntime.PodSpec{
-			Containers: []cruntime.ContainerSpec{container},
-		},
-	}
-
-	/*status, err := rc.ContainerRuntime.Driver.CreatePod(rc.Context, &pod, os.Stdin, rc.Output.Stdout, rc.Output.Stderr)
-	if err != nil {
-		return err
-	}*/
-
-	/*if !s.noGC {
-		defer func() {
-			_ = rc.Driver.DeletePod(rc.Ctx, &pod, s.gracefulTermination)
-		}()
 	}*/
 
 	return nil

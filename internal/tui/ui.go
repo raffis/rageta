@@ -2,21 +2,45 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"slices"
-
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/stopwatch"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/processor"
 )
+
+// TEMPORARY: diagnostic logging for the "UI is slow/laggy with many tasks"
+// investigation. Writes one line per Update() call to /tmp/ui.log with the
+// message type, current list size, and how long the call took, so we can
+// see which message types dominate and whether cost scales with list size.
+// Remove once the investigation is done.
+var (
+	debugLogOnce sync.Once
+	debugLogFile *os.File
+)
+
+func debugLog(format string, args ...any) {
+	debugLogOnce.Do(func() {
+		f, err := os.OpenFile("/tmp/ui.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			debugLogFile = f
+		}
+	})
+	if debugLogFile != nil {
+		fmt.Fprintf(debugLogFile, "%s "+format+"\n", append([]any{time.Now().Format(time.RFC3339Nano)}, args...)...)
+	}
+}
 
 type Panel int8
 
@@ -43,7 +67,29 @@ const (
 	KeyQuit       = "ctrl+c"
 	KeyQ          = "q"
 	KeyDebugShell = "s"
+	KeyShowAll    = "a"
 )
+
+// uiKeyMap is the help.KeyMap rendered in the bottom help bar. It's a
+// hand-picked list of bindings rather than a delegate to list.KeyMap so we
+// can fully control what's shown (no "?" full-help toggle, arrow keys only).
+type uiKeyMap struct{}
+
+func (uiKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{
+		key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
+		key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down")),
+		key.NewBinding(key.WithKeys(KeyFilter), key.WithHelp(KeyFilter, "filter")),
+		key.NewBinding(key.WithKeys(KeyTab), key.WithHelp("⇅", "switch panel")),
+		key.NewBinding(key.WithKeys(KeyShowAll), key.WithHelp(KeyShowAll, "show/hide all")),
+		key.NewBinding(key.WithKeys(KeyDebugShell), key.WithHelp(KeyDebugShell, "shell")),
+		key.NewBinding(key.WithKeys(KeyQ), key.WithHelp(KeyQ, "quit")),
+	}
+}
+
+func (k uiKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{k.ShortHelp()}
+}
 
 // DebugShellFactory builds the tea.ExecCommand used to run a debug shell for the given
 // task context. It is provided by the run package, which owns the buildkit client and
@@ -59,6 +105,7 @@ type DebugShellDoneMsg struct {
 type UI struct {
 	list         list.Model
 	loader       spinner.Model
+	help         help.Model
 	status       TaskStatus
 	scanInput    textinput.Model
 	width        int
@@ -69,6 +116,12 @@ type UI struct {
 	activePanel  Panel
 	lastSelected list.Item
 	debugShell   DebugShellFactory
+
+	// tasks is the source of truth for every task the pipeline has reported,
+	// in display order. m.list only ever holds the currently visible subset
+	// (see refreshList), so every mutation must go through m.tasks first.
+	tasks   []TaskMsg
+	showAll bool
 }
 
 // SetDebugShell registers the factory used to spawn a debug shell for the selected task.
@@ -89,13 +142,6 @@ func NewUI(logger logr.Logger) UI {
 		BorderForeground(activePanelColor).
 		Border(lipgloss.BlockBorder(), false, false, false, true)
 
-	// Render the progress bar (via TaskMsg.Description) in the row that
-	// would otherwise be the blank gap between items, instead of adding an
-	// extra line: reporting Spacing=0 alongside the 2-line item height keeps
-	// the total rows per item (2) identical to the previous single-line +
-	// gap layout. The description row has no content of its own selection
-	// state, so strip the left border the default styles inherit from the
-	// title and keep only the matching left padding for alignment.
 	delegate.ShowDescription = true
 	delegate.SetSpacing(0)
 	noBorderDescPadding := lipgloss.NewStyle().Padding(0, 0, 0, 2)
@@ -106,6 +152,7 @@ func NewUI(logger logr.Logger) UI {
 	ui := UI{
 		status:      TaskStatusWaiting,
 		list:        list.New(nil, delegate, 0, 0),
+		help:        help.New(),
 		mu:          &sync.Mutex{},
 		activePanel: PanelList,
 		logger:      logger,
@@ -126,6 +173,8 @@ func (m *UI) initializeList() {
 	m.list.SetShowFilter(false)
 	m.list.SetFilteringEnabled(true)
 	m.list.Styles.PaginationStyle = listPaginatorStyle
+	m.list.KeyMap.CursorUp = key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up"))
+	m.list.KeyMap.CursorDown = key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down"))
 }
 
 // initializeScanInput sets up the scan input component
@@ -144,22 +193,42 @@ func (m *UI) initializeLoader() {
 	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 }
 
-// sortList sorts the list items by labels and start time
+// sortList sorts m.tasks by labels and refreshes the visible list.
 func (m *UI) sortList() {
-	items := m.list.Items()
-	sort.Slice(items, func(i, j int) bool {
-		iLabels := m.formatLabelsForSorting(items[i].(TaskMsg).Labels)
-		jLabels := m.formatLabelsForSorting(items[j].(TaskMsg).Labels)
-
-		iLabelsKey := strings.Join(iLabels, "-")
-		jLabelsKey := strings.Join(jLabels, "-")
+	sort.Slice(m.tasks, func(i, j int) bool {
+		iLabelsKey := strings.Join(m.formatLabelsForSorting(m.tasks[i].Labels), "-")
+		jLabelsKey := strings.Join(m.formatLabelsForSorting(m.tasks[j].Labels), "-")
 
 		if iLabelsKey == jLabelsKey {
-			return items[i].(TaskMsg).started.Before(items[j].(TaskMsg).started)
+			return false
 		}
 
 		return iLabelsKey < jLabelsKey
 	})
+
+	m.refreshList()
+}
+
+// isHiddenStatus reports whether a task in this status is hidden from the
+// list by default (successful/skipped tasks are noise once they're done).
+func isHiddenStatus(status TaskStatus) bool {
+	switch status {
+	case TaskStatusDone, TaskStatusCached, TaskStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// refreshList rebuilds the visible list from m.tasks, applying the
+// show-all/hide-finished filter and preserving the current selection.
+func (m *UI) refreshList() {
+	items := make([]list.Item, 0, len(m.tasks))
+	for _, t := range m.tasks {
+		if m.showAll || !isHiddenStatus(t.Status) {
+			items = append(items, t)
+		}
+	}
 
 	current := m.findCurrentSelection(items)
 	m.list.SetItems(items)
@@ -189,16 +258,6 @@ func (m *UI) findCurrentSelection(items []list.Item) int {
 	return 0
 }
 
-// getTaskMsg retrieves a task message by name
-func (m *UI) getTaskMsg(name string) (TaskMsg, error) {
-	for _, task := range m.list.Items() {
-		if v, ok := task.(TaskMsg); ok && v.Name == name {
-			return v, nil
-		}
-	}
-	return TaskMsg{}, fmt.Errorf("no such task: %s", name)
-}
-
 // renderStatus renders the current pipeline status
 func (m *UI) renderStatus() string {
 	switch m.status {
@@ -223,32 +282,45 @@ func (m UI) Init() tea.Cmd {
 
 // Update handles all UI updates and events
 func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	start := time.Now()
+	itemCount := len(m.list.Items())
+	defer func() {
+		debugLog("update type=%T items=%d elapsed=%s", msg, itemCount, time.Since(start))
+	}()
+
 	var cmds []tea.Cmd
 
-	// Update loader
-	loader, cmd := m.loader.Update(msg)
-	m.loader = loader
-	cmds = append(cmds, cmd)
+	// The top-level loader is only ever visible on the initial "waiting"
+	// screen, before any task has been selected (see View). Updating it on
+	// every message regardless wastes work once the list is populated and
+	// receiving frequent stats/progress messages.
+	if m.lastSelected == nil {
+		loader, cmd := m.loader.Update(msg)
+		m.loader = loader
+		cmds = append(cmds, cmd)
+	}
 
 	m.logger.V(7).Info("tui update msg", "msg", msg)
 
 	switch msg := msg.(type) {
-	case PipelineDoneMsg:
-		cmds = append(cmds, m.handlePipelineDone(msg)...)
-	case TaskMsg:
-		cmds = append(cmds, m.handleTaskMessage(msg)...)
-	case ResourceStatsMsg:
-		m.handleResourceStats(msg)
-	case PullProgressMsg:
-		m.handlePullProgress(msg)
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
 	case tea.KeyPressMsg:
 		return m.handleKeyMessage(msg)
-	case tea.WindowSizeMsg:
-		cmds = append(cmds, m.handleWindowResize(msg)...)
+	case PipelineDoneMsg:
+		cmds = append(cmds, m.handlePipelineDone(msg)...)
+	case TaskMsg:
+		cmds = append(cmds, m.handleTaskMessage(msg)...)
 	case TickMsg:
 		cmds = append(cmds, m.handleTick(msg)...)
+	case stopwatch.StartStopMsg, stopwatch.ResetMsg, stopwatch.TickMsg:
+		cmds = append(cmds, m.handleStopwatchControl(msg)...)
+	case ResourceStatsMsg:
+		m.handleResourceStats(msg)
+	case PullProgressMsg:
+		m.handlePullProgress(msg)
+	case tea.WindowSizeMsg:
+		cmds = append(cmds, m.handleWindowResize(msg)...)
 	case DebugShellDoneMsg:
 		if msg.Err != nil {
 			m.logger.Error(msg.Err, "debug shell exited with an error", "task", msg.Name)
@@ -269,13 +341,12 @@ func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
 	m.exitErr = msg.Error
 
 	if msg.Status == TaskStatusFailed {
-		items := slices.Clone(m.list.Items())
-		for i, listItem := range items {
-			if item, ok := listItem.(TaskMsg); ok && item.Status == TaskStatusRunning {
-				items[i] = item.WithStatus(TaskStatusFailed)
+		for i, t := range m.tasks {
+			if t.Status == TaskStatusRunning {
+				m.tasks[i] = t.WithStatus(TaskStatusFailed)
 			}
 		}
-		m.list.SetItems(items)
+		m.refreshList()
 	}
 
 	return nil
@@ -287,11 +358,10 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 	defer m.mu.Unlock()
 
 	var cmds []tea.Cmd
-	items := slices.Clone(m.list.Items())
 
-	_, err := m.getTaskMsg(msg.Name)
+	existing, idx, err := m.getTaskMsg(msg.Name)
+	// New task
 	if err != nil {
-		// New task
 		msg.ready = true
 		msg.listWidth = m.list.Width()
 		msg.listHeight = m.list.Height()
@@ -302,24 +372,29 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 			m.updateViewportDimensions(&msg)
 		}
 
-		cmds = append(cmds, func() tea.Msg { return msg.loader.Tick() })
+		cmds = append(cmds,
+			msg.timer.Init(),
+			msg.loader.Tick,
+		)
 
-		m.list.InsertItem(-1, msg.WithStatus(msg.Status))
+		m.tasks = append(m.tasks, msg.WithStatus(msg.Status))
 		m.sortList()
 	} else {
 		// Update existing task
-		for i, listItem := range items {
-			if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
-				if msg.Status != TaskStatusRunning {
-					item.Stats = ResourceStats{}
-					item.Pull = PullProgress{}
-					item.Context = msg.Context
-				}
-
-				items[i] = item.WithStatus(msg.Status)
-			}
+		item := existing
+		if msg.Status != TaskStatusRunning {
+			item.Stats = ResourceStats{}
+			item.Pull = PullProgress{}
+			item.Context = msg.Context
+			cmds = append(cmds, item.timer.Stop())
 		}
-		m.list.SetItems(items)
+
+		if item.Status == TaskStatusRunning && msg.Status != TaskStatusRunning && m.debugShell != nil {
+			m.writeDebugShellHint(&item)
+		}
+
+		m.tasks[idx] = item.WithStatus(msg.Status)
+		m.refreshList()
 	}
 
 	if msg.Status == TaskStatusRunning {
@@ -327,6 +402,30 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 	}
 
 	return cmds
+}
+
+// getTaskMsg retrieves a task message by name along with its index in m.tasks
+func (m *UI) getTaskMsg(name string) (TaskMsg, int, error) {
+	for i, task := range m.tasks {
+		if task.Name == name {
+			return task, i, nil
+		}
+	}
+	return TaskMsg{}, -1, fmt.Errorf("no such task: %s", name)
+}
+
+// writeDebugShellHint writes a hint into the task's viewport telling the user
+// they can press the debug shell key now that the task has finished. Tasks
+// can transition out of "running" more than once (e.g. across retries), so
+// this only fires once per task to avoid spamming the viewport.
+func (m *UI) writeDebugShellHint(item *TaskMsg) {
+	if item.shellHintShown {
+		return
+	}
+	item.shellHintShown = true
+
+	fmt.Fprintf(item, "\n%s\n", durationStyle.Render(fmt.Sprintf("Press '%s' to start a shell", KeyDebugShell)))
+	item.Flush()
 }
 
 // handleMouseMessage handles mouse interactions
@@ -362,6 +461,10 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case KeyTab:
 		m.toggleActivePanel()
+		return m, nil
+	case KeyShowAll:
+		m.showAll = !m.showAll
+		m.refreshList()
 		return m, nil
 	case KeyDebugShell:
 		if m.activePanel == PanelDetails {
@@ -438,15 +541,18 @@ func (m UI) handleListPanelKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // updateSelectedViewport updates the viewport for the selected item
 func (m *UI) updateSelectedViewport(msg tea.Msg) tea.Cmd {
-	items := slices.Clone(m.list.Items())
-	for i, listItem := range items {
-		if m.lastSelected != nil && listItem.(TaskMsg).Name == m.lastSelected.(TaskMsg).Name {
-			viewport, cmd := m.lastSelected.(TaskMsg).viewport.Update(msg)
-			last := m.lastSelected.(TaskMsg)
-			last.viewport = &viewport
-			items[i] = last
+	if m.lastSelected == nil {
+		return nil
+	}
 
-			m.list.SetItems(items)
+	name := m.lastSelected.(TaskMsg).Name
+	for i, t := range m.tasks {
+		if t.Name == name {
+			viewport, cmd := t.viewport.Update(msg)
+			t.viewport = &viewport
+			m.tasks[i] = t
+
+			m.refreshList()
 			return cmd
 		}
 	}
@@ -467,16 +573,13 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 		m.list.SetSize(int(listWidth), m.height-LayoutAreaHeight)
 	}
 
-	items := slices.Clone(m.list.Items())
-	for i, listItem := range items {
-		if item, ok := listItem.(TaskMsg); ok {
-			item.listWidth = m.list.Width()
-			item.listHeight = m.list.Height()
-			item.pullImageProgress.SetWidth(pullImageProgressWidth(item.listWidth))
-			items[i] = item
-		}
+	for i, t := range m.tasks {
+		t.listWidth = m.list.Width()
+		t.listHeight = m.list.Height()
+		t.pullImageProgress.SetWidth(pullImageProgressWidth(t.listWidth))
+		m.tasks[i] = t
 	}
-	m.list.SetItems(items)
+	m.refreshList()
 
 	return nil
 }
@@ -491,15 +594,14 @@ func (m *UI) handlePullProgress(msg PullProgressMsg) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	items := slices.Clone(m.list.Items())
-	for i, listItem := range items {
-		if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
-			item.Pull = PullProgress{Current: msg.Current, Total: msg.Total}
-			items[i] = item
+	for i, t := range m.tasks {
+		if t.Name == msg.Name {
+			t.Pull = PullProgress{Current: msg.Current, Total: msg.Total}
+			m.tasks[i] = t
 			break
 		}
 	}
-	m.list.SetItems(items)
+	m.refreshList()
 }
 
 // handleResourceStats updates the Stats field of a running task
@@ -507,28 +609,44 @@ func (m *UI) handleResourceStats(msg ResourceStatsMsg) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	items := slices.Clone(m.list.Items())
-	for i, listItem := range items {
-		if item, ok := listItem.(TaskMsg); ok && item.Name == msg.Name {
-			item.Stats = msg.Stats
-			items[i] = item
+	for i, t := range m.tasks {
+		if t.Name == msg.Name {
+			t.Stats = msg.Stats
+			m.tasks[i] = t
 			break
 		}
 	}
-	m.list.SetItems(items)
+	m.refreshList()
+}
+
+// handleStopwatchControl routes stopwatch start/stop/reset messages to every
+// task's timer. stopwatch.Model.Update ignores messages whose ID doesn't
+// match its own, so broadcasting to all items is safe. The returned command
+// must be propagated (it's what re-schedules the next tick for the timer
+// that actually owns this message) or every stopwatch freezes after its
+// first tick.
+func (m *UI) handleStopwatchControl(msg tea.Msg) []tea.Cmd {
+	var cmds []tea.Cmd
+	for i, t := range m.tasks {
+		timer, cmd := t.timer.Update(msg)
+		t.timer = timer
+		m.tasks[i] = t
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	m.refreshList()
+	return cmds
 }
 
 // handleTick handles tick messages for animations
 func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
-	items := slices.Clone(m.list.Items())
-	for i, listItem := range items {
-		if item, ok := listItem.(TaskMsg); ok {
-			loader, _ := item.loader.Update(item.loader.Tick())
-			item.loader = loader
-			items[i] = item
-		}
+	for i, t := range m.tasks {
+		loader, _ := t.loader.Update(t.loader.Tick())
+		t.loader = loader
+		m.tasks[i] = t
 	}
-	m.list.SetItems(items)
+	m.refreshList()
 	return nil
 }
 
@@ -548,6 +666,12 @@ func (m *UI) updateLastSelected() {
 
 // View renders the UI
 func (m UI) View() tea.View {
+	start := time.Now()
+	itemCount := len(m.list.Items())
+	defer func() {
+		debugLog("view items=%d elapsed=%s", itemCount, time.Since(start))
+	}()
+
 	m.logger.Info("tui view", "height", m.height, "width", m.width, "last", m.lastSelected)
 
 	var content string
@@ -564,10 +688,17 @@ func (m UI) View() tea.View {
 
 // renderMainLayout renders the main UI layout
 func (m UI) renderMainLayout() string {
+	t0 := time.Now()
 	headerPanel := m.renderHeaderPanel()
+	t1 := time.Now()
 	listPanel := m.renderListPanel()
+	t2 := time.Now()
 	pagerPanel := m.renderPagerPanel()
+	t3 := time.Now()
 	bottomPanel := m.renderBottomPanel()
+	t4 := time.Now()
+	debugLog("renderMainLayout items=%d header=%s list=%s pager=%s bottom=%s",
+		len(m.list.Items()), t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3))
 
 	// Stack panels vertically if the terminal is too narrow
 	if m.width < AlignHorizontalBreakpoint {
@@ -773,13 +904,16 @@ func (m UI) renderBottomPanel() string {
 	status := m.renderStatus()
 	scrollPercentage := scrollPercentageStyle.Render(
 		fmt.Sprintf("%3.f%%", m.lastSelected.(TaskMsg).viewport.ScrollPercent()*100))
+	delimiter := helpDelimiterStyle.Render("│")
 
-	helpWidth := m.width - lipgloss.Width(status) - lipgloss.Width(scrollPercentage)
+	helpWidth := max(0, m.width-lipgloss.Width(status)-lipgloss.Width(scrollPercentage)-lipgloss.Width(delimiter))
+	m.help.SetWidth(helpWidth)
 
 	return lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		status,
-		lipgloss.NewStyle().Width(helpWidth).Render(m.list.Help.View(m.list)),
+		delimiter,
+		lipgloss.NewStyle().Width(helpWidth).Render(m.help.View(uiKeyMap{})),
 		scrollPercentage,
 	)
 }

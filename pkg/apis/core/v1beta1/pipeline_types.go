@@ -55,7 +55,7 @@ type TaskOptions struct {
 	DependsOn    []TaskReference   `json:"dependsOn,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
-	Env          []EnvVar          `json:"env,omitempty"`
+	Envs         []EnvVar          `json:"envs,omitempty"`
 	Labels       []Label           `json:"labels,omitempty"`
 	Sources      []Source          `json:"sources,omitempty"`
 	Artifacts    []Artifact        `json:"artifacts,omitempty"`

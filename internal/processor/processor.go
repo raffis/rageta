@@ -31,9 +31,15 @@ type Bootstraper interface {
 }
 
 type Task interface {
+	Claim(TaskContext) (TaskClaim, bool)
 	Processors() []Bootstraper
 	Entrypoint() (Next, error)
 	Name() string
+}
+
+type TaskClaim interface {
+	Wait() (TaskContext, error)
+	Release(TaskContext, error)
 }
 
 type Teardown func(ctx context.Context, timeout time.Duration) error

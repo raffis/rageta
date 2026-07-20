@@ -1,7 +1,6 @@
 package run
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/raffis/rageta/internal/setup/flagset"
@@ -26,11 +25,9 @@ type ExitCode struct {
 func (s *ExitCode) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 	if err != nil {
-		fmt.Fprintf(rc.Display.Stderr, "\n%s %s", "ERROR", err.Error())
-
-    if s.opts.AllowFailure {
-      os.Exit(0)
-    }
+		if s.opts.AllowFailure {
+			os.Exit(0)
+		}
 
 		os.Exit(1)
 	}

@@ -42,7 +42,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		pipe, err := s.provider.Resolve(ctx, inherit.Pipeline)
 		if err != nil {
-			return ctx, fmt.Errorf("failed to open pipeline: %w", err)
+			return ctx, fmt.Errorf("failed to resolve pipeline: %w", err)
 		}
 
 		inheritCtx := ctx.DeepCopy().WithNamespace(s.stepName)

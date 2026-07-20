@@ -42,7 +42,7 @@ func (s *Workdir) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Mkdir(ctx.Workdir.Path, 0755, llb.WithParents(true)),
 			llb.WithCustomNamef("mkdir %s", ctx.Workdir.Path),
-		).With(llb.Dir(ctx.Workdir.Path))
+		).With(llb.Dir(ctx.Workdir.Path), llb.AddEnv("PWD", ctx.Workdir.Path))
 		return next(ctx)
 	}, nil
 }

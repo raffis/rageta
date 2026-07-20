@@ -95,7 +95,6 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.SecretOptions.BindFlags(pipelineFlags)
 	s.ExecuteOptions.BindFlags(pipelineFlags)
 	s.InputsOptions.BindFlags(pipelineFlags)
-	s.PipelineOptions.BindFlags(pipelineFlags)
 	flags.AddFlagSet(pipelineFlags)
 }
 

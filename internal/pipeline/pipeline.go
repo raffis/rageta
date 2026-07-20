@@ -13,27 +13,7 @@ type pipeline struct {
 	name       string
 	id         string
 	entrypoint string
-	steps      []*pipelineTask
-}
-
-type pipelineTask struct {
-	processors []processor.Bootstraper
-	name       string
-	pipeline   *pipeline
-	dependsOn  []string
-	labels     map[string]string
-}
-
-func (p *pipelineTask) Processors() []processor.Bootstraper {
-	return p.processors
-}
-
-func (p *pipelineTask) Name() string {
-	return p.name
-}
-
-func (p *pipelineTask) Entrypoint() (processor.Next, error) {
-	return processor.Chain(p.pipeline, p.processors...)
+	tasks      []*pipelineTask
 }
 
 func (p *pipeline) Name() string {
@@ -45,20 +25,20 @@ func (p *pipeline) ID() string {
 }
 
 func (p *pipeline) Task(name string) (processor.Task, error) {
-	for _, step := range p.steps {
-		if step.name == name {
-			return step, nil
+	for _, task := range p.tasks {
+		if task.name == name {
+			return task, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no such step exists: %s", name)
+	return nil, fmt.Errorf("no such task: %s", name)
 }
 
 func (p *pipeline) TasksByLabels(labels map[string]string) []processor.Task {
 	var tasks []processor.Task
-	for _, step := range p.steps {
-		if matchLabels(step.labels, labels) {
-			tasks = append(tasks, step)
+	for _, task := range p.tasks {
+		if matchLabels(task.labels, labels) {
+			tasks = append(tasks, task)
 		}
 	}
 	return tasks
@@ -82,35 +62,35 @@ func matchLabels(taskLabels map[string]string, selector map[string]string) bool 
 }
 
 func (p *pipeline) DependantTasks(name string) []processor.Task {
-	var steps []processor.Task
-	for _, step := range p.steps {
-		for _, ref := range step.dependsOn {
+	var tasks []processor.Task
+	for _, task := range p.tasks {
+		for _, ref := range task.dependsOn {
 			if name == ref {
-				steps = append(steps, step)
+				tasks = append(tasks, task)
 			}
 		}
 	}
 
-	return steps
+	return tasks
 }
 
 func (p *pipeline) TaskDependencies(name string) []string {
-	for _, step := range p.steps {
-		if step.name == name {
-			return step.dependsOn
+	for _, task := range p.tasks {
+		if task.name == name {
+			return task.dependsOn
 		}
 	}
 	return nil
 }
 
 func (p *pipeline) withTask(name string, dependsOn []string, labels map[string]string, processors []processor.Bootstraper) error {
-	if slices.ContainsFunc(p.steps, func(s *pipelineTask) bool {
+	if slices.ContainsFunc(p.tasks, func(s *pipelineTask) bool {
 		return s.name == name
 	}) {
-		return fmt.Errorf("duplicate step: %s", name)
+		return fmt.Errorf("duplicate task: %s", name)
 	}
 
-	p.steps = append(p.steps, &pipelineTask{
+	p.tasks = append(p.tasks, &pipelineTask{
 		name:       name,
 		processors: processors,
 		pipeline:   p,
@@ -123,11 +103,11 @@ func (p *pipeline) withTask(name string, dependsOn []string, labels map[string]s
 
 func (p *pipeline) EntrypointName() (string, error) {
 	if p.entrypoint == "" {
-		if len(p.steps) == 0 {
-			return "", errors.New("no steps defined")
+		if len(p.tasks) == 0 {
+			return "", errors.New("no tasks defined")
 		}
 
-		return p.steps[0].name, nil
+		return p.tasks[0].name, nil
 	}
 
 	return p.entrypoint, nil
@@ -139,13 +119,13 @@ func (p *pipeline) Entrypoint(name string) (processor.Next, error) {
 	}
 
 	if name != "" {
-		step, err := p.Task(name)
+		task, err := p.Task(name)
 		if err != nil {
 			return nil, fmt.Errorf("entrypoint not found: %w", err)
 		}
 
-		return step.Entrypoint()
+		return task.Entrypoint()
 	}
 
-	return processor.Chain(p, p.steps[0].processors...)
+	return processor.Chain(p, p.tasks[0].processors...)
 }

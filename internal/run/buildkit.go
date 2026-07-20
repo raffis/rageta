@@ -2,20 +2,42 @@ package run
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"slices"
 
+	"github.com/distribution/reference"
 	"github.com/docker/cli/cli/config"
+	clitypes "github.com/docker/cli/cli/config/types"
+	"github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/docker/docker/api/types/container"
+	imagetypes "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/volume"
+	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/docker/docker/registry"
+	"github.com/go-logr/logr"
 	"github.com/moby/buildkit/client"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/raffis/rageta/internal/buildkit/vertex"
-	cruntime "github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/checklist"
 	"github.com/raffis/rageta/internal/setup/buildkitsetup"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 	"github.com/tonistiigi/fsutil"
+)
+
+const (
+	buildkitdContainerName = "rageta-buildkitd"
+	buildkitdImage         = "rageta-buildkit:latest"
 )
 
 type BuildkitOptions struct {
@@ -66,13 +88,15 @@ type BuildkitContext struct {
 }
 
 func (s *Buildkit) Run(rc *RunContext, next Next) error {
+	cl := checklist.New(os.Stdout)
+
 	if s.opts.BuildkitOptions.Host == "docker-container://rageta-buildkitd" {
-		if err := s.ensureBuildkitd(rc); err != nil {
+		if err := s.ensureBuildkitd(rc, cl); err != nil {
 			return err
 		}
 	}
 
-	c, err := s.opts.BuildkitOptions.Build(rc)
+	c, err := s.opts.BuildkitOptions.Build(rc, cl)
 	if err != nil {
 		return err
 	}
@@ -142,23 +166,164 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	return err
 }
 
-func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
-	return rc.ContainerRuntime.Driver.RunDetached(rc.Context, &cruntime.Pod{
-		Name: "rageta",
-		Spec: cruntime.PodSpec{
-			Containers: []cruntime.ContainerSpec{
+func (s *Buildkit) ensureBuildkitd(rc *RunContext, cl *checklist.Checklist) error {
+	ctx := rc.Context
+	logger := rc.Logging.Logger
+
+	var cli *dockerclient.Client
+	if err := cl.Step("Connecting to docker", func() error {
+		var err error
+		cli, err = dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+		if err != nil {
+			return fmt.Errorf("failed to create docker client: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+	defer cli.Close()
+
+	inspect, err := cli.ContainerInspect(ctx, buildkitdContainerName)
+	if err == nil {
+		if inspect.State.Running {
+			return nil
+		}
+
+		return cl.Step("Starting buildkit container", func() error {
+			return cli.ContainerStart(ctx, inspect.ID, dockercontainer.StartOptions{})
+		})
+	}
+
+	if !dockerclient.IsErrNotFound(err) {
+		return fmt.Errorf("failed to inspect buildkitd container: %w", err)
+	}
+
+	return cl.Step("Creating buildkit container", func() error {
+		if err := ensureImage(rc, cli, logger, buildkitdImage); err != nil {
+			return err
+		}
+
+		vol, err := cli.VolumeInspect(ctx, "rageta-containerd")
+
+		if err != nil {
+			vol, err = cli.VolumeCreate(rc, volume.CreateOptions{
+				Name: "rageta-containerd",
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+
+		containerConfig := &dockercontainer.Config{
+			Image: buildkitdImage,
+		}
+
+		if rc.Otel.Endpoint != "" {
+			containerConfig.Env = append(containerConfig.Env, "OTEL_TRACES_EXPORTER=otlp")
+			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("OTEL_EXPORTER_OTLP_ENDPOINT=%s", rc.Otel.Endpoint))
+		}
+
+		info, err := cli.Info(ctx)
+		if err != nil {
+			return err
+		}
+
+		totalMem := info.MemTotal
+		numCPU := info.NCPU
+
+		memLimit := int64(float64(totalMem) * 0.75)
+		nanoCPUs := int64(float64(numCPU) * 0.75 * 1e9)
+
+		resources := container.Resources{
+			Memory:     memLimit, // hard memory limit, bytes
+			MemorySwap: memLimit, // set equal to Memory to disable swap
+			NanoCPUs:   nanoCPUs, // 80% of total cores
+		}
+
+		hostConfig := &dockercontainer.HostConfig{
+			Privileged: true,
+			RestartPolicy: dockercontainer.RestartPolicy{
+				Name: dockercontainer.RestartPolicyAlways,
+			},
+			Resources: resources,
+			Mounts: []mount.Mount{
 				{
-					Name:            "buildkitd",
-					Image:           "moby/buildkit:latest",
-					ImagePullPolicy: cruntime.PullImagePolicyMissing,
-					Privileged:      true,
-					RestartPolicy:   cruntime.RestartPolicyAlways,
-					Env: map[string]string{
-						"OTEL_TRACES_EXPORTER":        "otlp",
-						"OTEL_EXPORTER_OTLP_ENDPOINT": rc.Otel.Endpoint,
-					},
+					Type:   mount.TypeVolume,
+					Source: vol.Name,
+					Target: "/var/lib/containerd",
 				},
 			},
-		},
+		}
+
+		logger.V(1).Info("creating buildkitd container", "container", buildkitdContainerName, "image", buildkitdImage)
+		created, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, &network.NetworkingConfig{}, nil, buildkitdContainerName)
+		if err != nil {
+			return fmt.Errorf("failed to create buildkitd container: %w", err)
+		}
+
+		return cli.ContainerStart(ctx, created.ID, dockercontainer.StartOptions{})
 	})
+}
+
+type dockerAuth interface {
+	GetAuthConfig(registryHostname string) (clitypes.AuthConfig, error)
+}
+
+func encodedAuth(ref reference.Named, configFile dockerAuth) (string, error) {
+	repoInfo, err := registry.ParseRepositoryInfo(ref)
+	if err != nil {
+		return "", err
+	}
+
+	key := registry.GetAuthConfigKey(repoInfo.Index)
+	authConfig, err := configFile.GetAuthConfig(key)
+	if err != nil {
+		return "", err
+	}
+
+	buf, err := json.Marshal(authConfig)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(buf), nil
+}
+
+// ensureImage pulls image if it isn't already present locally.
+func ensureImage(rc *RunContext, cli *dockerclient.Client, logger logr.Logger, image string) error {
+	images, err := cli.ImageList(rc, imagetypes.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list images: %w", err)
+	}
+
+	for _, img := range images {
+		if slices.Contains(img.RepoTags, image) {
+			return nil
+		}
+	}
+
+	logger.V(1).Info("pulling image", "image", image)
+
+	ref, err := reference.ParseNormalizedNamed(image)
+	if err != nil {
+		return err
+	}
+
+	auth, err := encodedAuth(ref, config.LoadDefaultConfigFile(io.Discard))
+	if err != nil {
+		return err
+	}
+
+	r, err := cli.ImagePull(rc, image, imagetypes.PullOptions{RegistryAuth: auth})
+	if err != nil {
+		return fmt.Errorf("failed to pull image `%s`: %w", image, err)
+	}
+	defer r.Close()
+
+	if err := jsonmessage.DisplayJSONMessagesStream(r, rc.Display.Stdout, 0, false, nil); err != nil {
+		return fmt.Errorf("failed to pull image `%s`: %w", image, err)
+	}
+
+	return nil
 }

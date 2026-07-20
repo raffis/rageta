@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/raffis/rageta/internal/buildkit/progressui"
 	"github.com/raffis/rageta/internal/buildkit/vertex"
@@ -86,7 +87,7 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		rawCh := make(chan *bkclient.SolveStatus, 16)
 		sink := s.statusRouter.Register(digests, rawCh)
 
-		d, derr := progressui.NewDisplay(ctx.Events.Dev, ctx.Display.Stdout, progressui.PlainMode)
+		d, derr := progressui.NewDisplay(ctx.Display.Dev, ctx.Display.Stdout, progressui.PlainMode)
 		if derr != nil {
 			s.statusRouter.Unregister(digests, sink)
 			return ctx, derr
@@ -99,6 +100,8 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			defer close(displayCh)
 
 			pullStatuses := map[string]*bkclient.VertexStatus{}
+			var lastProgressWrite time.Time
+			const progressWriteInterval = 100 * time.Millisecond
 			for ss := range rawCh {
 				for _, v := range ss.Statuses {
 					if v.Total <= 0 {
@@ -112,13 +115,19 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					}
 				}
 
-				if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 {
+				// Buildkit can emit many status updates per second per vertex, so
+				// without throttling this floods the display (e.g. the bubbletea
+				// TUI, which re-renders on every message) and makes it unusable
+				// when several tasks are pulling/building concurrently.
+				if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 &&
+					time.Since(lastProgressWrite) >= progressWriteInterval {
 					var current, total int64
 					for _, v := range pullStatuses {
 						current += v.Current
 						total += v.Total
 					}
 					ctx.Display.WriteProgress(current, total)
+					lastProgressWrite = time.Now()
 				}
 
 				for _, v := range ss.Vertexes {
@@ -156,7 +165,7 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			*s.builtRefs = append(*s.builtRefs, ref)
 		}
 		ctx.Build.State = state
-		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path))
+		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path), llb.AddEnv("PWD", ctx.Workdir.Path))
 
 		outCtx, outErr = next(ctx)
 		return

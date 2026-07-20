@@ -2,56 +2,27 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 )
 
 type Interface interface {
-	CreatePod(ctx context.Context, pod *Pod, stdin io.Reader, stdout, stderr io.Writer) (Await, error)
-	DeletePod(ctx context.Context, pod *Pod, timeout time.Duration) error
-	RunDetached(ctx context.Context, pod *Pod) error
-}
-
-// ContainerdBacked is implemented by runtimes whose images live directly in a
-// containerd content/image store. Callers can use this to skip exporting
-// images through docker (e.g. `docker load`) when the same store is already
-// shared with buildkit.
-type ContainerdBacked interface {
-	Interface
-	IsContainerdBacked()
+	Create(ctx context.Context, container *Container, stdin io.Reader, stdout, stderr io.Writer) (Await, error)
+	Delete(ctx context.Context, container *Container, timeout time.Duration) error
 }
 
 type Await interface {
 	Wait(ctx context.Context) error
 }
 
-type Pod struct {
+type Container struct {
 	Name   string
-	Spec   PodSpec
-	Status PodStatus
-}
-
-type PodSpec struct {
-	Containers     []ContainerSpec
-	InitContainers []ContainerSpec
-}
-
-type Volume struct {
-	Name     string
-	Path     string
-	HostPath string
-	ReadOnly bool
-	Output   bool
-}
-
-type PodStatus struct {
-	PodIP          string
-	Containers     []ContainerStatus
-	InitContainers []ContainerStatus
+	Spec   ContainerSpec
+	Status ContainerStatus
 }
 
 type ContainerSpec struct {
-	Name            string
 	Args            []string
 	Command         []string
 	Image           string
@@ -62,8 +33,6 @@ type ContainerSpec struct {
 	Uid             *int
 	Guid            *int
 	PWD             string
-	RestartPolicy   RestartPolicy
-	Volumes         []Volume
 	Privileged      bool
 }
 
@@ -84,27 +53,14 @@ var (
 	PullImagePolicyMissing PullImagePolicy = "Missing"
 )
 
-type RestartPolicy string
+type result struct {
+	exitCode int
+}
 
-var (
-	RestartPolicyNever     RestartPolicy = "Never"
-	RestartPolicyOnFailure RestartPolicy = "OnFailure"
-	RestartPolicyAlways    RestartPolicy = "Always"
-)
+func (r *result) ExitCode() int {
+	return r.exitCode
+}
 
-type EventType string
-
-var (
-	EventTypeError   EventType = "error"
-	EventTypeStart   EventType = "start"
-	EventTypeRestart EventType = "restart"
-	EventTypeExit    EventType = "exit"
-	EventTypeDelete  EventType = "delete"
-)
-
-type Event struct {
-	Container string
-	ExitCode  int
-	Type      EventType
-	Error     error
+func (r *result) Error() string {
+	return fmt.Sprintf("container exit: %d", r.ExitCode)
 }

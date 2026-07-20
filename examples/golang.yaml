@@ -1,0 +1,151 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: golang
+
+inputs:
+- name: image
+  description: Image name used for docker-build/build
+  default: ghcr.io/rageta/rageta
+
+entrypoint: all
+
+templates:
+- name: golang
+  volumeMounts:
+  - mountPath: /go/pkg/mod
+    cache:
+      name: go-mod
+  - mountPath: /root/.cache/go-build
+    cache:
+      name: go-build
+  sources:
+  - local:
+      path: .
+      to: .
+  image: golang:1.25-alpine
+  workingDir: /workspace
+
+- name: docker
+  sources:
+  - local:
+      path: .
+      to: .
+  image: docker:27-cli
+  workingDir: /workspace
+
+tasks:
+- name: all
+  dependsOn:
+  - name: lint
+  - name: test
+  - name: build
+  - name: generate
+  - name: docker-build
+
+- name: tidy
+  templates:
+  - name: golang
+  artifacts:
+  - local:
+      path: ./go.mod
+      to: go.mod
+  - local:
+      path: ./go.sum
+      to: go.sum
+  steps:
+  - script: go mod tidy -compat=1.20
+
+- name: fmt
+  templates:
+  - name: golang
+  artifacts:
+  - local:
+      path: ./*
+      to: .
+  steps:
+    - script: go fmt ./...
+
+- name: vet
+  templates:
+  - name: golang
+  steps:
+  - script: go vet ./...
+
+- name: golangci-lint
+  image: golangci/golangci-lint:v2.12.2
+  sources:
+  - local:
+      path: .
+      to: .
+  workingDir: /workspace
+  steps:
+  - script: golangci-lint run --timeout=3m
+
+- name: lint
+  dependsOn:
+  - name: vet
+  - name: golangci-lint
+
+- name: test
+  templates:
+  - name: golang
+  artifacts:
+  - local:
+      path: coverage.out
+      to: coverage.out
+  steps:
+  - script: export
+  - script: go test -coverprofile coverage.out -v ./...
+
+- name: generate
+  templates:
+  - name: golang
+  artifacts:
+  - local:
+      path: ./crds/*
+      to: crds
+  steps:
+  - script: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
+  - script: controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=crds
+  - script: controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
+    
+- name: code-gen
+  artifacts:
+  - local:
+      path: ./*
+      to: .
+  steps:
+  - script: ./hack/code-gen.sh
+
+- name: build
+  templates:
+  - name: golang
+  artifacts:
+  - local:
+      path: /workspace/rageta
+      to: rageta
+  envs:
+  - name: CGO_ENABLED
+    value: "0"
+  steps:
+  - script: go build -C cmd/cli/ -o ../../rageta
+
+- name: docker-build
+  dependsOn:
+  - name: build
+  templates:
+  - name: docker
+  sources:
+  - task:
+      name: build
+      path: /workspace/rageta
+  steps:
+  - script: docker build -t $(context.inputs.image) .
+
+- name: install
+  templates:
+  - name: golang
+  steps:
+  - script: go install .

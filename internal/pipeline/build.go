@@ -103,30 +103,7 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		stepCtx.Build.ContextState = &inheritedState
 		outputs := make(map[string]v1beta1.ParamValue)
 
-		/*if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
-			err := os.MkdirAll(stepCtx.DataDir, 0700)
-			if err != nil {
-				return stepCtx, outputs, fmt.Errorf("failed to create context dir: %w", err)
-			}
-		}*/
-
 		stepCtx, pipelineErr := entrypoint(stepCtx)
-
-		//for _, pipelineOutput := range pipeline.Outputs {
-		/*	if _, ok := stepCtx.Tasks[pipelineOutput.Task.Name]; !ok {
-				continue
-			}
-		*/
-		/*from := pipelineOutput.Name
-		if pipelineOutput.From != "" {
-			from = pipelineOutput.From
-		}
-
-		if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
-			outputs[pipelineOutput.Name] = output
-		}*/
-		//		}
-
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
 		return stepCtx, outputs, pipelineErr
 	}, nil

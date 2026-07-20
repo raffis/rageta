@@ -14,7 +14,7 @@ func newStatsContext() StatsContext {
 
 func WithStats() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Steps == nil {
+		if spec.Steps == nil || spec.Service != nil {
 			return nil
 		}
 		return &Stats{}
@@ -25,15 +25,26 @@ type Stats struct{}
 
 func (s *Stats) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		var lastNetRx, lastNetTx int64
+		var (
+			cpuSum, memSum       int64
+			count                int
+			lastNetRx, lastNetTx int64
+		)
 
 		ctx.Display.Stdout = xio.NewStatsFilterWriter(ctx.Display.Stdout, func(cpu, mem, netRx, netTx int64) error {
-			rxBps := max(netRx-lastNetRx, 0)
-			txBps := max(netTx-lastNetTx, 0)
-			ctx.Display.WriteStats(cpu, mem, rxBps, txBps)
+			cpuSum += cpu
+			memSum += mem
+			count++
 
-			lastNetRx = netRx
-			lastNetTx = netTx
+			if count == 3 {
+				rxBps := max(netRx-lastNetRx, 0) / 3
+				txBps := max(netTx-lastNetTx, 0) / 3
+
+				ctx.Display.WriteStats(cpuSum/3, memSum/3, rxBps, txBps)
+
+				cpuSum, memSum, count = 0, 0, 0
+				lastNetRx, lastNetTx = netRx, netTx
+			}
 
 			return nil
 		})

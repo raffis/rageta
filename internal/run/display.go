@@ -127,7 +127,7 @@ func (s *Display) buildDisplayFactory(rc *RunContext) (processor.DisplayFactory,
 	case RenderDisplayUI.String():
 		return display.UI(s.uiDisplay(rc)), nil
 	case RenderDisplayPrefix.String():
-		return display.Prefix(rc.Display.Stdout, rc.Display.Stderr), nil
+		return display.Prefix(rc.Display.Stdout, rc.Display.Stderr, rc.Events.WaitUpdateInterval), nil
 	case RenderDisplayPassthrough.String():
 		return display.Passthrough(rc.Display.Stdout, rc.Display.Stderr), nil
 	case RenderDisplayDiscard.String():
@@ -191,7 +191,7 @@ type debugShellExec struct {
 	stderr  io.Writer
 }
 
-func (d *debugShellExec) SetStdin(r io.Reader) { d.stdin = r }
+func (d *debugShellExec) SetStdin(r io.Reader)  { d.stdin = r }
 func (d *debugShellExec) SetStdout(w io.Writer) { d.stdout = w }
 func (d *debugShellExec) SetStderr(w io.Writer) { d.stderr = w }
 

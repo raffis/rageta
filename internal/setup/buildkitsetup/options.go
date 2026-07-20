@@ -2,9 +2,11 @@ package buildkitsetup
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/moby/buildkit/client/connhelper/dockercontainer"
 	_ "github.com/moby/buildkit/client/connhelper/kubepod"
@@ -16,20 +18,22 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/tracing/delegated"
 	"github.com/pkg/errors"
+	"github.com/raffis/rageta/internal/checklist"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type Options struct {
-	Host          string `env:"BUILDKIT_HOST"`
-	TLSServerName string
-	TLSCACert     string
-	TLSCert       string
-	TLSKey        string
-	TLSDir        string
-	TLSVerify     bool
-	Wait          bool
+	Host           string `env:"BUILDKIT_HOST"`
+	TLSServerName  string
+	TLSCACert      string
+	TLSCert        string
+	TLSKey         string
+	TLSDir         string
+	TLSVerify      bool
+	Wait           bool
+	ConnectTimeout time.Duration
 }
 
 // BindFlags registers flags for connecting to buildkitd.
@@ -42,11 +46,14 @@ func (o *Options) BindFlags(flags flagset.Interface) {
 	flags.StringVar(&o.TLSDir, "buildkit-tlsdir", "", "Directory with ca.pem|ca.crt, cert.pem|tls.crt, key.pem|tls.key (mutually exclusive with individual TLS file flags)")
 	flags.BoolVar(&o.Wait, "buildkit-wait", o.Wait, "Block until the BuildKit backend accepts RPCs")
 	flags.BoolVar(&o.TLSVerify, "buildkit-tlsverify", o.TLSVerify, "Verify server TLS using the system CA pool (sets server name from address; mutually exclusive with custom CA)")
+	flags.DurationVar(&o.ConnectTimeout, "buildkit-connect-timeout", o.ConnectTimeout, "Timeout for connecting to buildkitd")
 }
 
 func NewOptions() Options {
 	return Options{
-		Host: "docker-container://rageta-buildkitd",
+		Host:           "docker-container://rageta-buildkitd",
+		Wait:           true,
+		ConnectTimeout: 60 * time.Second,
 	}
 }
 
@@ -82,7 +89,7 @@ func (o *Options) SetDefaultOptions(flags *pflag.FlagSet) error {
 	return nil
 }
 
-func (o *Options) Build(ctx context.Context) (*client.Client, error) {
+func (o *Options) Build(ctx context.Context, cl *checklist.Checklist) (*client.Client, error) {
 	serverName := o.TLSServerName
 	if serverName == "" && o.Host != "" {
 		if u, err := url.Parse(o.Host); err == nil {
@@ -108,19 +115,24 @@ func (o *Options) Build(ctx context.Context) (*client.Client, error) {
 		opts = append(opts, client.WithCredentials(o.TLSCert, o.TLSKey))
 	}
 
-	cl, err := client.New(ctx, o.Host, opts...)
+	bkClient, err := client.New(ctx, o.Host, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	if o.Wait {
-		if err := cl.Wait(ctx); err != nil {
-			_ = cl.Close()
-			return nil, err
+		waitCtx, cancel := context.WithTimeout(ctx, o.ConnectTimeout)
+		defer cancel()
+
+		if err := cl.Step("Waiting for buildkit", func() error {
+			return bkClient.Wait(waitCtx)
+		}); err != nil {
+			_ = bkClient.Close()
+			return nil, fmt.Errorf("timed out waiting for buildkitd: %w", err)
 		}
 	}
 
-	return cl, nil
+	return bkClient, nil
 }
 
 // resolveTLSFilesFromDir scans a TLS directory for known cert/key filenames (same rules as buildctl).

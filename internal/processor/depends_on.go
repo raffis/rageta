@@ -9,20 +9,16 @@ import (
 
 func WithDependsOn() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		/*if len(spec.DependsOn) == 0 {
-			return nil
-		}*/
-
 		return &DependsOn{
 			refs:     spec.DependsOn,
-			stepName: spec.Name,
+			taskName: spec.Name,
 		}
 	}
 }
 
 type DependsOn struct {
 	refs     []v1beta1.TaskReference
-	stepName string
+	taskName string
 }
 
 func (s *DependsOn) resolveRef(pipeline Pipeline, ref v1beta1.TaskReference) ([]Task, error) {
@@ -50,11 +46,11 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return ctx, err
 			}
 
-			for _, step := range tasks {
-				if _, started := ctx.Tasks[step.Name()]; started {
+			for _, task := range tasks {
+				if _, started := ctx.Tasks[task.Name()]; started {
 					continue
 				}
-				dependsOn = append(dependsOn, step)
+				dependsOn = append(dependsOn, task)
 			}
 		}
 
@@ -70,10 +66,10 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		var ready []Task
-		for _, candidate := range pipeline.DependantTasks(s.stepName) {
+		for _, candidate := range pipeline.DependantTasks(s.taskName) {
 			allSatisfied := true
 			for _, dep := range pipeline.TaskDependencies(candidate.Name()) {
-				if dep == s.stepName {
+				if dep == s.taskName {
 					continue
 				}
 				if _, ok := ctx.Tasks[dep]; !ok {
@@ -90,8 +86,8 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *DependsOn) processTasks(ctx TaskContext, steps []Task) (TaskContext, error) {
-	if len(steps) == 0 {
+func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
+	if len(tasks) == 0 {
 		return ctx, nil
 	}
 
@@ -102,25 +98,42 @@ func (s *DependsOn) processTasks(ctx TaskContext, steps []Task) (TaskContext, er
 	defer cancel()
 
 	var launched int
-	for _, step := range steps {
-		if _, alreadyRunning := ctx.Tasks[step.Name()]; alreadyRunning {
+	for _, task := range tasks {
+		/*if _, alreadyRunning := ctx.Tasks[task.Name()]; alreadyRunning {
+			continue
+		}*/
+
+		claim, owner := task.Claim(ctx)
+		launched++
+
+		if !owner {
+			go func(claim TaskClaim) {
+				t, err := claim.Wait()
+
+				copyCTX := t.DeepCopy()
+				copyCTX.Context = cancelCtx
+				copyCTX.Tasks[s.taskName] = &copyCTX
+
+				results <- result{copyCTX, err}
+			}(claim)
 			continue
 		}
 
-		next, err := step.Entrypoint()
+		next, err := task.Entrypoint()
 		if err != nil {
+			claim.Release(ctx, err)
 			return ctx, err
 		}
 
-		launched++
 		copyCTX := ctx.DeepCopy()
 		copyCTX.Context = cancelCtx
-		copyCTX.Tasks[s.stepName] = &copyCTX
+		copyCTX.Tasks[s.taskName] = &copyCTX
 
-		go func() {
+		go func(claim TaskClaim) {
 			t, err := next(copyCTX)
+			claim.Release(ctx, err)
 			results <- result{t, err}
-		}()
+		}(claim)
 	}
 
 	if launched == 0 {

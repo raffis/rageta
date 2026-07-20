@@ -13,7 +13,7 @@ import (
 
 func WithVolumes() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.VolumeMounts == nil {
+		if spec.VolumeMounts == nil || spec.Service != nil {
 			return nil
 		}
 		return &Volumes{

@@ -41,6 +41,7 @@ var (
 	topStyle              lipgloss.Style
 	topTitleStyle         lipgloss.Style
 	durationStyle         lipgloss.Style
+	helpDelimiterStyle    lipgloss.Style
 
 	lineNumberActiveStyle   lipgloss.Style
 	lineNumberInactiveStyle lipgloss.Style
@@ -113,5 +114,9 @@ func init() {
 
 	scrollPercentageStyle = newStyle().
 		Foreground(lipgloss.Color("#CCCCCC")).
+		Padding(0, 1)
+
+	helpDelimiterStyle = newStyle().
+		Foreground(inactivePanelColor).
 		Padding(0, 1)
 }

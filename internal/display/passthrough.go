@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/xio"
 )
 
@@ -18,12 +19,15 @@ func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
 		} else {
 			d.stderr = xio.NewLineWriter(stderr)
 		}
+
+		d.events = xio.NewLineWriter(xio.NewPrefixWriter(xio.NewLipglossWriter(d.stderr, styles.Highlight), []byte("➤ ")))
+
 		return d
 	}
 }
 
 type passthroughDisplay struct {
-	stdout, stderr *xio.LineWriter
+	stdout, stderr, events *xio.LineWriter
 }
 
 func (d *passthroughDisplay) Stdout() io.Writer {
@@ -32,6 +36,10 @@ func (d *passthroughDisplay) Stdout() io.Writer {
 
 func (d *passthroughDisplay) Stderr() io.Writer {
 	return d.stderr
+}
+
+func (d *passthroughDisplay) Dev() io.Writer {
+	return io.Discard
 }
 
 func (d *passthroughDisplay) Close(_ processor.TaskContext, _ error) error {

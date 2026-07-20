@@ -3,26 +3,16 @@ package run
 import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type PipelineOptions struct {
-	SkipContainerLogs bool
-	SkipTasks         []string
-}
+type PipelineOptions struct{}
 
 func (s PipelineOptions) Build() Task {
-	return &Pipeline{opts: s}
-}
-
-func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
-	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
-	flags.StringSliceVar(&s.SkipTasks, "skip-steps", s.SkipTasks, "Skip steps")
+	return &Pipeline{}
 }
 
 type Pipeline struct {
-	opts PipelineOptions
 }
 
 type PipelineContext struct {
@@ -47,18 +37,16 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithReport(rc.Report.Factory),
 			processor.WithRetry(),
 			processor.WithResult(),
-			processor.WithImage(),
+			processor.WithImage(rc.Buildkit.GatewayClient),
 			processor.WithWorkdir(),
 			processor.WithStyle(),
 			processor.WithDisplay(rc.Display.Factory),
 			processor.WithStats(),
-			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
 			processor.WithMatrix(),
 			processor.WithDependsOn(),
 			processor.WithOtelTrace(rc.Logging.Logger, rc.Otel.Tracer),
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
-			processor.WithSkipBlacklist(s.opts.SkipTasks),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
 			processor.WithWhen(rc.CEL.Env),

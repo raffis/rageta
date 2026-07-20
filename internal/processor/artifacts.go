@@ -21,7 +21,7 @@ import (
 
 func WithArtifacts(gwClient gwclient.Client) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Artifacts == nil {
+		if spec.Artifacts == nil || spec.Service != nil {
 			return nil
 		}
 

@@ -54,6 +54,14 @@ func (d *bufferDisplay) Stderr() io.Writer {
 	return d.buf
 }
 
+func (d *bufferDisplay) Dev() io.Writer {
+	return io.Discard
+}
+
+func (d *bufferDisplay) Start(_ processor.TaskContext) error {
+	return nil
+}
+
 func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -9,6 +9,7 @@ import (
 type Display interface {
 	Stdout() io.Writer
 	Stderr() io.Writer
+	Dev() io.Writer
 	Close(ctx TaskContext, err error) error
 	WriteStats(cpu, mem, netRx, netTx int64) error
 	WriteProgress(current, total int64) error
@@ -40,6 +41,7 @@ type displayBootstraper struct {
 type DisplayContext struct {
 	Stdout        io.Writer
 	Stderr        io.Writer
+	Dev           io.Writer
 	WriteStats    func(cpu, mem, netRx, netTx int64) error `json:"-"`
 	WriteProgress func(current, total int64) error         `json:"-"`
 	Grouped       bool
@@ -55,6 +57,7 @@ func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, e
 
 		ctx.Display.WriteStats = d.WriteStats
 		ctx.Display.WriteProgress = d.WriteProgress
+		ctx.Display.Dev = d.Dev()
 
 		if ctx.Display.Stdout != io.Discard {
 			ctx.Display.Stdout = d.Stdout()

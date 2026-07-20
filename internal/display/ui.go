@@ -7,7 +7,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui"
+	"github.com/raffis/rageta/internal/xio"
 )
 
 func UI(sender sender) processor.DisplayFactory {
@@ -24,8 +26,9 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Labels = ctx.Labels.Labels()
 		step.Status = tui.TaskStatusRunning
 		sender.Send(step)
+		events := xio.NewLineWriter(xio.NewPrefixWriter(xio.NewLipglossWriter(step, styles.Highlight), []byte("➤ ")))
 
-		return &uiDisplay{step: step, uniqueName: uniqueName, sender: sender}
+		return &uiDisplay{step: step, uniqueName: uniqueName, sender: sender, events: events}
 	}
 }
 
@@ -37,6 +40,7 @@ type uiDisplay struct {
 	step       tui.TaskMsg
 	uniqueName string
 	sender     sender
+	events     io.Writer
 }
 
 func (d *uiDisplay) Stdout() io.Writer {
@@ -45,6 +49,10 @@ func (d *uiDisplay) Stdout() io.Writer {
 
 func (d *uiDisplay) Stderr() io.Writer {
 	return &d.step
+}
+
+func (d *uiDisplay) Dev() io.Writer {
+	return d.events
 }
 
 func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
@@ -65,6 +73,7 @@ func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
 	case errors.Is(err, processor.ErrConditionFalse):
 		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped, Context: taskCtx})
 	default:
+		fmt.Fprintf(d.events, "Task %q failed: %q\n", ctx.UniqueName(), err.Error())
 		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusFailed, Context: taskCtx})
 	}
 

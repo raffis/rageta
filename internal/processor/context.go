@@ -28,7 +28,6 @@ type TaskContext struct {
 	SecretVars      SecretVarsContext
 	InputVars       InputVarsContext
 	Matrix          MatrixContext
-	Events          EventsContext
 	Build           BuildContext
 	Workdir         WorkdirContext
 	Services        ServiceContext
@@ -41,6 +40,14 @@ func (c TaskContext) UniqueID() string {
 
 func (c TaskContext) UniqueName() string {
 	return c.uniqueName
+}
+
+// Namespace identifies the pipeline-instance scope a context belongs to
+// (e.g. a specific matrix combination or inherited pipeline invocation).
+// Two contexts sharing the same namespace refer to the same logical run of
+// a task; different namespaces are independent runs.
+func (c TaskContext) Namespace() string {
+	return c.namespace
 }
 
 func (c TaskContext) WithNamespace(name string) TaskContext {
@@ -62,7 +69,6 @@ func NewContext() TaskContext {
 		Build:      newBuildContext(),
 		InputVars:  newInputVarsContext(),
 		Matrix:     newMatrixContext(),
-		Events:     newEventsContext(),
 		Services:   newServiceContext(),
 		Stats:      newStatsContext(),
 		Tasks:      make(map[string]*TaskContext),
@@ -77,6 +83,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Context = c.Context
 	copy.Display.Stdout = c.Display.Stdout
 	copy.Display.Stderr = c.Display.Stderr
+	copy.Display.Dev = c.Display.Dev
 	copy.Display.WriteStats = c.Display.WriteStats
 	copy.Display.WriteProgress = c.Display.WriteProgress
 	copy.Display.Grouped = c.Display.Grouped

@@ -140,7 +140,7 @@ spec:
                         type: string
                     type: object
                   type: array
-                env:
+                envs:
                   items:
                     properties:
                       name:
@@ -494,7 +494,7 @@ spec:
                         type: string
                     type: object
                   type: array
-                env:
+                envs:
                   items:
                     properties:
                       name:

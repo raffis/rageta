@@ -5,13 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strings"
 	"time"
 
 	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/substitute"
-	"github.com/raffis/rageta/internal/utils"
-	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -56,9 +53,8 @@ func newServiceContext() ServiceContext {
 func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		svc := s.service.DeepCopy()
-		pod := &runtime.Pod{
-			Name: fmt.Sprintf("rageta-%s-%s-%s", pipeline.ID(), ctx.UniqueID(), utils.RandString(5)),
-			Spec: runtime.PodSpec{},
+		container := &runtime.Container{
+			Name: s.stepName,
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), svc.Guid, svc.Uid); err != nil {
@@ -69,8 +65,7 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		maps.Copy(envs, ctx.EnvVars.Envs)
 		maps.Copy(envs, ctx.SecretVars.Secrets)
 
-		container := runtime.ContainerSpec{
-			Name:            s.stepName,
+		spec := runtime.ContainerSpec{
 			Image:           s.image,
 			ImagePullPolicy: s.defaultPullPolicy,
 			Command:         svc.Command,
@@ -81,28 +76,28 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		if svc.Guid != nil {
 			guid := svc.Guid.IntValue()
-			container.Guid = &guid
+			spec.Guid = &guid
 		}
 
 		if svc.Uid != nil {
 			uid := svc.Uid.IntValue()
-			container.Uid = &uid
+			spec.Uid = &uid
 		}
 
 		subst := []any{
-			&container.Image,
-			container.Args,
-			container.Command,
-			&container.PWD,
+			&spec.Image,
+			spec.Args,
+			spec.Command,
+			&spec.PWD,
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
 
-		pod.Spec.Containers = []runtime.ContainerSpec{container}
-		_, _ = ctx.Events.Dev.Write([]byte(fmt.Sprintf("starting %s", container.Image) + "\n"))
-		ctx, err := s.exec(ctx, pod)
+		container.Spec = spec
+		_, _ = ctx.Display.Dev.Write([]byte(fmt.Sprintf("starting %s", spec.Image) + "\n"))
+		ctx, err := s.exec(ctx, container)
 
 		if err != nil {
 			var exitCode int
@@ -121,24 +116,13 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}, nil
 }
 
-func (s *Service) exec(ctx TaskContext, pod *runtime.Pod) (TaskContext, error) {
-	if len(pod.Spec.Containers[0].Command) > 0 || len(pod.Spec.Containers[0].Args) > 0 {
-		cmd := strings.Join(append(pod.Spec.Containers[0].Command, pod.Spec.Containers[0].Args...), " ")
-		w := xio.NewLineWriter(xio.NewPrefixWriter(ctx.Events.Dev, []byte("$ ")))
-		w.Write([]byte(cmd))
-		w.Flush()
-	}
-
-	await, err := s.driver.CreatePod(ctx, pod, nil, ctx.Display.Stdout, ctx.Display.Stderr)
+func (s *Service) exec(ctx TaskContext, container *runtime.Container) (TaskContext, error) {
+	await, err := s.driver.Create(ctx, container, nil, ctx.Display.Stdout, ctx.Display.Stderr)
 	if err != nil {
 		return ctx, err
 	}
 
-	fmt.Printf("%#v  \n  \n", pod.Status)
-
-	for _, v := range pod.Status.Containers {
-		ctx.Services.Status[v.Name] = v
-	}
+	ctx.Services.Status[container.Name] = container.Status
 
 	done := make(chan error)
 	go func() {
@@ -151,10 +135,8 @@ func (s *Service) exec(ctx TaskContext, pod *runtime.Pod) (TaskContext, error) {
 
 	s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
 		if containerStatus, ok := ctx.Services.Status[s.stepName]; ok {
-			err := s.driver.DeletePod(teardownCtx, &runtime.Pod{
-				Status: runtime.PodStatus{
-					Containers: []runtime.ContainerStatus{containerStatus},
-				},
+			err := s.driver.Delete(teardownCtx, &runtime.Container{
+				Status: containerStatus,
 			}, timeout)
 
 			if err != nil {
@@ -174,7 +156,7 @@ type serviceError struct {
 }
 
 func (e *serviceError) Error() string {
-	return fmt.Sprintf("script failed: %s", e.parent.Error())
+	return fmt.Sprintf("service failed: %s", e.parent.Error())
 }
 
 func (e *serviceError) Unwrap() error {
