@@ -109,7 +109,7 @@ func NewTask() TaskMsg {
 		w:                 xio.NewLineWriter(&viewport),
 		viewport:          &viewport,
 		loader:            loader,
-		timer:             stopwatch.New(stopwatch.WithInterval(time.Millisecond * 300)),
+		timer:             stopwatch.New(stopwatch.WithInterval(time.Millisecond * 200)),
 		pullImageProgress: bar,
 	}
 }

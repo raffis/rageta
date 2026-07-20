@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -32,6 +33,7 @@ type TaskContext struct {
 	Workdir         WorkdirContext
 	Services        ServiceContext
 	Stats           StatsContext
+	mu              *sync.Mutex
 }
 
 func (c TaskContext) UniqueID() string {
@@ -72,11 +74,15 @@ func NewContext() TaskContext {
 		Services:   newServiceContext(),
 		Stats:      newStatsContext(),
 		Tasks:      make(map[string]*TaskContext),
+		mu:         &sync.Mutex{},
 	}
 }
 
 func (c TaskContext) DeepCopy() TaskContext {
 	copy := NewContext()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	copy.uniqueID = c.uniqueID
 	copy.uniqueName = c.uniqueName
 	copy.namespace = c.namespace
