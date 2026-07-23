@@ -28,6 +28,10 @@ type Summary struct {
 	opts SummaryOptions
 }
 
+func (s *Summary) Label() string {
+	return "Preparing summary"
+}
+
 func (s *Summary) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 

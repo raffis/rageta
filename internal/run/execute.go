@@ -44,6 +44,10 @@ func (e *pipelineExecutionError) Unwrap() error {
 	return e.parent
 }
 
+func (s *Execute) Label() string {
+	return "Executing pipeline"
+}
+
 func (s *Execute) Run(rc *RunContext, next Next) error {
 	stepContext := processor.NewContext()
 	stepContext.Context = rc.Context
@@ -67,6 +71,10 @@ func (s *Execute) retryRun(rc *RunContext, pipelineCmd processor.Executable) err
 		inner = retry.NewConstant(time.Second)
 	}
 	b := retry.WithMaxRetries(s.opts.MaxRetries, inner)
+
+	if err := rc.Checklist.Close(); err != nil {
+		return fmt.Errorf("closing checklist failed: %w", err)
+	}
 
 	return retry.Do(rc.Context, b, func(ctx context.Context) error {
 		var err error

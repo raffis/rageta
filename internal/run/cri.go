@@ -36,6 +36,10 @@ type ContainerRuntimeContext struct {
 	Driver cruntime.Interface
 }
 
+func (s *ContainerRuntime) Label() string {
+	return "Connecting to container runtime"
+}
+
 func (s *ContainerRuntime) Run(rc *RunContext, next Next) error {
 	u, err := url.Parse(s.opts.Address)
 	if err != nil {

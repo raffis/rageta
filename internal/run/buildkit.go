@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 
 	"github.com/distribution/reference"
@@ -28,7 +27,6 @@ import (
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/session/secrets/secretsprovider"
 	"github.com/raffis/rageta/internal/buildkit/vertex"
-	"github.com/raffis/rageta/internal/checklist"
 	"github.com/raffis/rageta/internal/setup/buildkitsetup"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
@@ -87,16 +85,18 @@ type BuildkitContext struct {
 	BuiltRefs      []gwclient.Reference
 }
 
-func (s *Buildkit) Run(rc *RunContext, next Next) error {
-	cl := checklist.New(os.Stdout)
+func (s *Buildkit) Label() string {
+	return "Connecting to buildkit"
+}
 
+func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	if s.opts.BuildkitOptions.Host == "docker-container://rageta-buildkitd" {
-		if err := s.ensureBuildkitd(rc, cl); err != nil {
+		if err := s.ensureBuildkitd(rc); err != nil {
 			return err
 		}
 	}
 
-	c, err := s.opts.BuildkitOptions.Build(rc, cl)
+	c, err := s.opts.BuildkitOptions.Build(rc)
 	if err != nil {
 		return err
 	}
@@ -166,22 +166,17 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 	return err
 }
 
-func (s *Buildkit) ensureBuildkitd(rc *RunContext, cl *checklist.Checklist) error {
+func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
 	ctx := rc.Context
 	logger := rc.Logging.Logger
 
 	var cli *dockerclient.Client
-	if err := cl.Step("Connecting to docker", func() error {
-		var err error
-		cli, err = dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
-		if err != nil {
-			return fmt.Errorf("failed to create docker client: %w", err)
-		}
-
-		return nil
-	}); err != nil {
-		return err
+	var err error
+	cli, err = dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create docker client: %w", err)
 	}
+
 	defer cli.Close()
 
 	inspect, err := cli.ContainerInspect(ctx, buildkitdContainerName)
@@ -190,81 +185,79 @@ func (s *Buildkit) ensureBuildkitd(rc *RunContext, cl *checklist.Checklist) erro
 			return nil
 		}
 
-		return cl.Step("Starting buildkit container", func() error {
-			return cli.ContainerStart(ctx, inspect.ID, dockercontainer.StartOptions{})
-		})
+		if cli.ContainerStart(ctx, inspect.ID, dockercontainer.StartOptions{}) != nil {
+			return fmt.Errorf("failed to start buildkitd container: %w", err)
+		}
 	}
 
 	if !dockerclient.IsErrNotFound(err) {
 		return fmt.Errorf("failed to inspect buildkitd container: %w", err)
 	}
 
-	return cl.Step("Creating buildkit container", func() error {
-		if err := ensureImage(rc, cli, logger, buildkitdImage); err != nil {
-			return err
-		}
+	if err := ensureImage(rc, cli, logger, buildkitdImage); err != nil {
+		return err
+	}
 
-		vol, err := cli.VolumeInspect(ctx, "rageta-containerd")
+	vol, err := cli.VolumeInspect(ctx, "rageta-containerd")
 
-		if err != nil {
-			vol, err = cli.VolumeCreate(rc, volume.CreateOptions{
-				Name: "rageta-containerd",
-			})
+	if err != nil {
+		vol, err = cli.VolumeCreate(rc, volume.CreateOptions{
+			Name: "rageta-containerd",
+		})
 
-			if err != nil {
-				return err
-			}
-		}
-
-		containerConfig := &dockercontainer.Config{
-			Image: buildkitdImage,
-		}
-
-		if rc.Otel.Endpoint != "" {
-			containerConfig.Env = append(containerConfig.Env, "OTEL_TRACES_EXPORTER=otlp")
-			containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("OTEL_EXPORTER_OTLP_ENDPOINT=%s", rc.Otel.Endpoint))
-		}
-
-		info, err := cli.Info(ctx)
 		if err != nil {
 			return err
 		}
+	}
 
-		totalMem := info.MemTotal
-		numCPU := info.NCPU
+	containerConfig := &dockercontainer.Config{
+		Image: buildkitdImage,
+	}
 
-		memLimit := int64(float64(totalMem) * 0.75)
-		nanoCPUs := int64(float64(numCPU) * 0.75 * 1e9)
+	if rc.Otel.Endpoint != "" {
+		containerConfig.Env = append(containerConfig.Env, "OTEL_TRACES_EXPORTER=otlp")
+		containerConfig.Env = append(containerConfig.Env, fmt.Sprintf("OTEL_EXPORTER_OTLP_ENDPOINT=%s", rc.Otel.Endpoint))
+	}
 
-		resources := container.Resources{
-			Memory:     memLimit, // hard memory limit, bytes
-			MemorySwap: memLimit, // set equal to Memory to disable swap
-			NanoCPUs:   nanoCPUs, // 80% of total cores
-		}
+	info, err := cli.Info(ctx)
+	if err != nil {
+		return err
+	}
 
-		hostConfig := &dockercontainer.HostConfig{
-			Privileged: true,
-			RestartPolicy: dockercontainer.RestartPolicy{
-				Name: dockercontainer.RestartPolicyAlways,
+	totalMem := info.MemTotal
+	numCPU := info.NCPU
+
+	memLimit := int64(float64(totalMem) * 0.75)
+	nanoCPUs := int64(float64(numCPU) * 0.75 * 1e9)
+
+	resources := container.Resources{
+		Memory:     memLimit,
+		MemorySwap: memLimit,
+		NanoCPUs:   nanoCPUs,
+	}
+
+	hostConfig := &dockercontainer.HostConfig{
+		Privileged: true,
+		RestartPolicy: dockercontainer.RestartPolicy{
+			Name: dockercontainer.RestartPolicyAlways,
+		},
+		Resources: resources,
+		Mounts: []mount.Mount{
+			{
+				Type:   mount.TypeVolume,
+				Source: vol.Name,
+				Target: "/var/lib/containerd",
 			},
-			Resources: resources,
-			Mounts: []mount.Mount{
-				{
-					Type:   mount.TypeVolume,
-					Source: vol.Name,
-					Target: "/var/lib/containerd",
-				},
-			},
-		}
+		},
+	}
 
-		logger.V(1).Info("creating buildkitd container", "container", buildkitdContainerName, "image", buildkitdImage)
-		created, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, &network.NetworkingConfig{}, nil, buildkitdContainerName)
-		if err != nil {
-			return fmt.Errorf("failed to create buildkitd container: %w", err)
-		}
+	logger.V(1).Info("creating buildkitd container", "container", buildkitdContainerName, "image", buildkitdImage)
+	created, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, &network.NetworkingConfig{}, nil, buildkitdContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to create buildkitd container: %w", err)
+	}
 
-		return cli.ContainerStart(ctx, created.ID, dockercontainer.StartOptions{})
-	})
+	return cli.ContainerStart(ctx, created.ID, dockercontainer.StartOptions{})
 }
 
 type dockerAuth interface {

@@ -27,6 +27,10 @@ type LabelsContext struct {
 	Labels []processor.Label
 }
 
+func (s *Labels) Label() string {
+	return "Applying labels"
+}
+
 func (s *Labels) Run(rc *RunContext, next Next) error {
 	rc.Labels.Labels = s.parseLabels(s.opts.Labels)
 	return next(rc)

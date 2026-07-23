@@ -51,6 +51,10 @@ type ReportContext struct {
 	Factory reportFinalizer
 }
 
+func (s *Report) Label() string {
+	return "Preparing report"
+}
+
 func (s *Report) Run(rc *RunContext, next Next) error {
 	if s.opts.ReportType == "" {
 		return next(rc)

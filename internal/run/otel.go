@@ -42,6 +42,10 @@ type OtelContext struct {
 	Logger   log.Logger
 }
 
+func (s *Otel) Label() string {
+	return "Setting up OpenTelemetry"
+}
+
 func (s *Otel) Run(rc *RunContext, next Next) error {
 	ctx := context.Background()
 	rc.Otel.Endpoint = s.opts.OtelOpts.Endpoint

@@ -27,6 +27,10 @@ type EnvsContext struct {
 	Envs map[string]string
 }
 
+func (s *Envs) Label() string {
+	return "Applying environment variables"
+}
+
 func (s *Envs) Run(rc *RunContext, next Next) error {
 	rc.Envs.Envs = envMap(s.opts.Envs)
 	return next(rc)

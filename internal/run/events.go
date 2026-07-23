@@ -41,6 +41,10 @@ type EventsContext struct {
 	WaitUpdateInterval time.Duration
 }
 
+func (s *Events) Label() string {
+	return "Setting up events"
+}
+
 func (s *Events) Run(rc *RunContext, next Next) error {
 	switch {
 	case s.opts.EventsOutput == "/dev/stdout" || s.opts.EventsOutput == "-":

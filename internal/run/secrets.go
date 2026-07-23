@@ -40,6 +40,10 @@ type SecretsContext struct {
 	Store secrets.Interface
 }
 
+func (s *Secrets) Label() string {
+	return "Loading secrets"
+}
+
 func (s *Secrets) Run(rc *RunContext, next Next) error {
 	rc.Secrets.Store = secrets.InMemoryStore()
 	for k, v := range envMap(s.opts.Secrets) {

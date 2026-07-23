@@ -19,6 +19,10 @@ type PipelineContext struct {
 	Builder processor.PipelineBuilder
 }
 
+func (s *Pipeline) Label() string {
+	return "Preparing pipeline"
+}
+
 func (s *Pipeline) Run(rc *RunContext, next Next) error {
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(

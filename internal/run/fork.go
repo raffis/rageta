@@ -25,6 +25,10 @@ type Fork struct {
 	opts ForkOptions
 }
 
+func (s *Fork) Label() string {
+	return "Forking pipeline"
+}
+
 func (s *Fork) Run(rc *RunContext, next Next) error {
 	if !s.opts.Fork {
 		return next(rc)

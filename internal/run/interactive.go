@@ -62,6 +62,10 @@ type Interactive struct {
 	opts InteractiveOptions
 }
 
+func (s *Interactive) Label() string {
+	return "Setting up interactive mode"
+}
+
 func (s *Interactive) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 	return s.walkError(rc, err)

@@ -47,6 +47,10 @@ type ImagePolicyContext struct {
 	PullPolicy cruntime.PullImagePolicy
 }
 
+func (s *ImagePolicy) Label() string {
+	return "Applying image policy"
+}
+
 func (s *ImagePolicy) Run(rc *RunContext, next Next) error {
 	policy, err := s.imagePullPolicy()
 	if err != nil {

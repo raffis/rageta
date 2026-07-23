@@ -22,6 +22,10 @@ type ExitCode struct {
 	opts ExitCodeOptions
 }
 
+func (s *ExitCode) Label() string {
+	return "Setting up exit code handling"
+}
+
 func (s *ExitCode) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 	if err != nil {

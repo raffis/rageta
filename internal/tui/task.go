@@ -7,7 +7,6 @@ import (
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/stopwatch"
 	"charm.land/lipgloss/v2"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -78,7 +77,6 @@ type TaskMsg struct {
 	ready             bool
 	started           time.Time
 	finished          time.Time
-	timer             stopwatch.Model
 	listWidth         int
 	listHeight        int
 	shellHintShown    bool
@@ -109,7 +107,6 @@ func NewTask() TaskMsg {
 		w:                 xio.NewLineWriter(&viewport),
 		viewport:          &viewport,
 		loader:            loader,
-		timer:             stopwatch.New(stopwatch.WithInterval(time.Millisecond * 200)),
 		pullImageProgress: bar,
 	}
 }
@@ -128,18 +125,41 @@ func (t TaskMsg) GetName() string {
 	return t.DisplayName
 }
 
-// WithStatus creates a new TaskMsg with the given status, updating timestamps
+// WithStatus creates a new TaskMsg with the given status, updating timestamps.
+// Nothing in the pipeline ever reports TaskStatusRunning explicitly — a task
+// goes straight from TaskStatusWaiting (set when it's registered, which
+// coincides with it starting to execute) to a terminal status — so
+// "started" is stamped unconditionally on first transition rather than
+// gated on status == Running.
 func (t TaskMsg) WithStatus(status TaskStatus) TaskMsg {
-	if t.started.IsZero() && status == TaskStatusRunning {
+	if t.started.IsZero() {
 		t.started = time.Now()
 	}
 
-	if t.finished.IsZero() && status > TaskStatusRunning {
+	if t.finished.IsZero() && isTerminalStatus(status) {
 		t.finished = time.Now()
 	}
 
 	t.Status = status
 	return t
+}
+
+// duration returns how long the task has been running: elapsed so far if
+// it's still in flight, or its total run time once finished. Computed
+// on-the-fly from timestamps rather than a ticking stopwatch, so rendering
+// it costs nothing beyond a render call — no per-task recurring messages
+// are needed to keep it up to date.
+func (t TaskMsg) duration() time.Duration {
+	if t.started.IsZero() {
+		return 0
+	}
+
+	end := t.finished
+	if end.IsZero() {
+		end = time.Now()
+	}
+
+	return end.Sub(t.started)
 }
 
 // LabelsAsString returns a formatted string representation of all tags
@@ -184,7 +204,7 @@ func (t TaskMsg) Title() string {
 	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
 
 	var status string
-	if t.Status == TaskStatusRunning {
+	if !isTerminalStatus(t.Status) {
 		status = t.loader.View()
 	} else {
 		status = t.Status.Render()
@@ -204,7 +224,7 @@ func (t TaskMsg) Title() string {
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
 		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render(t.netString()),
-		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.timer.View()),
+		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(fmt.Sprintf("%.1fs", t.duration().Seconds())),
 	)
 }
 

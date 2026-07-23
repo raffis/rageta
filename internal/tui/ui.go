@@ -12,7 +12,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/stopwatch"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -116,12 +115,21 @@ type UI struct {
 	activePanel  Panel
 	lastSelected list.Item
 	debugShell   DebugShellFactory
+	tasks        []TaskMsg
+	showAll      bool
 
-	// tasks is the source of truth for every task the pipeline has reported,
-	// in display order. m.list only ever holds the currently visible subset
-	// (see refreshList), so every mutation must go through m.tasks first.
-	tasks   []TaskMsg
-	showAll bool
+	// taskIndex maps a task's Name to its position in m.tasks, so per-task
+	// messages (resource stats, pull progress) can find their task in O(1)
+	// instead of scanning m.tasks. Rebuilt in sortList, which is the only
+	// place m.tasks is reordered; a plain status update on an existing task
+	// doesn't move it, so the index stays valid across those.
+	taskIndex map[string]int
+
+	// visibleIndex maps a task's Name to its row index in the list's
+	// current items, rebuilt in refreshList. Lets per-task updates patch
+	// their row in O(1) via updateVisibleItem instead of scanning
+	// m.list.Items().
+	visibleIndex map[string]int
 }
 
 // SetDebugShell registers the factory used to spawn a debug shell for the selected task.
@@ -193,7 +201,8 @@ func (m *UI) initializeLoader() {
 	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 }
 
-// sortList sorts m.tasks by labels and refreshes the visible list.
+// sortList sorts m.tasks by labels, rebuilds the by-name index (m.tasks
+// positions just changed), and refreshes the visible list.
 func (m *UI) sortList() {
 	sort.Slice(m.tasks, func(i, j int) bool {
 		iLabelsKey := strings.Join(m.formatLabelsForSorting(m.tasks[i].Labels), "-")
@@ -205,6 +214,11 @@ func (m *UI) sortList() {
 
 		return iLabelsKey < jLabelsKey
 	})
+
+	m.taskIndex = make(map[string]int, len(m.tasks))
+	for i, t := range m.tasks {
+		m.taskIndex[t.Name] = i
+	}
 
 	m.refreshList()
 }
@@ -220,12 +234,34 @@ func isHiddenStatus(status TaskStatus) bool {
 	}
 }
 
+// isTerminalStatus reports whether a task has finished executing (in any
+// outcome) and therefore no longer needs its spinner/timer animated. Tasks
+// are created as TaskStatusWaiting and stay that way for their entire
+// execution — nothing in the pipeline ever sends TaskStatusRunning — so
+// "still in flight" means "not yet terminal", not "status == Running".
+func isTerminalStatus(status TaskStatus) bool {
+	switch status {
+	case TaskStatusFailed, TaskStatusDone, TaskStatusCached, TaskStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // refreshList rebuilds the visible list from m.tasks, applying the
-// show-all/hide-finished filter and preserving the current selection.
+// show-all/hide-finished filter and preserving the current selection, and
+// rebuilds m.visibleIndex to match. This rebuilds and reassigns the entire
+// list contents, so it's relatively expensive with many tasks — reserve it
+// for changes that affect which tasks are visible (a task added, a status
+// crossing the hidden threshold, the show-all toggle, a resize). For
+// updates to a single already-visible task's content (stats, pull progress,
+// spinner/timer ticks), use updateVisibleItem instead.
 func (m *UI) refreshList() {
 	items := make([]list.Item, 0, len(m.tasks))
+	visibleIndex := make(map[string]int, len(m.tasks))
 	for _, t := range m.tasks {
 		if m.showAll || !isHiddenStatus(t.Status) {
+			visibleIndex[t.Name] = len(items)
 			items = append(items, t)
 		}
 	}
@@ -233,6 +269,20 @@ func (m *UI) refreshList() {
 	current := m.findCurrentSelection(items)
 	m.list.SetItems(items)
 	m.list.Select(current)
+	m.visibleIndex = visibleIndex
+}
+
+// updateVisibleItem patches a single task's entry in the list in place,
+// via m.visibleIndex, without rebuilding or reassigning the whole
+// visible-items slice. It's a no-op if the task isn't currently visible
+// (e.g. hidden because it's done and showAll is off). Cheap alternative to
+// refreshList for the common case where a single task's content changed but
+// list membership didn't.
+func (m *UI) updateVisibleItem(t TaskMsg) tea.Cmd {
+	if idx, ok := m.visibleIndex[t.Name]; ok {
+		return m.list.SetItem(idx, t)
+	}
+	return nil
 }
 
 // formatLabelsForSorting formats labels for sorting purposes
@@ -313,8 +363,6 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleTaskMessage(msg)...)
 	case TickMsg:
 		cmds = append(cmds, m.handleTick(msg)...)
-	case stopwatch.StartStopMsg, stopwatch.ResetMsg, stopwatch.TickMsg:
-		cmds = append(cmds, m.handleStopwatchControl(msg)...)
 	case ResourceStatsMsg:
 		m.handleResourceStats(msg)
 	case PullProgressMsg:
@@ -372,24 +420,20 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 			m.updateViewportDimensions(&msg)
 		}
 
-		cmds = append(cmds,
-			msg.timer.Init(),
-			msg.loader.Tick,
-		)
+		cmds = append(cmds, msg.loader.Tick)
 
 		m.tasks = append(m.tasks, msg.WithStatus(msg.Status))
 		m.sortList()
 	} else {
 		// Update existing task
 		item := existing
-		if msg.Status != TaskStatusRunning {
+		if isTerminalStatus(msg.Status) {
 			item.Stats = ResourceStats{}
 			item.Pull = PullProgress{}
 			item.Context = msg.Context
-			cmds = append(cmds, item.timer.Stop())
 		}
 
-		if item.Status == TaskStatusRunning && msg.Status != TaskStatusRunning && m.debugShell != nil {
+		if !isTerminalStatus(item.Status) && isTerminalStatus(msg.Status) && m.debugShell != nil {
 			m.writeDebugShellHint(&item)
 		}
 
@@ -456,8 +500,7 @@ func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 // handleKeyMessage handles keyboard input
 func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case KeyQuit:
-	case KeyQ:
+	case KeyQuit, KeyQ:
 		return m, tea.Quit
 	case KeyTab:
 		m.toggleActivePanel()
@@ -594,14 +637,15 @@ func (m *UI) handlePullProgress(msg PullProgressMsg) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for i, t := range m.tasks {
-		if t.Name == msg.Name {
-			t.Pull = PullProgress{Current: msg.Current, Total: msg.Total}
-			m.tasks[i] = t
-			break
-		}
+	idx, ok := m.taskIndex[msg.Name]
+	if !ok {
+		return
 	}
-	m.refreshList()
+
+	t := m.tasks[idx]
+	t.Pull = PullProgress{Current: msg.Current, Total: msg.Total}
+	m.tasks[idx] = t
+	m.updateVisibleItem(t)
 }
 
 // handleResourceStats updates the Stats field of a running task
@@ -609,44 +653,32 @@ func (m *UI) handleResourceStats(msg ResourceStatsMsg) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for i, t := range m.tasks {
-		if t.Name == msg.Name {
-			t.Stats = msg.Stats
-			m.tasks[i] = t
-			break
-		}
+	idx, ok := m.taskIndex[msg.Name]
+	if !ok {
+		return
 	}
-	m.refreshList()
+
+	t := m.tasks[idx]
+	t.Stats = msg.Stats
+	m.tasks[idx] = t
+	m.updateVisibleItem(t)
 }
 
-// handleStopwatchControl routes stopwatch start/stop/reset messages to every
-// task's timer. stopwatch.Model.Update ignores messages whose ID doesn't
-// match its own, so broadcasting to all items is safe. The returned command
-// must be propagated (it's what re-schedules the next tick for the timer
-// that actually owns this message) or every stopwatch freezes after its
-// first tick.
-func (m *UI) handleStopwatchControl(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
-	for i, t := range m.tasks {
-		timer, cmd := t.timer.Update(msg)
-		t.timer = timer
-		m.tasks[i] = t
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	m.refreshList()
-	return cmds
-}
 
-// handleTick handles tick messages for animations
+// handleTick handles the UI's own low-frequency tick (see TickMsg) for
+// spinner animation. Only non-terminal tasks animate, so only they need
+// updating and re-rendering.
 func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 	for i, t := range m.tasks {
+		if isTerminalStatus(t.Status) {
+			continue
+		}
+
 		loader, _ := t.loader.Update(t.loader.Tick())
 		t.loader = loader
 		m.tasks[i] = t
+		m.updateVisibleItem(t)
 	}
-	m.refreshList()
 	return nil
 }
 
@@ -690,15 +722,12 @@ func (m UI) View() tea.View {
 func (m UI) renderMainLayout() string {
 	t0 := time.Now()
 	headerPanel := m.renderHeaderPanel()
-	t1 := time.Now()
 	listPanel := m.renderListPanel()
-	t2 := time.Now()
 	pagerPanel := m.renderPagerPanel()
-	t3 := time.Now()
 	bottomPanel := m.renderBottomPanel()
 	t4 := time.Now()
-	debugLog("renderMainLayout items=%d header=%s list=%s pager=%s bottom=%s",
-		len(m.list.Items()), t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3))
+	debugLog("renderMainLayout items=%d time=%s",
+		len(m.list.Items()), t4.Sub(t0))
 
 	// Stack panels vertically if the terminal is too narrow
 	if m.width < AlignHorizontalBreakpoint {

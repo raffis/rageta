@@ -80,6 +80,10 @@ type DisplayContext struct {
 	Stdin         io.Reader
 }
 
+func (s *Display) Label() string {
+	return "Preparing display"
+}
+
 func (s *Display) Run(rc *RunContext, next Next) error {
 	displayFactory, err := s.buildDisplayFactory(rc)
 	if err != nil {
@@ -163,6 +167,7 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 	s.tuiApp = tea.NewProgram(model,
 		tea.WithOutput(xio.NewFDWrapper(rc.Display.Stdout, os.Stdout)),
 		tea.WithEnvironment(bubbleTeaProgramEnv()),
+		tea.WithFPS(60),
 	)
 	s.model = model
 
@@ -174,7 +179,9 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 
 	go func() {
 		_, _ = s.tuiApp.Run()
-		//rc.Cancel()
+		if rc.Cancel != nil {
+			rc.Cancel()
+		}
 		s.tuiDone <- struct{}{}
 	}()
 	return s.tuiApp

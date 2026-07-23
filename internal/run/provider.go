@@ -59,6 +59,10 @@ type ProviderContext struct {
 	Ref      string
 }
 
+func (s *Provider) Label() string {
+	return "Loading pipeline provider"
+}
+
 func (s *Provider) Run(rc *RunContext, next Next) error {
 	store, persistDB := CreateProvider(
 		rc.ImagePolicy.PullPolicy,

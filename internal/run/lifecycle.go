@@ -22,6 +22,10 @@ type Lifecycle struct {
 	opts LifecycleOptions
 }
 
+func (s *Lifecycle) Label() string {
+	return "Setting up lifecycle handling"
+}
+
 func (s *Lifecycle) Run(rc *RunContext, next Next) error {
 	ctx, cancel := context.WithCancel(rc.Context)
 	rc.Context = ctx
@@ -33,6 +37,7 @@ func (s *Lifecycle) Run(rc *RunContext, next Next) error {
 	}
 
 	defer cancel()
+	rc.Cancel = cancel
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)

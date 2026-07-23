@@ -2,10 +2,13 @@ package run
 
 import (
 	"context"
+	"io"
 )
 
 type RunContext struct {
 	context.Context
+	Checklist        io.Closer
+	Cancel           context.CancelFunc
 	CEL              CELContext
 	Buildkit         BuildkitContext
 	ContainerRuntime ContainerRuntimeContext

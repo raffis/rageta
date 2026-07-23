@@ -33,6 +33,10 @@ type InputsContext struct {
 	Args map[string]v1beta1.ParamValue
 }
 
+func (s *Inputs) Label() string {
+	return "Resolving inputs"
+}
+
 func (s *Inputs) Run(rc *RunContext, next Next) error {
 	flagSet := pflag.NewFlagSet("inputs", pflag.ContinueOnError)
 	pipeline.Flags(flagSet, rc.Provider.Pipeline.Inputs)

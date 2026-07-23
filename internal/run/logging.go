@@ -49,6 +49,10 @@ type LoggingContext struct {
 	FileLogger logr.Logger
 }
 
+func (s *Logging) Label() string {
+	return "Setting up logging"
+}
+
 func (s *Logging) Run(rc *RunContext, next Next) error {
 	logFile, err := os.OpenFile(path.Join(os.TempDir(), fmt.Sprintf("rageta-%s.log", utils.RandString(5))), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 	if err != nil {

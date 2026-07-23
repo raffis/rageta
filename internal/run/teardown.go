@@ -35,6 +35,10 @@ type TeardownContext struct {
 	Teardown chan processor.Teardown
 }
 
+func (s *Teardown) Label() string {
+	return "Setting up teardown"
+}
+
 func (s *Teardown) Run(rc *RunContext, next Next) error {
 	teardown := make(chan processor.Teardown)
 	rc.Teardown.Teardown = teardown

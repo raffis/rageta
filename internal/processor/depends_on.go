@@ -121,7 +121,7 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 
 		next, err := task.Entrypoint()
 		if err != nil {
-			claim.Release(ctx, err)
+			claim.Release(ctx.DeepCopy(), err)
 			return ctx, err
 		}
 
@@ -131,7 +131,7 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 
 		go func(claim TaskClaim) {
 			t, err := next(copyCTX)
-			claim.Release(ctx, err)
+			claim.Release(t, err)
 			results <- result{t, err}
 		}(claim)
 	}

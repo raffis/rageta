@@ -4,11 +4,13 @@ import (
 	"context"
 	"io"
 
+	"github.com/raffis/rageta/internal/checklist"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 )
 
 type Task interface {
+	Label() string
 	Run(rc *RunContext, next Next) error
 }
 
@@ -32,6 +34,9 @@ func (r *Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout
 	rc.Display.Stdin = stdin
 	rc.Provider.Args = args
 
+	setupChecklist := checklist.New(stderr)
+	rc.Checklist = setupChecklist
+
 	noop := func(rc *RunContext) error {
 		return nil
 	}
@@ -42,7 +47,9 @@ func (r *Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout
 		step := r.steps[i]
 		next := chain
 		chain = func(rc *RunContext) error {
-			return step.Run(rc, next)
+			return setupChecklist.Step(step.Label(), func() error {
+				return step.Run(rc, next)
+			})
 		}
 	}
 	err = chain(rc)

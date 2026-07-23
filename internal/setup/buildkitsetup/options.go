@@ -18,7 +18,6 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/tracing/delegated"
 	"github.com/pkg/errors"
-	"github.com/raffis/rageta/internal/checklist"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/trace"
@@ -89,7 +88,7 @@ func (o *Options) SetDefaultOptions(flags *pflag.FlagSet) error {
 	return nil
 }
 
-func (o *Options) Build(ctx context.Context, cl *checklist.Checklist) (*client.Client, error) {
+func (o *Options) Build(ctx context.Context) (*client.Client, error) {
 	serverName := o.TLSServerName
 	if serverName == "" && o.Host != "" {
 		if u, err := url.Parse(o.Host); err == nil {
@@ -124,9 +123,7 @@ func (o *Options) Build(ctx context.Context, cl *checklist.Checklist) (*client.C
 		waitCtx, cancel := context.WithTimeout(ctx, o.ConnectTimeout)
 		defer cancel()
 
-		if err := cl.Step("Waiting for buildkit", func() error {
-			return bkClient.Wait(waitCtx)
-		}); err != nil {
+		if bkClient.Wait(waitCtx) != nil {
 			_ = bkClient.Close()
 			return nil, fmt.Errorf("timed out waiting for buildkitd: %w", err)
 		}

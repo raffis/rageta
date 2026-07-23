@@ -23,6 +23,10 @@ type CELContext struct {
 	Env *cel.Env
 }
 
+func (s *CEL) Label() string {
+	return "Preparing expression evaluator"
+}
+
 func (s *CEL) Run(rc *RunContext, next Next) error {
 	celEnv, err := cel.NewEnv(
 		ext.Strings(),
