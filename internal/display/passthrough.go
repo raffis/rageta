@@ -38,7 +38,7 @@ func (d *passthroughDisplay) Stderr() io.Writer {
 	return d.stderr
 }
 
-func (d *passthroughDisplay) Dev() io.Writer {
+func (d *passthroughDisplay) Events() io.Writer {
 	return io.Discard
 }
 
@@ -56,6 +56,6 @@ func (d *passthroughDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
 
-func (d *passthroughDisplay) WriteProgress(current, total int64) error {
+func (d *passthroughDisplay) WritePullProgress(current, total int64) error {
 	return nil
 }

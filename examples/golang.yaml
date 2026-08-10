@@ -26,7 +26,6 @@ templates:
       to: .
   image: golang:1.25-alpine
   workingDir: /workspace
-
 - name: docker
   sources:
   - local:

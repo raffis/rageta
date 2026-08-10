@@ -224,7 +224,7 @@ func (t TaskMsg) Title() string {
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
 		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render(t.netString()),
-		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(fmt.Sprintf("%.1fs", t.duration().Seconds())),
+		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration().Round(10*time.Millisecond).String()),
 	)
 }
 

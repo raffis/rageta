@@ -96,7 +96,7 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		container.Spec = spec
-		_, _ = ctx.Display.Dev.Write([]byte(fmt.Sprintf("starting %s", spec.Image) + "\n"))
+		_, _ = ctx.Display.Events.Write([]byte(fmt.Sprintf("starting %s", spec.Image) + "\n"))
 		ctx, err := s.exec(ctx, container)
 
 		if err != nil {

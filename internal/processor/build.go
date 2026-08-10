@@ -87,7 +87,7 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		rawCh := make(chan *bkclient.SolveStatus, 16)
 		sink := s.statusRouter.Register(digests, rawCh)
 
-		d, derr := progressui.NewDisplay(ctx.Display.Dev, ctx.Display.Stdout, progressui.PlainMode)
+		d, derr := progressui.NewDisplay(ctx.Display.Events, ctx.Display.Stdout, progressui.PlainMode)
 		if derr != nil {
 			s.statusRouter.Unregister(digests, sink)
 			return ctx, derr
@@ -119,14 +119,14 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				// without throttling this floods the display (e.g. the bubbletea
 				// TUI, which re-renders on every message) and makes it unusable
 				// when several tasks are pulling/building concurrently.
-				if ctx.Display.WriteProgress != nil && len(pullStatuses) > 0 &&
+				if ctx.Display.WritePullProgress != nil && len(pullStatuses) > 0 &&
 					time.Since(lastProgressWrite) >= progressWriteInterval {
 					var current, total int64
 					for _, v := range pullStatuses {
 						current += v.Current
 						total += v.Total
 					}
-					ctx.Display.WriteProgress(current, total)
+					ctx.Display.WritePullProgress(current, total)
 					lastProgressWrite = time.Now()
 				}
 

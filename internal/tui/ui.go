@@ -381,7 +381,7 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handlePipelineDone handles pipeline completion
 func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
-	if m.status == TaskStatusWaiting {
+	if m.status == TaskStatusWaiting && msg.Error == nil {
 		return []tea.Cmd{tea.Quit}
 	}
 
@@ -510,7 +510,7 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.refreshList()
 		return m, nil
 	case KeyDebugShell:
-		if m.activePanel == PanelDetails {
+		if m.list.FilterState() == 0 {
 			if cmd := m.openDebugShell(); cmd != nil {
 				return m, cmd
 			}

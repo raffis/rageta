@@ -51,7 +51,7 @@ func (d *uiDisplay) Stderr() io.Writer {
 	return &d.step
 }
 
-func (d *uiDisplay) Dev() io.Writer {
+func (d *uiDisplay) Events() io.Writer {
 	return d.events
 }
 
@@ -89,7 +89,7 @@ func (d *uiDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
 
-func (d *uiDisplay) WriteProgress(current, total int64) error {
+func (d *uiDisplay) WritePullProgress(current, total int64) error {
 	d.sender.Send(tui.PullProgressMsg{
 		Name:    d.uniqueName,
 		Current: current,

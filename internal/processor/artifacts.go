@@ -182,14 +182,42 @@ func exportObject(ctx context.Context, ref gwclient.Reference, base, hostBase st
 			return exportObject(ctx, ref, src, dst, sub)
 		}
 
-		data, err := ref.ReadFile(ctx, gwclient.ReadRequest{Filename: src})
-		if err != nil {
-			return err
-		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(dst, data, fs.FileMode(st.Mode)); err != nil {
+		if err := copyFileToLocal(ctx, ref, src, dst, st); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+const readFileChunkSize = 8 << 20
+
+func copyFileToLocal(ctx context.Context, ref gwclient.Reference, src, dst string, st *fstypes.Stat) error {
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fs.FileMode(st.Mode))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if st.Size == 0 {
+		return nil
+	}
+
+	for offset := int64(0); offset < st.Size; offset += readFileChunkSize {
+		length := min(readFileChunkSize, st.Size-offset)
+
+		data, err := ref.ReadFile(ctx, gwclient.ReadRequest{
+			Filename: src,
+			Range:    &gwclient.FileRange{Offset: int(offset), Length: int(length)},
+		})
+		if err != nil {
+			return err
+		}
+
+		if _, err := f.Write(data); err != nil {
 			return err
 		}
 	}
@@ -219,22 +247,3 @@ func readVars(ctx context.Context, ref gwclient.Reference, srcPath string) (map[
 
 	return vars, err
 }
-
-/*
-	for name, output := range outputs {
-		_ = output.Sync()
-		b, err := io.ReadAll(output)
-		if err != nil {
-			return ctx, err
-		}
-
-		value := v1beta1.ParamValue{}
-
-		if err := value.UnmarshalJSON(b); err != nil {
-			return ctx, fmt.Errorf("param output failed: %w", err)
-		}
-
-		ctx.OutputVars.OutputVars[name] = value
-	}
-
-*/

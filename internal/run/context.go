@@ -16,7 +16,6 @@ type RunContext struct {
 	Inputs           InputsContext
 	Secrets          SecretsContext
 	Labels           LabelsContext
-	Events           EventsContext
 	ImagePolicy      ImagePolicyContext
 	Otel             OtelContext
 	Logging          LoggingContext

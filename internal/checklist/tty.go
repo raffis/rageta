@@ -162,12 +162,6 @@ func (d *ttyDisplay) Step(label string, fn func() error) error {
 	return err
 }
 
-// Close stops the program. On success it first renders an empty frame so
-// the renderer's own diffing erases every line it drew — this beats
-// hand-rolled cursor codes, which would need to guess how many terminal
-// rows the last frame wrapped into. If the last step failed, the failure
-// line is left on screen instead of being erased, since it's the only
-// place that error is reported.
 func (d *ttyDisplay) Close() error {
 	if d.lastErr == nil {
 		d.program.Send(clearMsg{})

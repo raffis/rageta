@@ -9,10 +9,10 @@ import (
 type Display interface {
 	Stdout() io.Writer
 	Stderr() io.Writer
-	Dev() io.Writer
+	Events() io.Writer
 	Close(ctx TaskContext, err error) error
 	WriteStats(cpu, mem, netRx, netTx int64) error
-	WriteProgress(current, total int64) error
+	WritePullProgress(current, total int64) error
 }
 
 type DisplayFactory func(ctx TaskContext, stepName, short string) Display
@@ -39,12 +39,12 @@ type displayBootstraper struct {
 }
 
 type DisplayContext struct {
-	Stdout        io.Writer
-	Stderr        io.Writer
-	Dev           io.Writer
-	WriteStats    func(cpu, mem, netRx, netTx int64) error `json:"-"`
-	WriteProgress func(current, total int64) error         `json:"-"`
-	Grouped       bool
+	Stdout            io.Writer
+	Stderr            io.Writer
+	Events            io.Writer
+	WriteStats        func(cpu, mem, netRx, netTx int64) error `json:"-"`
+	WritePullProgress func(current, total int64) error         `json:"-"`
+	Grouped           bool
 }
 
 func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
@@ -56,8 +56,8 @@ func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, e
 		d := s.outputFactory(ctx, s.stepName, s.short)
 
 		ctx.Display.WriteStats = d.WriteStats
-		ctx.Display.WriteProgress = d.WriteProgress
-		ctx.Display.Dev = d.Dev()
+		ctx.Display.WritePullProgress = d.WritePullProgress
+		ctx.Display.Events = d.Events()
 
 		if ctx.Display.Stdout != io.Discard {
 			ctx.Display.Stdout = d.Stdout()

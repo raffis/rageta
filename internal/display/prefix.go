@@ -47,7 +47,7 @@ func (d *prefixDisplay) Stderr() io.Writer {
 	return d.stderr
 }
 
-func (d *prefixDisplay) Dev() io.Writer {
+func (d *prefixDisplay) Events() io.Writer {
 	return d.events
 }
 
@@ -111,7 +111,7 @@ func (d *prefixDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
 
-func (d *prefixDisplay) WriteProgress(current, total int64) error {
+func (d *prefixDisplay) WritePullProgress(current, total int64) error {
 	fmt.Fprintf(d.events, "pulling %s/%s\n", utils.FormatBytes(current), utils.FormatBytes(total))
 	return nil
 }

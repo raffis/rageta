@@ -63,7 +63,6 @@ type Options struct {
 	DisplayOptions          DisplayOptions
 	ReportOptions           ReportOptions
 	TeardownOptions         TeardownOptions
-	EventsOptions           EventsOptions
 	ForkOptions             ForkOptions
 	ContainerRuntimeOptions ContainerRuntimeOptions
 	BuildkitOptions         BuildkitOptions
@@ -87,7 +86,6 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.DisplayOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
-	s.EventsOptions.BindFlags(flags)
 	s.ForkOptions.BindFlags(flags)
 	s.BuildkitOptions.BindFlags(flags)
 	s.ContainerRuntimeOptions.BindFlags(flags)
@@ -112,7 +110,6 @@ func DefaultOptions() Options {
 		DisplayOptions:          NewDisplayOptions(),
 		LoggingOptions:          NewLoggingOptions(),
 		ProviderOptions:         NewProviderOptions(),
-		EventsOptions:           NewEventsOptions(),
 		ReportOptions:           NewReportOptions(),
 		BuildkitOptions:         NewBuildkitOptions(),
 		InteractiveOptions:      NewInteractiveOptions(),
@@ -129,7 +126,6 @@ func (o Options) Build() *Runner {
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
 		o.ImagePolicyOptions.Build(),
-		o.EventsOptions.Build(),
 		o.CELOptions.Build(),
 		o.LabelsOptions.Build(),
 		o.ContainerRuntimeOptions.Build(),

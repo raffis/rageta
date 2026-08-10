@@ -60,29 +60,7 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		ctx, err = next(ctx)
-		if err != nil {
-			return ctx, err
-		}
-
-		var ready []Task
-		for _, candidate := range pipeline.DependantTasks(s.taskName) {
-			allSatisfied := true
-			for _, dep := range pipeline.TaskDependencies(candidate.Name()) {
-				if dep == s.taskName {
-					continue
-				}
-				if _, ok := ctx.Tasks[dep]; !ok {
-					allSatisfied = false
-					break
-				}
-			}
-			if allSatisfied {
-				ready = append(ready, candidate)
-			}
-		}
-
-		return s.processTasks(ctx, ready)
+		return next(ctx)
 	}, nil
 }
 

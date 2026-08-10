@@ -54,12 +54,8 @@ func (d *bufferDisplay) Stderr() io.Writer {
 	return d.buf
 }
 
-func (d *bufferDisplay) Dev() io.Writer {
+func (d *bufferDisplay) Events() io.Writer {
 	return io.Discard
-}
-
-func (d *bufferDisplay) Start(_ processor.TaskContext) error {
-	return nil
 }
 
 func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {
@@ -86,6 +82,6 @@ func (d *bufferDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
 	return nil
 }
 
-func (d *bufferDisplay) WriteProgress(current, total int64) error {
+func (d *bufferDisplay) WritePullProgress(current, total int64) error {
 	return nil
 }

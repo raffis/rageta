@@ -21,7 +21,13 @@ import (
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 )
+
+// maxGRPCMessageSize raises the default 16MiB gRPC message limit so local
+// artifacts larger than that (e.g. built binaries) can be transferred over
+// the BuildKit session without hitting ResourceExhausted.
+const maxGRPCMessageSize = 512 * 1024 * 1024
 
 type Options struct {
 	Host           string `env:"BUILDKIT_HOST"`
@@ -96,7 +102,12 @@ func (o *Options) Build(ctx context.Context) (*client.Client, error) {
 		}
 	}
 
-	var opts []client.ClientOpt
+	opts := []client.ClientOpt{
+		client.WithGRPCDialOption(grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxGRPCMessageSize),
+			grpc.MaxCallSendMsgSize(maxGRPCMessageSize),
+		)),
+	}
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		opts = append(opts,
 			client.WithTracerProvider(span.TracerProvider()),
