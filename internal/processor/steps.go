@@ -90,7 +90,7 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			)
 
 			ctx.Build.State = ctx.Build.State.Run(
-				llb.Shlex(fmt.Sprintf("/bin/sh -c 'echo %s >> %s'", scriptPath, ashHistoryPath)),
+				llb.Shlex(fmt.Sprintf("/bin/ash -c 'echo %s >> %s'", scriptPath, ashHistoryPath)),
 			).Root()
 
 			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
@@ -135,27 +135,6 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		return ctx, nil
 	}, nil
-}
-
-func bakeBusybox(state llb.State) llb.State {
-	busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
-	state = state.File(
-		llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
-			CreateDestPath:                 true,
-			AlwaysReplaceExistingDestPaths: false,
-		}),
-		llb.WithCustomNamef("copy busybox:%s → %s", "/*", "/"),
-	)
-
-	state = state.File(
-		llb.Mkdir("/bin", 0755),
-	)
-
-	state = state.Run(
-		llb.Shlex("/bin/busybox --install -s /bin"),
-	).Root()
-
-	return state
 }
 
 type scriptError struct {

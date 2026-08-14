@@ -192,3 +192,24 @@ func bakeShim(state llb.State) llb.State {
 		llb.Mkfile(shimPath, 0755, shimbin.Binary),
 	)
 }
+
+func bakeBusybox(state llb.State) llb.State {
+	busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
+	state = state.File(
+		llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
+			CreateDestPath:                 true,
+			AlwaysReplaceExistingDestPaths: false,
+		}),
+		llb.WithCustomNamef("copy busybox:%s → %s", "/*", "/"),
+	)
+
+	state = state.File(
+		llb.Mkdir("/bin", 0755),
+	)
+
+	state = state.Run(
+		llb.Shlex("/bin/busybox --install -s /bin"),
+	).Root()
+
+	return state
+}

@@ -178,19 +178,11 @@ func (m *UI) initializeLoader() {
 	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
 }
 
-// sortList sorts m.tasks by labels, rebuilds the by-name index (m.tasks
-// positions just changed), and refreshes the visible list.
+// sortList reorders m.tasks into dependency-tree order (see treeOrder),
+// rebuilds the by-name index (m.tasks positions just changed), and
+// refreshes the visible list.
 func (m *UI) sortList() {
-	sort.Slice(m.tasks, func(i, j int) bool {
-		iLabelsKey := strings.Join(m.formatLabelsForSorting(m.tasks[i].Labels), "-")
-		jLabelsKey := strings.Join(m.formatLabelsForSorting(m.tasks[j].Labels), "-")
-
-		if iLabelsKey == jLabelsKey {
-			return false
-		}
-
-		return iLabelsKey < jLabelsKey
-	})
+	m.tasks = m.treeOrder()
 
 	m.taskIndex = make(map[string]int, len(m.tasks))
 	for i, t := range m.tasks {
@@ -198,6 +190,198 @@ func (m *UI) sortList() {
 	}
 
 	m.refreshList()
+}
+
+// treeOrder returns m.tasks reordered so that every task appears after all
+// of its resolved dependencies (DependsOn entries that match another task
+// currently in the list), with a task's dependents grouped as a contiguous
+// run immediately following it (depth-first), rather than levelled
+// breadth-first. Tasks with no resolved dependency are treated as roots.
+// Ties among roots/siblings are broken alphabetically by label, same as the
+// previous flat sort.
+//
+// A task depending on more than one other task is placed exactly once, the
+// first time all of its dependencies have already been placed — which, by
+// construction, is somewhere below all of them, without duplicating the row.
+func (m *UI) treeOrder() []TaskMsg {
+	byName := make(map[string]TaskMsg, len(m.tasks))
+	for _, t := range m.tasks {
+		byName[t.Name] = t
+	}
+
+	labelKey := func(name string) string {
+		return strings.Join(m.formatLabelsForSorting(byName[name].Labels), "-")
+	}
+	sortByLabel := func(names []string) {
+		sort.SliceStable(names, func(i, j int) bool {
+			return labelKey(names[i]) < labelKey(names[j])
+		})
+	}
+
+	children := make(map[string][]string, len(m.tasks))
+	hasResolvedDep := make(map[string]bool, len(m.tasks))
+	for _, t := range m.tasks {
+		for _, dep := range t.DependsOn {
+			if _, ok := byName[dep]; ok {
+				children[dep] = append(children[dep], t.Name)
+				hasResolvedDep[t.Name] = true
+			}
+		}
+	}
+	for parent := range children {
+		sortByLabel(children[parent])
+	}
+
+	var roots []string
+	for _, t := range m.tasks {
+		if !hasResolvedDep[t.Name] {
+			roots = append(roots, t.Name)
+		}
+	}
+	sortByLabel(roots)
+
+	ordered := make([]TaskMsg, 0, len(m.tasks))
+	placed := make(map[string]bool, len(m.tasks))
+
+	var place func(name string)
+	place = func(name string) {
+		if placed[name] {
+			return
+		}
+		placed[name] = true
+		ordered = append(ordered, byName[name])
+
+		for _, child := range children[name] {
+			if placed[child] {
+				continue
+			}
+
+			ready := true
+			for _, dep := range byName[child].DependsOn {
+				if _, ok := byName[dep]; ok && !placed[dep] {
+					ready = false
+					break
+				}
+			}
+
+			if ready {
+				place(child)
+			}
+		}
+	}
+
+	for _, r := range roots {
+		place(r)
+	}
+
+	// Dependency cycles (which shouldn't occur, but the list shouldn't
+	// silently drop tasks if they do) leave tasks unplaced since none of
+	// them ever becomes fully "ready". Force them in as extra roots.
+	for _, t := range m.tasks {
+		place(t.Name)
+	}
+
+	return ordered
+}
+
+// treeGuide describes how a single row's tree branch prefix should be
+// rendered: how many ancestor levels deep it is, whether it's the last
+// child of its assigned parent (renders "└─" instead of "├─"), and for each
+// ancestor level, whether that ancestor was itself a last child (renders a
+// blank column instead of a continuing "│").
+type treeGuide struct {
+	depth        int
+	isLast       bool
+	ancestorLast []bool
+}
+
+// buildTreeGuides computes tree-branch rendering info for an already
+// tree-ordered slice of tasks (as produced by treeOrder, in full or
+// filtered to only the currently visible rows). Because the slice is
+// guaranteed to list a task after every dependency of its that's present in
+// the slice, each task's "visual parent" can simply be taken as whichever
+// of its resolved dependencies appears last in the slice — every other
+// dependency is necessarily above that one already. Recomputing this per
+// call (rather than caching it on treeOrder's output) lets connectors adapt
+// to whichever rows are actually visible, e.g. when a finished ancestor is
+// hidden and a running descendant becomes a visual root.
+func buildTreeGuides(tasks []TaskMsg) map[string]treeGuide {
+	index := make(map[string]int, len(tasks))
+	for i, t := range tasks {
+		index[t.Name] = i
+	}
+
+	parentOf := make(map[string]string, len(tasks))
+	childrenOf := make(map[string][]string, len(tasks))
+	for _, t := range tasks {
+		parent := ""
+		parentIdx := -1
+		for _, dep := range t.DependsOn {
+			if idx, ok := index[dep]; ok && idx > parentIdx {
+				parentIdx = idx
+				parent = dep
+			}
+		}
+
+		if parent != "" {
+			parentOf[t.Name] = parent
+			childrenOf[parent] = append(childrenOf[parent], t.Name)
+		}
+	}
+
+	isLastChild := make(map[string]bool, len(tasks))
+	for _, kids := range childrenOf {
+		for i, k := range kids {
+			isLastChild[k] = i == len(kids)-1
+		}
+	}
+
+	guides := make(map[string]treeGuide, len(tasks))
+	for _, t := range tasks {
+		parent, ok := parentOf[t.Name]
+		if !ok {
+			guides[t.Name] = treeGuide{isLast: true}
+			continue
+		}
+
+		pg := guides[parent]
+		ancestorLast := make([]bool, len(pg.ancestorLast)+1)
+		copy(ancestorLast, pg.ancestorLast)
+		ancestorLast[len(pg.ancestorLast)] = pg.isLast
+
+		guides[t.Name] = treeGuide{
+			depth:        pg.depth + 1,
+			isLast:       isLastChild[t.Name],
+			ancestorLast: ancestorLast,
+		}
+	}
+
+	return guides
+}
+
+// renderTreePrefix renders a treeGuide into the branch/indentation string
+// drawn before a task's name, e.g. "│  └─ ".
+func renderTreePrefix(g treeGuide) string {
+	if g.depth == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, last := range g.ancestorLast {
+		if last {
+			sb.WriteString("   ")
+		} else {
+			sb.WriteString("│  ")
+		}
+	}
+
+	if g.isLast {
+		sb.WriteString("└─ ")
+	} else {
+		sb.WriteString("├─ ")
+	}
+
+	return treeGuideStyle.Render(sb.String())
 }
 
 // isHiddenStatus reports whether a task in this status is hidden from the
@@ -229,13 +413,28 @@ func isTaskFinished(status TaskStatus) bool {
 // updates to a single already-visible task's content (stats, pull progress,
 // spinner/timer ticks), use updateVisibleItem instead.
 func (m *UI) refreshList() {
-	items := make([]list.Item, 0, len(m.tasks))
-	visibleIndex := make(map[string]int, len(m.tasks))
-	for _, t := range m.tasks {
+	visible := make([]int, 0, len(m.tasks))
+	for i, t := range m.tasks {
 		if m.showAll || !isHiddenStatus(t.Status) {
-			visibleIndex[t.Name] = len(items)
-			items = append(items, t)
+			visible = append(visible, i)
 		}
+	}
+
+	visibleTasks := make([]TaskMsg, len(visible))
+	for i, idx := range visible {
+		visibleTasks[i] = m.tasks[idx]
+	}
+	guides := buildTreeGuides(visibleTasks)
+
+	items := make([]list.Item, 0, len(visible))
+	visibleIndex := make(map[string]int, len(visible))
+	for _, idx := range visible {
+		t := m.tasks[idx]
+		t.treePrefix = renderTreePrefix(guides[t.Name])
+		m.tasks[idx] = t
+
+		visibleIndex[t.Name] = len(items)
+		items = append(items, t)
 	}
 
 	current := m.findCurrentSelection(items)

@@ -6,6 +6,7 @@ metadata:
 
 tasks:
 - name: sample-matrix
+  image: busybox
   matrix:
     params:
     - name: key
@@ -13,7 +14,9 @@ tasks:
   steps:
   - script: echo key:$(context.matrix.key)
   - script: sleep $(context.matrix.key)
+
 - name: run-after-matrix-tasks
+  image: busybox
   dependsOn:
   - name: sample-matrix
   steps:

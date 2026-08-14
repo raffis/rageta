@@ -42,6 +42,7 @@ var (
 	topTitleStyle         lipgloss.Style
 	durationStyle         lipgloss.Style
 	helpDelimiterStyle    lipgloss.Style
+	treeGuideStyle        lipgloss.Style
 
 	lineNumberActiveStyle   lipgloss.Style
 	lineNumberInactiveStyle lipgloss.Style
@@ -102,6 +103,7 @@ func init() {
 
 	listColumnStyle = newStyle().MaxHeight(1)
 	durationStyle = newStyle().Foreground(lightGrey)
+	treeGuideStyle = newStyle().Foreground(lightGrey)
 
 	topStyle = lipgloss.NewStyle()
 	topTitleStyle = newStyle()

@@ -67,12 +67,21 @@ type TaskMsg struct {
 	Stats             *stats.Sample
 	Pull              PullProgress
 	Context           processor.TaskContext
-	ready             bool
-	started           time.Time
-	finished          time.Time
-	listWidth         int
-	listHeight        int
-	shellHintShown    bool
+	// DependsOn holds the unique names of the tasks this task depends on,
+	// used to render the task list as a dependency tree (see treeOrder and
+	// buildTreeGuides in ui.go).
+	DependsOn      []string
+	ready          bool
+	started        time.Time
+	finished       time.Time
+	listWidth      int
+	listHeight     int
+	shellHintShown bool
+	// treePrefix is the tree branch/indentation string rendered before the
+	// task name, computed by buildTreeGuides in refreshList and cached here
+	// so per-task patch updates (stats, pull progress, ticks) don't need to
+	// recompute it.
+	treePrefix string
 }
 
 // NewTask creates a new TaskMsg with initialized components
@@ -210,9 +219,12 @@ func (t TaskMsg) Title() string {
 	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
+	prefixWidth := lipgloss.Width(t.treePrefix)
+	name := t.treePrefix + ellipsis(t.DisplayName, max(nameWidth-prefixWidth, EllipsisLength))
+
 	return fmt.Sprintf("%s %s %s %s %s %s %s",
 		status,
-		listColumnStyle.Width(nameWidth).Render(ellipsis(t.DisplayName, nameWidth)),
+		listColumnStyle.Width(nameWidth).Render(name),
 		listColumnStyle.Width(tagsWidth).Render(t.shortLabels()),
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
