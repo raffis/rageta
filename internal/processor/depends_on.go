@@ -90,7 +90,6 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 
 				copyCTX := t.DeepCopy()
 				copyCTX.Context = cancelCtx
-				copyCTX.Tasks[s.taskName] = &copyCTX
 
 				results <- result{copyCTX, err}
 			}(claim)
@@ -105,7 +104,6 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 
 		copyCTX := ctx.DeepCopy()
 		copyCTX.Context = cancelCtx
-		copyCTX.Tasks[s.taskName] = &copyCTX
 
 		go func(claim TaskClaim) {
 			t, err := next(copyCTX)

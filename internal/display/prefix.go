@@ -7,17 +7,18 @@ import (
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/internal/xio"
 )
 
-func Prefix(stdout, stderr io.Writer, eventsInterval time.Duration) processor.DisplayFactory {
+func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
 	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
 		prefix := fmt.Appendf(nil, "%s ", ctx.Style.Style.Render(ctx.UniqueName()))
 		d := &prefixDisplay{
 			stdout:         xio.NewLineWriter(xio.NewPrefixWriter(stdout, prefix)),
-			eventsInterval: eventsInterval,
+			eventsInterval: time.Second * 5,
 		}
 		if stdout == stderr {
 			d.stderr = d.stdout
@@ -106,8 +107,8 @@ func (d *prefixDisplay) Close(ctx processor.TaskContext, err error) error {
 	return nil
 }
 
-func (d *prefixDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
-	fmt.Fprintf(d.events, "STATS: cpu=%dm mem=%s net_rx=%s net_tx=%s\n", cpu, utils.FormatBytes(mem), utils.FormatBps(netRx), utils.FormatBps(netTx))
+func (d *prefixDisplay) WriteStats(sample *stats.Sample) error {
+	fmt.Fprintf(d.events, "STATS: cpu=%dm mem=%s net_rx=%s net_tx=%s\n", sample.CPUMillicores, utils.FormatBytes(sample.MemBytes), utils.FormatBps(sample.NetRxBytes), utils.FormatBps(sample.NetTxBytes))
 	return nil
 }
 

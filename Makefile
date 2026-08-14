@@ -41,6 +41,7 @@ code-gen:
 	./hack/code-gen.sh
 
 build:
+	CGO_ENABLED=0 go build -C cmd/shim/ -o ../../internal/processor/shimbin/shim
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
 	docker build . -t ghcr.io/rageta/rageta:latest
 

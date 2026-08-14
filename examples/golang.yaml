@@ -9,7 +9,7 @@ inputs:
   description: Image name used for docker-build/build
   default: ghcr.io/rageta/rageta
 
-entrypoint: all
+#entrypoint: all
 
 templates:
 - name: golang

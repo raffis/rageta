@@ -1,3 +1,5 @@
+internal/processor/shimbin/shim
+config
 .vscode
 rageta
 coverage.out

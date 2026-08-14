@@ -62,10 +62,10 @@ type DisplayMode string
 
 const PlainMode DisplayMode = "plain"
 
-func NewDisplay(events, out io.Writer, mode DisplayMode) (Display, error) {
+func NewDisplay(events, stdout, stderr io.Writer, mode DisplayMode) (Display, error) {
 	switch mode {
 	case PlainMode:
-		return newPlainDisplay(events, out), nil
+		return newPlainDisplay(events, stdout, stderr), nil
 	default:
 		return Display{}, errors.Errorf("invalid progress mode %s", mode)
 	}
@@ -77,12 +77,13 @@ type plainDisplay struct {
 	displayLimiter *rate.Limiter
 }
 
-func newPlainDisplay(events, w io.Writer) Display {
+func newPlainDisplay(events, stdout, stderr io.Writer) Display {
 	return Display{
 		disp: &plainDisplay{
-			t: newTrace(events, w),
+			t: newTrace(events, stdout, stderr),
 			printer: &textMux{
-				w:      w,
+				stdout: stdout,
+				stderr: stderr,
 				events: events,
 			},
 		},
@@ -113,7 +114,8 @@ func (d *plainDisplay) done() {
 }
 
 type trace struct {
-	w             io.Writer
+	stdout        io.Writer
+	stderr        io.Writer
 	events        io.Writer
 	startTime     *time.Time
 	localTimeDiff time.Duration
@@ -123,6 +125,14 @@ type trace struct {
 	groups        map[string]*vertexGroup
 }
 
+// logLine is a single line of vertex output, tagged with the stream (1 =
+// stdout, 2 = stderr) it originated from so the printer can route it to the
+// matching writer.
+type logLine struct {
+	stream int
+	data   []byte
+}
+
 type vertex struct {
 	*client.Vertex
 
@@ -130,7 +140,7 @@ type vertex struct {
 	byID     map[string]*status
 	index    int
 
-	logs          [][]byte
+	logs          []logLine
 	logsPartial   bool
 	logsPartialFD int
 	logsOffset    int
@@ -320,11 +330,12 @@ type status struct {
 	*client.VertexStatus
 }
 
-func newTrace(events, w io.Writer) *trace {
+func newTrace(events, stdout, stderr io.Writer) *trace {
 	return &trace{
 		byDigest: make(map[digest.Digest]*vertex),
 		updates:  make(map[digest.Digest]struct{}),
-		w:        w,
+		stdout:   stdout,
+		stderr:   stderr,
 		events:   events,
 		groups:   make(map[string]*vertexGroup),
 	}
@@ -493,7 +504,8 @@ func (t *trace) update(s *client.SolveStatus) {
 				// line arriving on the OTHER stream in the meantime (e.g. our
 				// stats-reporter's stderr line) gets spliced onto the end of
 				// that still-open line instead of staying separate.
-				v.logs[len(v.logs)-1] = append(v.logs[len(v.logs)-1], dt...)
+				last := &v.logs[len(v.logs)-1]
+				last.data = append(last.data, dt...)
 			} else {
 				ts := time.Duration(0)
 				if ival := v.mostRecentInterval(); ival != nil {
@@ -506,7 +518,10 @@ func (t *trace) update(s *client.SolveStatus) {
 				} else if sec < 100 {
 					prec = 2
 				}
-				v.logs = append(v.logs, fmt.Appendf(nil, "%s %s", fmt.Sprintf("%.[2]*[1]f", sec, prec), dt))
+				v.logs = append(v.logs, logLine{
+					stream: l.Stream,
+					data:   fmt.Appendf(nil, "%s %s", fmt.Sprintf("%.[2]*[1]f", sec, prec), dt),
+				})
 			}
 			i++
 		})
@@ -517,19 +532,28 @@ func (t *trace) update(s *client.SolveStatus) {
 	}
 }
 
+func (t *trace) writerFor(stream int) io.Writer {
+	if stream == 2 {
+		return t.stderr
+	}
+	return t.stdout
+}
+
 func (t *trace) printErrorLogs() {
 	for _, v := range t.vertexes {
 		if v.Error != "" && !strings.HasSuffix(v.Error, context.Canceled.Error()) {
 			fmt.Fprintln(t.events, "------")
 			fmt.Fprintf(t.events, " > %s:\n", v.Name)
 			for _, l := range v.logs {
-				t.w.Write(l)
-				fmt.Fprintln(t.w)
+				w := t.writerFor(l.stream)
+				w.Write(l.data)
+				fmt.Fprintln(w)
 			}
 			if v.logsBuffer != nil {
 				for range v.logsBuffer.Len() {
 					if v.logsBuffer.Value != nil {
-						fmt.Fprintln(t.w, string(v.logsBuffer.Value.([]byte)))
+						l := v.logsBuffer.Value.(logLine)
+						fmt.Fprintln(t.writerFor(l.stream), string(l.data))
 					}
 					v.logsBuffer = v.logsBuffer.Next()
 				}

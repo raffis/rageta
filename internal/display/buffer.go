@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 )
 
 func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
@@ -55,7 +56,7 @@ func (d *bufferDisplay) Stderr() io.Writer {
 }
 
 func (d *bufferDisplay) Events() io.Writer {
-	return io.Discard
+	return d.buf
 }
 
 func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {
@@ -78,7 +79,7 @@ func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {
 	})
 }
 
-func (d *bufferDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+func (d *bufferDisplay) WriteStats(sample *stats.Sample) error {
 	return nil
 }
 

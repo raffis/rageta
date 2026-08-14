@@ -89,6 +89,8 @@ func (s *Volumes) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		}
 
+		ctx.Build.Mounts = append(ctx.Build.Mounts, mounts...)
+
 		return next(ctx)
 	}, nil
 }

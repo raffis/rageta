@@ -15,6 +15,15 @@ func RandString(n int) string {
 	return string(b)
 }
 
+// EnvSlice converts an env var map into "K=V" form, as expected by exec-style APIs.
+func EnvSlice(envs map[string]string) []string {
+	env := make([]string, 0, len(envs))
+	for k, v := range envs {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	return env
+}
+
 func FormatBytes(b int64) string {
 	const unit = 1024
 	if b < unit {

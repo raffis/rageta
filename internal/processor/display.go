@@ -3,6 +3,8 @@ package processor
 import (
 	"io"
 
+	"github.com/raffis/rageta/internal/stats"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -11,7 +13,7 @@ type Display interface {
 	Stderr() io.Writer
 	Events() io.Writer
 	Close(ctx TaskContext, err error) error
-	WriteStats(cpu, mem, netRx, netTx int64) error
+	WriteStats(sample *stats.Sample) error
 	WritePullProgress(current, total int64) error
 }
 
@@ -41,9 +43,10 @@ type displayBootstraper struct {
 type DisplayContext struct {
 	Stdout            io.Writer
 	Stderr            io.Writer
+	Demuxer           *xio.Demuxer
 	Events            io.Writer
-	WriteStats        func(cpu, mem, netRx, netTx int64) error `json:"-"`
-	WritePullProgress func(current, total int64) error         `json:"-"`
+	WriteStats        func(sample *stats.Sample) error `json:"-"`
+	WritePullProgress func(current, total int64) error `json:"-"`
 	Grouped           bool
 }
 
@@ -66,6 +69,8 @@ func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, e
 		if ctx.Display.Stderr != io.Discard {
 			ctx.Display.Stderr = d.Stderr()
 		}
+
+		ctx.Display.Demuxer = xio.NewDemuxer().WithSink(xio.StreamOutput, ctx.Display.Stderr)
 
 		ctx, err := next(ctx)
 		if err := d.Close(ctx, err); err != nil {

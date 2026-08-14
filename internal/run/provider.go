@@ -12,7 +12,6 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/raffis/rageta/internal/lint"
 	"github.com/raffis/rageta/internal/provider"
-	cruntime "github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -23,15 +22,25 @@ import (
 )
 
 type ProviderOptions struct {
-	OCI    *ocisetup.Options
-	DBPath string
-	NoLint bool
+	OCI        *ocisetup.Options
+	DBPath     string
+	NoLint     bool
+	PullPolicy string
 }
+
+type PullPolicy string
+
+var (
+	PullPolicyAlways  PullPolicy = "always"
+	PullPolicyNever   PullPolicy = "never"
+	PullPolicyMissing PullPolicy = "missing"
+)
 
 func (s *ProviderOptions) BindFlags(flags flagset.Interface) {
 	ociFlags := pflag.NewFlagSet("OCI", pflag.ExitOnError)
 	s.OCI.BindFlags(ociFlags)
 	flags.AddFlagSet(ociFlags)
+	ociFlags.StringVarP(&s.PullPolicy, "pull-policy", "", s.PullPolicy, "Pipeline OCI pull policy [always, missing, never].")
 
 	validationFlags := pflag.NewFlagSet("Validation", pflag.ExitOnError)
 	validationFlags.BoolVar(&s.NoLint, "no-lint", false, "Skip validating the pipeline against its CRD schema.")
@@ -65,7 +74,7 @@ func (s *Provider) Label() string {
 
 func (s *Provider) Run(rc *RunContext, next Next) error {
 	store, persistDB := CreateProvider(
-		rc.ImagePolicy.PullPolicy,
+		PullPolicy(s.opts.PullPolicy),
 		s.opts.DBPath,
 		s.opts.OCI,
 		s.opts.NoLint,
@@ -94,7 +103,7 @@ func (s *Provider) Run(rc *RunContext, next Next) error {
 }
 
 func CreateProvider(
-	imagePullPolicy cruntime.PullImagePolicy,
+	imagePullPolicy PullPolicy,
 	dbPath string,
 	ociOptions *ocisetup.Options,
 	noLint bool,
@@ -163,11 +172,12 @@ func CreateProvider(
 		provider.WithFile(),
 		provider.WithRagetafile(),
 	}
-	if imagePullPolicy == cruntime.PullImagePolicyAlways {
+
+	/*if imagePullPolicy == processor.PullImagePolicyAlways {
 		providers = append(providers, ociProviderWrapper, localDBProviderWrapper)
-	} else {
-		providers = append(providers, localDBProviderWrapper, ociProviderWrapper)
-	}
+	} else {*/
+	providers = append(providers, localDBProviderWrapper, ociProviderWrapper)
+	//}
 
 	p := provider.New(decoder, providers...)
 	if !noLint {

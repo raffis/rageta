@@ -16,7 +16,7 @@ import (
 
 func WithImage(gwClient gwclient.Client) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Image == "" || spec.Service != nil {
+		if spec.Image == "" {
 			return nil
 		}
 
@@ -64,10 +64,6 @@ func (s *Image) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			if k, v, ok := strings.Cut(kv, "="); ok {
 				ctx.EnvVars.Envs[k] = v
 			}
-		}
-
-		if imgConfig.Config.WorkingDir != "" {
-			ctx.Workdir.Path = imgConfig.Config.WorkingDir
 		}
 
 		ctx, err = next(ctx)

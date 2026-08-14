@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui/pager"
 	"github.com/raffis/rageta/internal/utils"
@@ -34,18 +35,10 @@ const (
 	DurationColumnPercent = 10
 )
 
-// ResourceStats holds live resource metrics sampled from within a running task.
-type ResourceStats struct {
-	CPUMillicores int64
-	MemBytes      int64
-	NetRxBytes    int64
-	NetTxBytes    int64
-}
-
 // ResourceStatsMsg is sent by the stats filter writer to update a task's metrics.
 type ResourceStatsMsg struct {
 	Name  string
-	Stats ResourceStats
+	Stats *stats.Sample
 }
 
 // PullProgress holds the aggregated byte progress of an image pull.
@@ -71,7 +64,7 @@ type TaskMsg struct {
 	DisplayName       string
 	Labels            []processor.Label
 	Status            TaskStatus
-	Stats             ResourceStats
+	Stats             *stats.Sample
 	Pull              PullProgress
 	Context           processor.TaskContext
 	ready             bool
@@ -136,7 +129,7 @@ func (t TaskMsg) WithStatus(status TaskStatus) TaskMsg {
 		t.started = time.Now()
 	}
 
-	if t.finished.IsZero() && isTerminalStatus(status) {
+	if t.finished.IsZero() && isTaskFinished(status) {
 		t.finished = time.Now()
 	}
 
@@ -204,7 +197,7 @@ func (t TaskMsg) Title() string {
 	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
 
 	var status string
-	if !isTerminalStatus(t.Status) {
+	if t.Status == TaskStatusRunning {
 		status = t.loader.View()
 	} else {
 		status = t.Status.Render()
@@ -229,21 +222,21 @@ func (t TaskMsg) Title() string {
 }
 
 func (t *TaskMsg) cpuString() string {
-	if t.Stats.CPUMillicores == 0 {
+	if t.Stats == nil || t.Stats.CPUMillicores == 0 {
 		return "—"
 	}
 	return fmt.Sprintf("%dm", t.Stats.CPUMillicores)
 }
 
 func (t *TaskMsg) memString() string {
-	if t.Stats.MemBytes == 0 {
+	if t.Stats == nil || t.Stats.MemBytes == 0 {
 		return "—"
 	}
 	return utils.FormatBytes(t.Stats.MemBytes)
 }
 
 func (t *TaskMsg) netString() string {
-	if t.Stats.NetRxBytes == 0 && t.Stats.NetTxBytes == 0 {
+	if t.Stats == nil || t.Stats.NetRxBytes == 0 && t.Stats.NetTxBytes == 0 {
 		return "—"
 	}
 	return fmt.Sprintf("⇩ %s ⇧ %s", utils.FormatBps(t.Stats.NetRxBytes), utils.FormatBps(t.Stats.NetTxBytes))

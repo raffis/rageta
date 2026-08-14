@@ -31,7 +31,7 @@ type TaskContext struct {
 	Matrix          MatrixContext
 	Build           BuildContext
 	Workdir         WorkdirContext
-	Services        ServiceContext
+	Service         ServiceContext
 	Stats           StatsContext
 	mu              *sync.Mutex
 }
@@ -71,7 +71,6 @@ func NewContext() TaskContext {
 		Build:      newBuildContext(),
 		InputVars:  newInputVarsContext(),
 		Matrix:     newMatrixContext(),
-		Services:   newServiceContext(),
 		Stats:      newStatsContext(),
 		Tasks:      make(map[string]*TaskContext),
 		mu:         &sync.Mutex{},
@@ -89,6 +88,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Context = c.Context
 	copy.Display.Stdout = c.Display.Stdout
 	copy.Display.Stderr = c.Display.Stderr
+	copy.Display.Demuxer = c.Display.Demuxer
 	copy.Display.Events = c.Display.Events
 	copy.Display.WriteStats = c.Display.WriteStats
 	copy.Display.WritePullProgress = c.Display.WritePullProgress
@@ -100,11 +100,12 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.SecretVars.Secrets = maps.Clone(c.SecretVars.Secrets)
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
 	copy.Build.RunOpts = append(copy.Build.RunOpts, c.Build.RunOpts...)
+	copy.Build.Mounts = append(copy.Build.Mounts, c.Build.Mounts...)
 	copy.Build.State = c.Build.State
 	copy.Build.ContextState = c.Build.ContextState
 	copy.Build.Ref = c.Build.Ref
 	copy.Workdir.Path = c.Workdir.Path
-	copy.Services.Status = maps.Clone(c.Services.Status)
+	copy.Service.NetIP = c.Service.NetIP
 	copy.Style.Style = c.Style.Style
 
 	return copy
@@ -115,7 +116,6 @@ func (t TaskContext) Merge(c TaskContext) TaskContext {
 	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
 	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Tasks, c.Tasks)
-	maps.Copy(t.Services.Status, c.Services.Status)
 
 	return t
 }

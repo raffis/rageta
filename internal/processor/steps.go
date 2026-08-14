@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
@@ -15,7 +14,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithSteps(store secrets.Interface) ProcessorBuilder {
+func WithSteps(store secrets.Interface, noCache bool) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Steps == nil {
 			return nil
@@ -24,6 +23,7 @@ func WithSteps(store secrets.Interface) ProcessorBuilder {
 			steps:    *spec.Steps,
 			stepName: spec.Name,
 			store:    store,
+			noCache:  noCache,
 		}
 	}
 }
@@ -38,41 +38,19 @@ type Steps struct {
 	steps    []v1beta1.Step
 	stepName string
 	store    secrets.Interface
+	noCache  bool
 }
 
+// Bootstrap chains every step's script execution onto ctx.Build.State as its
+// own llb.Run() (and therefore its own image layer) before handing off to
+// the Build processor. All steps are solved together in a single Solve()
+// call so buildkit's progress display keeps one continuous vertex sequence
+// instead of restarting at #1 for every step.
 func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
-		ctx.Build.State = ctx.Build.State.File(
-			llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
-				CreateDestPath:                 true,
-				AlwaysReplaceExistingDestPaths: false,
-			}),
-			llb.WithCustomNamef("copy busybox:%s → %s", "/*", "/"),
-		)
-
-		ctx.Build.State = ctx.Build.State.File(
-			llb.Mkdir("/bin", 0755),
-		)
-
-		ctx.Build.State = ctx.Build.State.Run(
-			llb.Shlex("/bin/busybox --install -s /bin"),
-		).Root()
-
 		ctx.Build.State = ctx.Build.State.File(
 			llb.Mkdir("/rageta", 0755),
 		)
-
-		for name, service := range ctx.Services.Status {
-			netIP := net.ParseIP(service.ContainerIP)
-			if netIP == nil {
-				continue
-			}
-
-			ctx.Build.State = ctx.Build.State.AddExtraHost(name, netIP)
-			envName := strings.ToUpper(strings.Replace(name, "-", "_", -1))
-			ctx.Build.State = ctx.Build.State.AddEnv(fmt.Sprintf("SERVICE_%s", envName), service.ContainerIP)
-		}
 
 		contextJSON, err := json.MarshalIndent(ctx.ToV1Beta1(), "", "  ")
 		if err != nil {
@@ -81,53 +59,15 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		secretID := fmt.Sprintf("rageta-context-%s", s.stepName)
 		s.store.AddSecret(context.Background(), secretID, contextJSON)
-		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(contextPath, llb.SecretID(secretID)))
+		contextSecretOpt := llb.AddSecret(contextPath, llb.SecretID(secretID))
 
-		const statsReporterPath = "/rageta/stats-reporter.sh"
-		const statsReporterScript = `prev=0
-net_rx0=""
-net_tx0=""
-while true; do
-  sleep 1
-  if [ -f /sys/fs/cgroup/cpu.stat ]; then
-    usec=$(awk '/^usage_usec/{print $2}' /sys/fs/cgroup/cpu.stat)
-    mem=$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo 0)
-  elif [ -f /sys/fs/cgroup/cpuacct/cpuacct.usage ]; then
-    usec=$(( $(cat /sys/fs/cgroup/cpuacct/cpuacct.usage) / 1000 ))
-    mem=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo 0)
-  else
-    usec=0
-    mem=0
-  fi
-  if [ "$prev" -gt 0 ]; then
-    # Millicores, Kubernetes-style: 1000m == 1 full core-second consumed
-    # during the 1s sampling window.
-    cpu=$(( (usec - prev) / 1000 ))
-  else
-    cpu=0
-  fi
+		baseRunOpts := append([]llb.RunOption{contextSecretOpt}, ctx.Build.RunOpts...)
+		if s.noCache {
+			baseRunOpts = append(baseRunOpts, llb.IgnoreCache)
+		}
 
-  # Sum rx/tx bytes across all non-loopback interfaces. The network namespace
-  # can be reused across unrelated task containers (buildkit pools netns for
-  # reuse), so counters must be rebased to a per-task baseline taken on the
-  # first sample rather than read as absolutes.
-  net=$(awk '$2 ~ /^[0-9]+$/ && $1 !~ /^lo:/ {rx+=$2; tx+=$10} END{printf "%d %d", rx+0, tx+0}' /proc/net/dev)
-  net_rx=${net% *}
-  net_tx=${net#* }
-  if [ -z "$net_rx0" ]; then
-    net_rx0=$net_rx
-    net_tx0=$net_tx
-  fi
+		ctx.Build.State = bakeShim(ctx.Build.State)
 
-  prev=$usec
-  printf '__RAGETA_STATS__ cpu=%d mem=%d net_rx=%d net_tx=%d\n' "$cpu" "$mem" "$((net_rx - net_rx0))" "$((net_tx - net_tx0))" >&2
-done`
-
-		ctx.Build.State = ctx.Build.State.File(
-			llb.Mkfile(statsReporterPath, 0755, []byte(statsReporterScript)),
-		)
-
-		var scriptCmds []string
 		for k, step := range s.steps {
 			script := step.Script
 			if err := substitute.Substitute(ctx.ToV1Beta1(), &script); err != nil {
@@ -141,6 +81,7 @@ done`
 				interpreter = strings.TrimSpace(strings.TrimPrefix(lines[0], "#!"))
 			}
 
+			scriptEntrypointPath := fmt.Sprintf("/rageta/script-entrypoint-%d.sh", k)
 			scriptPath := fmt.Sprintf("/rageta/script-%d.sh", k)
 			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
 
@@ -153,27 +94,19 @@ done`
 			).Root()
 
 			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
-			scriptCmds = append(scriptCmds, fmt.Sprintf("%s -e %s; echo $? > %s", interpreter, scriptPath, exitCodePath))
-		}
+			ctx.Build.State = ctx.Build.State.File(
+				llb.Mkfile(scriptEntrypointPath, 0755, []byte(fmt.Sprintf("set -xe\n%s\necho $? > %s", scriptPath, exitCodePath))),
+			)
 
-		// All scripts must be combined into a single Args call — multiple llb.Args in one Run only keeps the last.
-		// The stats reporter runs in the background and is killed when the scripts finish.
-		//
-		// The user's commands are wrapped in `{ ...; } 2>&1` so that ALL of their own
-		// output (whichever of stdout/stderr a given tool happens to use) lands on fd1.
-		// That leaves fd2 exclusively for the stats reporter's own `__RAGETA_STATS__`
-		// lines. Buildkit forwards fd1/fd2 as two independently-captured log streams,
-		// so two processes never share a stream and their output can't be spliced
-		// together mid-line no matter how the writes happen to interleave in time.
-		userCmds := strings.Join(scriptCmds, "; ")
-		wrappedCmd := fmt.Sprintf(
-			"%s & __RAGETA_STATS_PID=$!; trap 'kill $__RAGETA_STATS_PID 2>/dev/null' EXIT; { %s; } 2>&1",
-			statsReporterPath, userCmds,
-		)
-		ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.Args([]string{
-			"/bin/sh", "-c",
-			wrappedCmd,
-		}))
+			stepRunOpts := append(append([]llb.RunOption{}, baseRunOpts...), llb.Args([]string{
+				shimPath,
+				"-stats",
+				interpreter,
+				scriptEntrypointPath,
+			}))
+
+			ctx.Build.State = ctx.Build.State.Run(stepRunOpts...).Root()
+		}
 
 		ctx, err = next(ctx)
 		if err != nil {
@@ -202,6 +135,27 @@ done`
 
 		return ctx, nil
 	}, nil
+}
+
+func bakeBusybox(state llb.State) llb.State {
+	busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
+	state = state.File(
+		llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
+			CreateDestPath:                 true,
+			AlwaysReplaceExistingDestPaths: false,
+		}),
+		llb.WithCustomNamef("copy busybox:%s → %s", "/*", "/"),
+	)
+
+	state = state.File(
+		llb.Mkdir("/bin", 0755),
+	)
+
+	state = state.Run(
+		llb.Shlex("/bin/busybox --install -s /bin"),
+	).Root()
+
+	return state
 }
 
 type scriptError struct {

@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 )
 
 func Discard() processor.DisplayFactory {
@@ -30,7 +31,7 @@ func (d *discardDisplay) Close(_ processor.TaskContext, _ error) error {
 	return nil
 }
 
-func (d *discardDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+func (d *discardDisplay) WriteStats(sample *stats.Sample) error {
 	return nil
 }
 

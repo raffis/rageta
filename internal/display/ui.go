@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/tui"
 	"github.com/raffis/rageta/internal/xio"
@@ -26,7 +27,17 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Labels = ctx.Labels.Labels()
 		step.Status = tui.TaskStatusWaiting
 		sender.Send(step)
-		events := xio.NewLineWriter(xio.NewPrefixWriter(xio.NewLipglossWriter(step, styles.Highlight), []byte("➤ ")))
+		events := xio.NewCallbackOnceWriter(
+			xio.NewLineWriter(
+				xio.NewPrefixWriter(
+					xio.NewLipglossWriter(step, styles.Highlight), []byte("➤ "),
+				),
+			),
+			func() {
+				step.Status = tui.TaskStatusRunning
+				sender.Send(step)
+			},
+		)
 
 		return &uiDisplay{step: step, uniqueName: uniqueName, sender: sender, events: events}
 	}
@@ -80,10 +91,10 @@ func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
 	return nil
 }
 
-func (d *uiDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+func (d *uiDisplay) WriteStats(sample *stats.Sample) error {
 	d.sender.Send(tui.ResourceStatsMsg{
 		Name:  d.uniqueName,
-		Stats: tui.ResourceStats{CPUMillicores: cpu, MemBytes: mem, NetRxBytes: netRx, NetTxBytes: netTx},
+		Stats: sample,
 	})
 
 	return nil

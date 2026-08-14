@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -18,28 +17,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/processor"
 )
-
-// TEMPORARY: diagnostic logging for the "UI is slow/laggy with many tasks"
-// investigation. Writes one line per Update() call to /tmp/ui.log with the
-// message type, current list size, and how long the call took, so we can
-// see which message types dominate and whether cost scales with list size.
-// Remove once the investigation is done.
-var (
-	debugLogOnce sync.Once
-	debugLogFile *os.File
-)
-
-func debugLog(format string, args ...any) {
-	debugLogOnce.Do(func() {
-		f, err := os.OpenFile("/tmp/ui.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			debugLogFile = f
-		}
-	})
-	if debugLogFile != nil {
-		fmt.Fprintf(debugLogFile, "%s "+format+"\n", append([]any{time.Now().Format(time.RFC3339Nano)}, args...)...)
-	}
-}
 
 type Panel int8
 
@@ -234,12 +211,7 @@ func isHiddenStatus(status TaskStatus) bool {
 	}
 }
 
-// isTerminalStatus reports whether a task has finished executing (in any
-// outcome) and therefore no longer needs its spinner/timer animated. Tasks
-// are created as TaskStatusWaiting and stay that way for their entire
-// execution — nothing in the pipeline ever sends TaskStatusRunning — so
-// "still in flight" means "not yet terminal", not "status == Running".
-func isTerminalStatus(status TaskStatus) bool {
+func isTaskFinished(status TaskStatus) bool {
 	switch status {
 	case TaskStatusFailed, TaskStatusDone, TaskStatusCached, TaskStatusSkipped:
 		return true
@@ -332,12 +304,6 @@ func (m UI) Init() tea.Cmd {
 
 // Update handles all UI updates and events
 func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	start := time.Now()
-	itemCount := len(m.list.Items())
-	defer func() {
-		debugLog("update type=%T items=%d elapsed=%s", msg, itemCount, time.Since(start))
-	}()
-
 	var cmds []tea.Cmd
 
 	// The top-level loader is only ever visible on the initial "waiting"
@@ -427,13 +393,13 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 	} else {
 		// Update existing task
 		item := existing
-		if isTerminalStatus(msg.Status) {
-			item.Stats = ResourceStats{}
+		if isTaskFinished(msg.Status) {
+			item.Stats = nil
 			item.Pull = PullProgress{}
 			item.Context = msg.Context
 		}
 
-		if !isTerminalStatus(item.Status) && isTerminalStatus(msg.Status) && m.debugShell != nil {
+		if !isTaskFinished(item.Status) && isTaskFinished(msg.Status) && m.debugShell != nil {
 			m.writeDebugShellHint(&item)
 		}
 
@@ -664,13 +630,12 @@ func (m *UI) handleResourceStats(msg ResourceStatsMsg) {
 	m.updateVisibleItem(t)
 }
 
-
 // handleTick handles the UI's own low-frequency tick (see TickMsg) for
 // spinner animation. Only non-terminal tasks animate, so only they need
 // updating and re-rendering.
 func (m *UI) handleTick(msg TickMsg) []tea.Cmd {
 	for i, t := range m.tasks {
-		if isTerminalStatus(t.Status) {
+		if isTaskFinished(t.Status) {
 			continue
 		}
 
@@ -698,12 +663,6 @@ func (m *UI) updateLastSelected() {
 
 // View renders the UI
 func (m UI) View() tea.View {
-	start := time.Now()
-	itemCount := len(m.list.Items())
-	defer func() {
-		debugLog("view items=%d elapsed=%s", itemCount, time.Since(start))
-	}()
-
 	m.logger.Info("tui view", "height", m.height, "width", m.width, "last", m.lastSelected)
 
 	var content string
@@ -720,14 +679,10 @@ func (m UI) View() tea.View {
 
 // renderMainLayout renders the main UI layout
 func (m UI) renderMainLayout() string {
-	t0 := time.Now()
 	headerPanel := m.renderHeaderPanel()
 	listPanel := m.renderListPanel()
 	pagerPanel := m.renderPagerPanel()
 	bottomPanel := m.renderBottomPanel()
-	t4 := time.Now()
-	debugLog("renderMainLayout items=%d time=%s",
-		len(m.list.Items()), t4.Sub(t0))
 
 	// Stack panels vertically if the terminal is too narrow
 	if m.width < AlignHorizontalBreakpoint {

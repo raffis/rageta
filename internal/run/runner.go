@@ -57,38 +57,32 @@ func (r *Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout
 }
 
 type Options struct {
-	EnvOptions              EnvsOptions
-	SecretOptions           SecretsOptions
-	ImagePolicyOptions      ImagePolicyOptions
-	DisplayOptions          DisplayOptions
-	ReportOptions           ReportOptions
-	TeardownOptions         TeardownOptions
-	ForkOptions             ForkOptions
-	ContainerRuntimeOptions ContainerRuntimeOptions
-	BuildkitOptions         BuildkitOptions
-	LifecycleOptions        LifecycleOptions
-	OtelOptions             OtelOptions
-	LoggingOptions          LoggingOptions
-	ProviderOptions         ProviderOptions
-	ExecuteOptions          ExecuteOptions
-	CELOptions              CELOptions
-	PipelineOptions         PipelineOptions
-	InputsOptions           InputsOptions
-	LabelsOptions           LabelsOptions
-	SummaryOptions          SummaryOptions
-	InteractiveOptions      InteractiveOptions
-	ExitCodeOptions         ExitCodeOptions
+	EnvOptions         EnvsOptions
+	SecretOptions      SecretsOptions
+	DisplayOptions     DisplayOptions
+	ReportOptions      ReportOptions
+	TeardownOptions    TeardownOptions
+	BuildkitOptions    BuildkitOptions
+	LifecycleOptions   LifecycleOptions
+	OtelOptions        OtelOptions
+	LoggingOptions     LoggingOptions
+	ProviderOptions    ProviderOptions
+	ExecuteOptions     ExecuteOptions
+	CELOptions         CELOptions
+	PipelineOptions    PipelineOptions
+	InputsOptions      InputsOptions
+	LabelsOptions      LabelsOptions
+	SummaryOptions     SummaryOptions
+	InteractiveOptions InteractiveOptions
+	ExitCodeOptions    ExitCodeOptions
 }
 
 func (s *Options) BindFlags(flags flagset.Interface) {
 	pipelineFlags := pflag.NewFlagSet("Pipeline", pflag.ExitOnError)
-	s.ImagePolicyOptions.BindFlags(flags)
 	s.DisplayOptions.BindFlags(flags)
 	s.ReportOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
-	s.ForkOptions.BindFlags(flags)
 	s.BuildkitOptions.BindFlags(flags)
-	s.ContainerRuntimeOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
 	s.ProviderOptions.BindFlags(flags)
@@ -105,14 +99,12 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 
 func DefaultOptions() Options {
 	return Options{
-		ContainerRuntimeOptions: NewContainerRuntimeOptions(),
-		ImagePolicyOptions:      NewImagePolicyOptions(),
-		DisplayOptions:          NewDisplayOptions(),
-		LoggingOptions:          NewLoggingOptions(),
-		ProviderOptions:         NewProviderOptions(),
-		ReportOptions:           NewReportOptions(),
-		BuildkitOptions:         NewBuildkitOptions(),
-		InteractiveOptions:      NewInteractiveOptions(),
+		DisplayOptions:     NewDisplayOptions(),
+		LoggingOptions:     NewLoggingOptions(),
+		ProviderOptions:    NewProviderOptions(),
+		ReportOptions:      NewReportOptions(),
+		BuildkitOptions:    NewBuildkitOptions(),
+		InteractiveOptions: NewInteractiveOptions(),
 	}
 }
 
@@ -125,11 +117,8 @@ func (o Options) Build() *Runner {
 		o.OtelOptions.Build(),
 		o.LoggingOptions.Build(),
 		o.EnvOptions.Build(),
-		o.ImagePolicyOptions.Build(),
 		o.CELOptions.Build(),
 		o.LabelsOptions.Build(),
-		o.ContainerRuntimeOptions.Build(),
-		o.ForkOptions.Build(),
 		o.LifecycleOptions.Build(),
 		o.BuildkitOptions.Build(),
 		o.SummaryOptions.Build(),

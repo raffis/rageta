@@ -3,13 +3,12 @@ package checklist
 import (
 	"fmt"
 	"io"
-	"os"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/raffis/rageta/internal/tui"
 )
 
 // activePanelColor, okStyle and failedStyle mirror internal/tui/styles.go so
@@ -143,7 +142,7 @@ func newTTY(out io.Writer) *ttyDisplay {
 		tea.WithOutput(out),
 		tea.WithInput(nil),
 		tea.WithoutSignalHandler(),
-		tea.WithEnvironment(bubbleTeaProgramEnv()),
+		tea.WithEnvironment(tui.BubbleTeaProgramEnv()),
 	)
 
 	go func() {
@@ -170,32 +169,4 @@ func (d *ttyDisplay) Close() error {
 	<-d.done
 
 	return nil
-}
-
-// bubbleTeaProgramEnv mirrors internal/run/display.go's helper of the same
-// name: it keeps Bubble Tea v2 from probing modes 2026/2027 via CSI, whose
-// DECRQM replies would otherwise land on stdin after this short-lived
-// program exits.
-func bubbleTeaProgramEnv() []string {
-	origTerm := strings.ToLower(os.Getenv("TERM"))
-	base := os.Environ()
-	out := make([]string, 0, len(base)+4)
-	for _, e := range base {
-		switch {
-		case strings.HasPrefix(e, "WT_SESSION="):
-			continue
-		case strings.HasPrefix(e, "TERM_PROGRAM="):
-			continue
-		default:
-			out = append(out, e)
-		}
-	}
-	out = append(out, "TERM_PROGRAM=Apple_Terminal")
-	for _, sub := range []string{"ghostty", "wezterm", "alacritty", "kitty", "rio"} {
-		if strings.Contains(origTerm, sub) {
-			out = append(out, "TERM=xterm-256color")
-			break
-		}
-	}
-	return out
 }

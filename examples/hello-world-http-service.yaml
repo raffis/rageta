@@ -1,0 +1,31 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: hello-world
+
+entrypoint: http-client
+
+tasks:
+- name: create-file
+  image: busybox:latest
+  steps:
+  - script: echo "hello world" > index.html
+
+- name: http-server
+  dependsOn:
+  - name: create-file
+  image: busybox:1
+  sources:
+  - task:
+      name: create-file
+      path: index.html
+  service:
+    args: [httpd, -f, -v, -p, "8080", -h, "."]
+
+- name: http-client
+  dependsOn:
+  - name: http-server
+  image: curlimages/curl:8.9.1
+  steps:
+  - script: curl --fail http://http-server:8080/index.html

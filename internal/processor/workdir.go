@@ -29,16 +29,12 @@ type WorkdirContext struct {
 
 func (s *Workdir) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-
-		switch {
-		case ctx.Workdir.Path != "":
-		case s.workingDir == "":
+		if s.workingDir == "" {
 			ctx.Workdir.Path = DefaultWorkingDir
-		default:
+		} else {
 			ctx.Workdir.Path = s.workingDir
 		}
 
-		ctx.Workdir.Path = s.workingDir
 		if err := substitute.Substitute(ctx.ToV1Beta1(), &ctx.Workdir.Path); err != nil {
 			return ctx, err
 		}

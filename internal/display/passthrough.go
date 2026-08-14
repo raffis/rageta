@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/stats"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/internal/xio"
 )
@@ -52,7 +53,7 @@ func (d *passthroughDisplay) Close(_ processor.TaskContext, _ error) error {
 	return nil
 }
 
-func (d *passthroughDisplay) WriteStats(cpu, mem, netRx, netTx int64) error {
+func (d *passthroughDisplay) WriteStats(sample *stats.Sample) error {
 	return nil
 }
 

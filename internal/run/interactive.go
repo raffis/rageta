@@ -6,19 +6,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
-	"time"
+	"syscall"
 
-	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/term"
-	"github.com/raffis/rageta/internal/buildkit/progressui"
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/spf13/pflag"
-	"github.com/tonistiigi/fsutil"
 )
 
 type TaskInteractive string
@@ -118,94 +117,143 @@ func (s *Interactive) openInteractive(rc *RunContext, err error) error {
 	return RunDebugShell(ctx, rc, innerTaskErr.Context(), os.Stdin, os.Stdout, os.Stderr)
 }
 
+// RunDebugShell drops an interactive shell into the failed step's root
+// filesystem using BuildKit's own gateway container (gwclient.NewContainer)
+// rather than exporting an image and running it through a separate
+// container runtime. This keeps the step's volume/cache mounts (which only
+// exist as BuildKit Run-op mounts, not as part of the exported rootfs)
+// available inside the debug shell.
 func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskContext, stdin io.Reader, stdout, stderr io.Writer) error {
 	stepCtx = stepCtx.DeepCopy()
-	def, marshalErr := stepCtx.Build.State.Marshal(ctx)
-	if marshalErr != nil {
-		return marshalErr
-	}
+	gwClient := rc.Buildkit.GatewayClient
 
-	const imageName = "rageta-shell-debug:latest"
-
-	if err := exportDebugImage(ctx, rc, def, imageName); err != nil {
+	def, err := stepCtx.Build.State.Marshal(ctx)
+	if err != nil {
 		return err
 	}
 
-	for name, service := range stepCtx.Services.Status {
-		//ctx.Build.State = ctx.Build.State.AddExtraHost(name, net.IP(service.ContainerIP))
+	rootRes, err := gwClient.Solve(ctx, gwclient.SolveRequest{Definition: def.ToPB()})
+	if err != nil {
+		return fmt.Errorf("solve debug root: %w", err)
+	}
+
+	mounts := []gwclient.Mount{
+		{
+			Dest:      "/",
+			MountType: pb.MountType_BIND,
+			Ref:       rootRes.Ref,
+		},
+	}
+
+	var contextRef gwclient.Reference
+	for _, mount := range stepCtx.Build.Mounts {
+		switch {
+		case mount.HostPath != nil:
+			if contextRef == nil {
+				contextDef, err := llb.Local("context").Marshal(ctx)
+				if err != nil {
+					return err
+				}
+
+				contextRes, err := gwClient.Solve(ctx, gwclient.SolveRequest{Definition: contextDef.ToPB()})
+				if err != nil {
+					return fmt.Errorf("solve debug context: %w", err)
+				}
+				contextRef = contextRes.Ref
+			}
+
+			mounts = append(mounts, gwclient.Mount{
+				Dest:      mount.MountPath,
+				MountType: pb.MountType_BIND,
+				Ref:       contextRef,
+				Selector:  mount.HostPath.Path,
+				Readonly:  mount.ReadOnly,
+			})
+		case mount.Cache != nil:
+			sharing := pb.CacheSharingOpt_SHARED
+			switch strings.ToLower(strings.TrimSpace(mount.Cache.Sharing)) {
+			case "private":
+				sharing = pb.CacheSharingOpt_PRIVATE
+			case "locked":
+				sharing = pb.CacheSharingOpt_LOCKED
+			}
+
+			mounts = append(mounts, gwclient.Mount{
+				Dest:      mount.MountPath,
+				MountType: pb.MountType_CACHE,
+				CacheOpt: &pb.CacheOpt{
+					ID:      mount.Cache.Name,
+					Sharing: sharing,
+				},
+				Readonly: mount.ReadOnly,
+			})
+		case mount.TmpFS != nil:
+			mounts = append(mounts, gwclient.Mount{
+				Dest:      mount.MountPath,
+				MountType: pb.MountType_TMPFS,
+				Readonly:  mount.ReadOnly,
+			})
+		}
+	}
+
+	ctr, err := gwClient.NewContainer(ctx, gwclient.NewContainerRequest{Mounts: mounts})
+	if err != nil {
+		return fmt.Errorf("create debug container: %w", err)
+	}
+	defer ctr.Release(ctx)
+
+	/*for name, service := range stepCtx.Services.Status {
 		envName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 		stepCtx.EnvVars.Envs[fmt.Sprintf("SERVICE_%s", envName)] = service.ContainerIP
-	}
+	}*/
 
 	stepCtx.EnvVars.Envs["PS1"] = fmt.Sprintf("%s$ ", stepCtx.Style.Style.Render(stepCtx.UniqueName()))
 	stepCtx.EnvVars.Envs["HISTFILE"] = "/rageta/ash_history"
 
-	container := &runtime.Container{
-		Name: fmt.Sprintf("rageta-%s", utils.RandString(5)),
-		Spec: runtime.ContainerSpec{
-			//Name:    stepCtx.UniqueID(),
-			Image:   imageName,
-			Env:     stepCtx.EnvVars.Envs,
-			PWD:     stepCtx.Workdir.Path,
-			Stdin:   true,
-			TTY:     true,
-			Command: []string{"/bin/ash"},
-		},
+	env := utils.EnvSlice(stepCtx.EnvVars.Envs)
+
+	stdinRC, ok := stdin.(io.ReadCloser)
+	if !ok {
+		stdinRC = io.NopCloser(stdin)
+	}
+
+	proc, err := ctr.Start(ctx, gwclient.StartRequest{
+		Args:   []string{"/bin/ash"},
+		Env:    env,
+		Cwd:    stepCtx.Workdir.Path,
+		Tty:    true,
+		Stdin:  stdinRC,
+		Stdout: nopWriteCloser{stdout},
+		Stderr: nopWriteCloser{stderr},
+	})
+	if err != nil {
+		return fmt.Errorf("start debug shell: %w", err)
 	}
 
 	if f, ok := stdin.(*os.File); ok {
 		if oldState, rawErr := term.MakeRaw(f.Fd()); rawErr == nil {
 			defer term.RestoreTerminal(f.Fd(), oldState)
 		}
+
+		resize := make(chan os.Signal, 1)
+		signal.Notify(resize, syscall.SIGWINCH)
+		defer signal.Stop(resize)
+
+		go func() {
+			for range resize {
+				if ws, err := term.GetWinsize(f.Fd()); err == nil {
+					_ = proc.Resize(ctx, gwclient.WinSize{Rows: uint32(ws.Height), Cols: uint32(ws.Width)})
+				}
+			}
+		}()
+		resize <- syscall.SIGWINCH
 	}
 
-	await, err := rc.ContainerRuntime.Driver.Create(ctx, container, stdin, stdout, stderr)
-	if err != nil {
-		return err
-	}
-
-	if err := await.Wait(ctx); err != nil {
-		return err
-	}
-
-	rc.Teardown.Teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
-		return rc.ContainerRuntime.Driver.Delete(teardownCtx, container, timeout)
-	}
-
-	return err
+	return proc.Wait()
 }
 
-func exportDebugImage(ctx context.Context, rc *RunContext, def *llb.Definition, imageName string) error {
-	d, err := progressui.NewDisplay(rc.Display.Stderr, rc.Display.Stdout, progressui.PlainMode)
-	if err != nil {
-		return fmt.Errorf("create display: %w", err)
-	}
-
-	ch := make(chan *client.SolveStatus)
-	displayDone := make(chan struct{})
-	go func() {
-		defer close(displayDone)
-		d.UpdateFrom(ctx, ch)
-	}()
-
-	_, err = rc.Buildkit.Client.Solve(ctx, def, client.SolveOpt{
-		LocalMounts: map[string]fsutil.FS{
-			"context": rc.Buildkit.ContextFS,
-		},
-		Exports: []client.ExportEntry{
-			{
-				Type: client.ExporterImage,
-				Attrs: map[string]string{
-					"name": imageName,
-				},
-			},
-		},
-	}, ch)
-	<-displayDone
-
-	if err != nil {
-		return fmt.Errorf("export image: %w", err)
-	}
-
-	return nil
+type nopWriteCloser struct {
+	io.Writer
 }
+
+func (nopWriteCloser) Close() error { return nil }

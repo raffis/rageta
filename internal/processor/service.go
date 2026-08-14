@@ -4,101 +4,81 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
+	"io"
+	"net"
+	"slices"
+	"sync"
+	"syscall"
 	"time"
 
-	"github.com/raffis/rageta/internal/runtime"
+	"github.com/moby/buildkit/client/llb"
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/moby/buildkit/solver/pb"
 	"github.com/raffis/rageta/internal/substitute"
+	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithService(defaultPullPolicy runtime.PullImagePolicy, driver runtime.Interface, teardown chan Teardown) ProcessorBuilder {
+func WithService(gwClient gwclient.Client, teardown chan Teardown) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Service == nil {
 			return nil
 		}
 
 		return &Service{
-			service:           *spec.Service,
-			image:             spec.Image,
-			workdir:           spec.WorkingDir,
-			stepName:          spec.Name,
-			driver:            driver,
-			defaultPullPolicy: defaultPullPolicy,
-			teardown:          teardown,
+			stepName: spec.Name,
+			command:  spec.Service.Command,
+			args:     spec.Service.Args,
+			gwClient: gwClient,
+			teardown: teardown,
 		}
 	}
 }
 
 type Service struct {
-	image             string
-	workdir           string
-	stepName          string
-	service           v1beta1.ServiceTask
-	driver            runtime.Interface
-	defaultPullPolicy runtime.PullImagePolicy
-	teardown          chan Teardown
+	stepName string
+	command  []string
+	args     []string
+	gwClient gwclient.Client
+	teardown chan Teardown
+	ctr      gwclient.Container
+	proc     gwclient.ContainerProcess
+	waitOnce sync.Once
+	waitDone chan struct{}
+	waitErr  error
 }
 
 type ServiceContext struct {
-	Status map[string]runtime.ContainerStatus
+	NetIP net.IP
 }
 
-func newServiceContext() ServiceContext {
-	return ServiceContext{
-		Status: make(map[string]runtime.ContainerStatus),
-	}
-}
+const serviceEntrypointPath = "/rageta/service-entrypoint.sh"
+const serviceEntrypointScript = "#!" + defaultShell + `
+exec "$@"
+`
 
 func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		svc := s.service.DeepCopy()
-		container := &runtime.Container{
-			Name: s.stepName,
-		}
+		command := slices.Clone(s.command)
+		args := slices.Clone(s.args)
 
-		if err := substitute.Substitute(ctx.ToV1Beta1(), svc.Guid, svc.Uid); err != nil {
+		if err := substitute.Substitute(ctx.ToV1Beta1(),
+			command,
+			args,
+		); err != nil {
 			return ctx, err
 		}
 
-		envs := make(map[string]string)
-		maps.Copy(envs, ctx.EnvVars.Envs)
-		maps.Copy(envs, ctx.SecretVars.Secrets)
+		ctx.Build.State = ctx.Build.State.File(
+			llb.Mkfile(serviceEntrypointPath, 0755, []byte(serviceEntrypointScript)),
+		)
 
-		spec := runtime.ContainerSpec{
-			Image:           s.image,
-			ImagePullPolicy: s.defaultPullPolicy,
-			Command:         svc.Command,
-			Args:            svc.Args,
-			Env:             envs,
-			PWD:             s.workdir,
-		}
-
-		if svc.Guid != nil {
-			guid := svc.Guid.IntValue()
-			spec.Guid = &guid
-		}
-
-		if svc.Uid != nil {
-			uid := svc.Uid.IntValue()
-			spec.Uid = &uid
-		}
-
-		subst := []any{
-			&spec.Image,
-			spec.Args,
-			spec.Command,
-			&spec.PWD,
-		}
-
-		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
+		ctx, err := next(ctx)
+		if err != nil {
 			return ctx, err
 		}
 
-		container.Spec = spec
-		_, _ = ctx.Display.Events.Write([]byte(fmt.Sprintf("starting %s", spec.Image) + "\n"))
-		ctx, err := s.exec(ctx, container)
-
+		ctx, err = s.start(ctx, command, args)
 		if err != nil {
 			var exitCode int
 			var runtimeErr ExitCode
@@ -112,43 +92,101 @@ func (s *Service) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		return next(ctx)
+		return ctx, nil
 	}, nil
 }
 
-func (s *Service) exec(ctx TaskContext, container *runtime.Container) (TaskContext, error) {
-	await, err := s.driver.Create(ctx, container, nil, ctx.Display.Stdout, ctx.Display.Stderr)
+func (s *Service) start(ctx TaskContext, command, args []string) (TaskContext, error) {
+	ctr, err := s.gwClient.NewContainer(ctx, gwclient.NewContainerRequest{
+		Mounts: []gwclient.Mount{
+			{Dest: "/", MountType: pb.MountType_BIND, Ref: ctx.Build.Ref},
+		},
+	})
 	if err != nil {
-		return ctx, err
+		return ctx, fmt.Errorf("create service container failed: %w", err)
 	}
 
-	ctx.Services.Status[container.Name] = container.Status
-
-	done := make(chan error)
-	go func() {
-		if err := await.Wait(ctx); err != nil {
-			done <- err
+	ipCh := make(chan string, 1)
+	ctx.Display.Demuxer.WithSink(xio.StreamIP, xio.WriterFunc(func(payload []byte) (int, error) {
+		select {
+		case ipCh <- string(payload):
+		default:
 		}
+		return len(payload), nil
+	}))
 
-		done <- nil
+	cmd := append([]string{shimPath, "-stats", "-ip", serviceEntrypointPath}, append(append([]string{}, command...), args...)...)
+
+	proc, err := ctr.Start(ctx, gwclient.StartRequest{
+		Args:   cmd,
+		Cwd:    ctx.Workdir.Path,
+		Stdout: nopWriteCloser{ctx.Display.Stdout},
+		Stderr: nopWriteCloser{ctx.Display.Demuxer},
+	})
+	if err != nil {
+		_ = ctr.Release(ctx)
+		return ctx, fmt.Errorf("start service failed: %w", err)
+	}
+
+	s.ctr = ctr
+	s.proc = proc
+	s.waitDone = make(chan struct{})
+
+	go func() {
+		s.waitOnce.Do(func() {
+			s.waitErr = proc.Wait()
+			close(s.waitDone)
+		})
 	}()
 
-	s.teardown <- func(teardownCtx context.Context, timeout time.Duration) error {
-		if containerStatus, ok := ctx.Services.Status[s.stepName]; ok {
-			err := s.driver.Delete(teardownCtx, &runtime.Container{
-				Status: containerStatus,
-			}, timeout)
-
-			if err != nil {
-				return err
-			}
+	select {
+	case ip := <-ipCh:
+		netIP := net.ParseIP(ip)
+		if netIP == nil {
+			return ctx, fmt.Errorf("invalid net ip received: %q", ip)
 		}
 
-		return <-done
+		ctx.Service.NetIP = netIP
+	case <-time.After(5 * time.Second):
+		return ctx, fmt.Errorf("timed out waiting for service %s to report its IP", s.stepName)
+	case <-ctx.Done():
+		return ctx, ctx.Err()
 	}
 
-	return ctx, err
+	s.teardown <- s.stop
+
+	return ctx, nil
 }
+
+// stop is registered as the task's teardown closure: it signals the service
+// process, escalates to SIGKILL if it doesn't exit within timeout, and
+// always releases the underlying gateway container, even if the process
+// never confirms it exited — teardown must never block indefinitely.
+func (s *Service) stop(ctx context.Context, timeout time.Duration) error {
+	_ = s.proc.Signal(ctx, syscall.SIGTERM)
+
+	if !s.awaitDone(timeout) {
+		_ = s.proc.Signal(ctx, syscall.SIGKILL)
+		s.awaitDone(timeout)
+	}
+
+	return s.ctr.Release(ctx)
+}
+
+func (s *Service) awaitDone(timeout time.Duration) bool {
+	select {
+	case <-s.waitDone:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
 
 type serviceError struct {
 	exitCode int

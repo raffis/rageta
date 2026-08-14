@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/raffis/rageta/internal/run"
-	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +42,7 @@ func runLint(cmd *cobra.Command, args []string) error {
 		defer cancel()
 	}
 
-	store, persistDB := run.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, lintArgs.ociOptions, false)
+	store, persistDB := run.CreateProvider(run.PullPolicyAlways, rootArgs.dbPath, lintArgs.ociOptions, false)
 	_, err := store.Resolve(ctx, args[0])
 	if err != nil {
 		return err

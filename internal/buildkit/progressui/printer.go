@@ -28,13 +28,21 @@ type lastStatus struct {
 }
 
 type textMux struct {
-	w         io.Writer // output: script/command logs
-	events    io.Writer // events: buildkit status messages
+	stdout    io.Writer
+	stderr    io.Writer
+	events    io.Writer
 	current   digest.Digest
 	last      map[string]lastStatus
 	notFirst  bool
 	nextIndex int
 	desc      string
+}
+
+func (p *textMux) writerFor(stream int) io.Writer {
+	if stream == 2 {
+		return p.stderr
+	}
+	return p.stdout
 }
 
 func (p *textMux) printVtx(t *trace, dgst digest.Digest) {
@@ -56,7 +64,7 @@ func (p *textMux) printVtx(t *trace, dgst digest.Digest) {
 		if p.current != "" {
 			old := t.byDigest[p.current]
 			if old.logsPartial {
-				fmt.Fprintln(p.w, "")
+				fmt.Fprintln(p.writerFor(old.logsPartialFD), "")
 			}
 			old.logsOffset = 0
 			old.count = 0
@@ -145,20 +153,21 @@ func (p *textMux) printVtx(t *trace, dgst digest.Digest) {
 	}
 
 	for i, l := range v.logs {
+		w := p.writerFor(l.stream)
 		if i == 0 && v.logsOffset != 0 {
 			// continuation of a partial line — timestamp already consumed
-			fmt.Fprintf(p.w, "%s", l[v.logsOffset:])
+			fmt.Fprintf(w, "%s", l.data[v.logsOffset:])
 		} else {
 			// new entry: format is "<timestamp> <data>", strip the timestamp
-			if idx := bytes.IndexByte(l, ' '); idx >= 0 {
-				fmt.Fprintf(p.w, "%s", l[idx+1:])
+			if idx := bytes.IndexByte(l.data, ' '); idx >= 0 {
+				fmt.Fprintf(w, "%s", l.data[idx+1:])
 			} else {
-				fmt.Fprintf(p.w, "%s", l)
+				fmt.Fprintf(w, "%s", l.data)
 			}
 		}
 
 		if i != len(v.logs)-1 || !v.logsPartial {
-			fmt.Fprintln(p.w, "")
+			fmt.Fprintln(w, "")
 		}
 		if v.logsBuffer == nil {
 			v.logsBuffer = ring.New(logsBufferSize)
@@ -172,7 +181,7 @@ func (p *textMux) printVtx(t *trace, dgst digest.Digest) {
 	if len(v.logs) > 0 {
 		if v.logsPartial {
 			v.logs = v.logs[len(v.logs)-1:]
-			v.logsOffset = len(v.logs[0])
+			v.logsOffset = len(v.logs[0].data)
 		} else {
 			v.logs = nil
 			v.logsOffset = 0
@@ -185,7 +194,7 @@ func (p *textMux) printVtx(t *trace, dgst digest.Digest) {
 		v.count = 0
 
 		if v.logsPartial {
-			fmt.Fprintln(p.w, "")
+			fmt.Fprintln(p.writerFor(v.logsPartialFD), "")
 		}
 		if v.Error != "" {
 			if strings.HasSuffix(v.Error, context.Canceled.Error()) {
