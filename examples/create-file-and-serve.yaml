@@ -1,0 +1,27 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: create-file-and-serve
+
+tasks:
+- name: create-file2
+  image: busybox:latest
+  steps:
+  - script: while true; do sleep 1; dd if=/dev/zero of=test.bs bs=1024 count=100000 >> x; done
+
+- name: create-file
+  image: busybox:latest
+  steps:
+  - script: echo "hello world" > index.html
+  - script: while true; do sleep 1; echo test >> x; done
+
+- name: serve-and-request-file
+  dependsOn:
+  - name: create-file
+  inherit:
+    pipeline: ./examples/serve-and-request-file.yaml
+  sources:
+  - task:
+      name: create-file
+      path: /rageta/work/index.html

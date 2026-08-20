@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/secrets"
@@ -38,6 +39,15 @@ func newSecretVarsContext() SecretVarsContext {
 
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
+		ctx.SecretVars.Secrets = newSecretVarsContext().Secrets
+
+		for k, v := range s.store.Clone(ctx) {
+			if strings.HasPrefix(k, ContextSecretPrefix) {
+				continue
+			}
+			ctx.SecretVars.Secrets[k] = string(v)
+		}
+
 		for k, _ := range ctx.SecretVars.Secrets {
 			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
 		}

@@ -4,67 +4,92 @@ import (
 	"context"
 	"errors"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 func WithDependsOn() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		return &DependsOn{
-			refs:     spec.DependsOn,
+			deps:     spec.DependsOn,
 			taskName: spec.Name,
 		}
 	}
 }
 
 type DependsOn struct {
-	refs     []v1beta1.TaskReference
+	deps     []v1beta1.TaskDependency
 	taskName string
-}
-
-func (s *DependsOn) resolveRef(pipeline Pipeline, ref v1beta1.TaskReference) ([]Task, error) {
-	switch {
-	case ref.Name != nil:
-		task, err := pipeline.Task(*ref.Name)
-		if err != nil {
-			return nil, err
-		}
-		return []Task{task}, nil
-	case ref.MatchLabels != nil:
-		return pipeline.TasksByLabels(ref.MatchLabels), nil
-	default:
-		return nil, errors.New("invalid task reference")
-	}
 }
 
 func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		var dependsOn []Task
+		ctx, err := next(ctx)
 
-		for _, ref := range s.refs {
-			tasks, err := s.resolveRef(pipeline, ref)
-			if err != nil {
-				return ctx, err
-			}
-
-			for _, task := range tasks {
-				if _, started := ctx.Tasks[task.Name()]; started {
-					continue
-				}
-				dependsOn = append(dependsOn, task)
-			}
-		}
-
-		ctx, err := s.processTasks(ctx, dependsOn)
-
-		if err != nil {
+		if err != nil && AbortOnError(err) {
 			return ctx, err
 		}
 
-		return next(ctx)
+		ctx.Tasks[s.taskName] = &ctx
+		var children []Task
+
+		for _, task := range pipeline.ChildTasks(s.taskName) {
+			if _, started := ctx.Tasks[task.Name()]; started {
+				continue
+			}
+
+			// Only launch the child once all of its dependencies have
+			// completed, not just this one.
+			if !task.Ready(ctx) {
+				continue
+			}
+
+			mergeDependencyResults(pipeline, ctx, task.Name())
+			children = append(children, task)
+		}
+
+		childCtx, childErr := launchTasks(ctx, children)
+		if err != nil {
+			if childErr != nil {
+				return childCtx, errors.Join(err, childErr)
+			}
+			return childCtx, err
+		}
+
+		return childCtx, childErr
 	}, nil
 }
 
-func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
+// mergeDependencyResults pulls the results of taskName's dependencies into
+// ctx before it is launched. Each dependency finished on its own branch of
+// ctx, so its result (in particular ctx.Tasks[depName], needed e.g. for
+// service binding resolution) is only visible there.
+func mergeDependencyResults(pipeline Pipeline, ctx TaskContext, taskName string) {
+	for _, depName := range pipeline.TaskDependencies(taskName) {
+		if _, ok := ctx.Tasks[depName]; ok {
+			continue
+		}
+
+		dep, err := pipeline.Task(depName)
+		if err != nil {
+			continue
+		}
+
+		claim, owner := dep.Claim(ctx)
+		if owner {
+			claim.Release(ctx.DeepCopy(), nil)
+			continue
+		}
+
+		if depCtx, depErr := claim.Wait(); depErr == nil || !AbortOnError(depErr) {
+			ctx.Merge(depCtx)
+		}
+	}
+}
+
+// launchTasks claims and runs tasks against ctx, waiting for all of them to
+// finish before returning the merged context.
+func launchTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
 	if len(tasks) == 0 {
 		return ctx, nil
 	}
@@ -77,10 +102,6 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 
 	var launched int
 	for _, task := range tasks {
-		/*if _, alreadyRunning := ctx.Tasks[task.Name()]; alreadyRunning {
-			continue
-		}*/
-
 		claim, owner := task.Claim(ctx)
 		launched++
 
@@ -88,10 +109,11 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 			go func(claim TaskClaim) {
 				t, err := claim.Wait()
 
-				copyCTX := t.DeepCopy()
-				copyCTX.Context = cancelCtx
+				copyCtx := t.DeepCopy()
+				copyCtx.Build.State = llb.Scratch()
+				copyCtx.Context = cancelCtx
 
-				results <- result{copyCTX, err}
+				results <- result{copyCtx, err}
 			}(claim)
 			continue
 		}
@@ -102,11 +124,11 @@ func (s *DependsOn) processTasks(ctx TaskContext, tasks []Task) (TaskContext, er
 			return ctx, err
 		}
 
-		copyCTX := ctx.DeepCopy()
-		copyCTX.Context = cancelCtx
+		copyCtx := ctx.DeepCopy()
+		copyCtx.Context = cancelCtx
 
 		go func(claim TaskClaim) {
-			t, err := next(copyCTX)
+			t, err := next(copyCtx)
 			claim.Release(t, err)
 			results <- result{t, err}
 		}(claim)

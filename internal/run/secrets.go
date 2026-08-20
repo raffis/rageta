@@ -8,23 +8,11 @@ import (
 	"golang.org/x/term"
 )
 
-type SecretBackend string
-
-var (
-	SecretBackendEnv SecretBackend = "env"
-)
-
-func (s SecretBackend) String() string {
-	return string(s)
-}
-
 type SecretsOptions struct {
-	SecretBackend string
-	Secrets       []string
+	Secrets []string
 }
 
 func (s *SecretsOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.SecretBackend, "secret-backend", "", s.SecretBackend, "Secret backend")
 	flags.StringSliceVarP(&s.Secrets, "secret", "", s.Secrets, "Pass secrets to the pipeline. Secrets are loaded from a secret backend and it is ensured secrets on any streams are always masked.")
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 type stepResult struct {
-	stepName string
+	taskName string
 	result   processor.TaskContext
 }
 
@@ -19,11 +19,11 @@ type store struct {
 	mu    sync.Mutex
 }
 
-func (s *store) Add(stepName string, ctx processor.TaskContext) {
+func (s *store) Add(taskName string, ctx processor.TaskContext) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.steps = append(s.steps, stepResult{
-		stepName: stepName,
+		taskName: taskName,
 		result:   ctx,
 	})
 }

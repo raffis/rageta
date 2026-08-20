@@ -21,7 +21,7 @@ func WithSteps(store secrets.Interface, noCache bool) ProcessorBuilder {
 		}
 		return &Steps{
 			steps:    *spec.Steps,
-			stepName: spec.Name,
+			taskName: spec.Name,
 			store:    store,
 			noCache:  noCache,
 		}
@@ -32,11 +32,16 @@ const (
 	defaultShell   = "/bin/ash"
 	contextPath    = "/rageta/context.json"
 	ashHistoryPath = "/rageta/ash_history"
+	// ContextSecretPrefix marks secrets holding a task's serialized context.json rather than a user
+	// secret. These live in the same store as user secrets so buildkit can resolve them by ID, but
+	// must never be echoed back into a task's own SecretVars (see SecretVars.Bootstrap) - otherwise
+	// each task's context.json would embed every prior task's context.json, growing without bound.
+	ContextSecretPrefix = "rageta-context-"
 )
 
 type Steps struct {
 	steps    []v1beta1.Step
-	stepName string
+	taskName string
 	store    secrets.Interface
 	noCache  bool
 }
@@ -57,7 +62,7 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			return ctx, err
 		}
 
-		secretID := fmt.Sprintf("rageta-context-%s", s.stepName)
+		secretID := ContextSecretPrefix + s.taskName
 		s.store.AddSecret(context.Background(), secretID, contextJSON)
 		contextSecretOpt := llb.AddSecret(contextPath, llb.SecretID(secretID))
 
@@ -66,7 +71,7 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			baseRunOpts = append(baseRunOpts, llb.IgnoreCache)
 		}
 
-		ctx.Build.State = bakeShim(ctx.Build.State)
+		var history []string
 
 		for k, step := range s.steps {
 			script := step.Script
@@ -89,15 +94,12 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				llb.Mkfile(scriptPath, 0755, []byte(script)),
 			)
 
-			ctx.Build.State = ctx.Build.State.Run(
-				llb.Shlex(fmt.Sprintf("/bin/ash -c 'echo %s >> %s'", scriptPath, ashHistoryPath)),
-			).Root()
-
 			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
 			ctx.Build.State = ctx.Build.State.File(
-				llb.Mkfile(scriptEntrypointPath, 0755, []byte(fmt.Sprintf("set -xe\n%s\necho $? > %s", scriptPath, exitCodePath))),
+				llb.Mkfile(scriptEntrypointPath, 0755, []byte(fmt.Sprintf("/bin/ash -e -x  %s; echo $? > %s", scriptPath, exitCodePath))),
 			)
 
+			history = append(history, scriptPath)
 			stepRunOpts := append(append([]llb.RunOption{}, baseRunOpts...), llb.Args([]string{
 				shimPath,
 				"-stats",
@@ -112,6 +114,10 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		if err != nil {
 			return ctx, err
 		}
+
+		ctx.Build.State = ctx.Build.State.File(
+			llb.Mkfile(ashHistoryPath, 0755, []byte(strings.Join(history, "\n"))),
+		)
 
 		for k := range s.steps {
 			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)

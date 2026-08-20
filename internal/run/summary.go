@@ -13,11 +13,11 @@ import (
 )
 
 type SummaryOptions struct {
-	SkipSummary bool
+	NoSummary bool
 }
 
 func (s *SummaryOptions) BindFlags(flags flagset.Interface) {
-	flags.BoolVarP(&s.SkipSummary, "skip-summary", "", s.SkipSummary, "Do not print an execution summary at the end of the pipeline execution.")
+	flags.BoolVarP(&s.NoSummary, "no-summary", "", s.NoSummary, "Do not print an execution summary at the end of the pipeline execution.")
 }
 
 func (s SummaryOptions) Build() Task {
@@ -35,7 +35,7 @@ func (s *Summary) Label() string {
 func (s *Summary) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 
-	if s.opts.SkipSummary {
+	if s.opts.NoSummary {
 		return err
 	}
 

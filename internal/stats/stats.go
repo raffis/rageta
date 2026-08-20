@@ -6,6 +6,7 @@ package stats
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -19,8 +20,10 @@ import (
 const (
 	cgroupV2CPUStatPath  = "/sys/fs/cgroup/cpu.stat"
 	cgroupV2MemStatPath  = "/sys/fs/cgroup/memory.current"
+	cgroupV2IOStatPath   = "/sys/fs/cgroup/io.stat"
 	cgroupV1CPUUsagePath = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
 	cgroupV1MemUsagePath = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+	cgroupV1IOStatPath   = "/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes"
 	procNetDevPath       = "/proc/net/dev"
 	loopbackPrefix       = "lo:"
 )
@@ -36,11 +39,13 @@ func NewCollector() *Collector {
 // CPU and network counters against the previous sample so that Current
 // reports deltas rather than cumulative absolutes.
 type Collector struct {
-	initialized  bool
-	prevCPUUsec  uint64
-	prevSampleAt time.Time
-	netRxBase    int64
-	netTxBase    int64
+	initialized   bool
+	prevCPUUsec   uint64
+	prevSampleAt  time.Time
+	netRxBase     int64
+	netTxBase     int64
+	diskReadBase  int64
+	diskWriteBase int64
 }
 
 // Current takes a new sample and returns the resulting Sample. CPU is
@@ -57,29 +62,38 @@ func (c *Collector) Current() (*Sample, error) {
 		return nil, err
 	}
 
+	diskRead, diskWrite, err := readDiskBytes()
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 
 	dp := &Sample{
 		MemBytes: mem,
 	}
 
-	if !c.initialized {
-		c.netRxBase = netRx
-		c.netTxBase = netTx
-		c.initialized = true
-	} else {
+	if c.initialized {
 		elapsed := now.Sub(c.prevSampleAt).Seconds()
-		if elapsed > 0 && usec >= c.prevCPUUsec {
-			deltaUsec := usec - c.prevCPUUsec
-			dp.CPUMillicores = int64(float64(deltaUsec) / 1000 / elapsed)
+		if elapsed > 0 {
+			if usec >= c.prevCPUUsec {
+				deltaUsec := usec - c.prevCPUUsec
+				dp.CPUMillicores = int64(float64(deltaUsec) / 1000 / elapsed)
+			}
+			dp.NetRxBytes = int64(float64(max(netRx-c.netRxBase, 0)) / elapsed)
+			dp.NetTxBytes = int64(float64(max(netTx-c.netTxBase, 0)) / elapsed)
+			dp.DiskReadBytes = int64(float64(max(diskRead-c.diskReadBase, 0)) / elapsed)
+			dp.DiskWriteBytes = int64(float64(max(diskWrite-c.diskWriteBase, 0)) / elapsed)
 		}
 	}
 
-	dp.NetRxBytes = max(netRx-c.netRxBase, 0)
-	dp.NetTxBytes = max(netTx-c.netTxBase, 0)
-
+	c.initialized = true
 	c.prevCPUUsec = usec
 	c.prevSampleAt = now
+	c.netRxBase = netRx
+	c.netTxBase = netTx
+	c.diskReadBase = diskRead
+	c.diskWriteBase = diskWrite
 
 	return dp, nil
 }
@@ -189,6 +203,72 @@ func readNetBytes() (rx, tx int64, err error) {
 	return rx, tx, nil
 }
 
+// readDiskBytes returns cumulative bytes read from and written to block
+// devices, preferring cgroup v2 and falling back to v1. It returns zero
+// values, not an error, when neither cgroup interface is present.
+func readDiskBytes() (read, write int64, err error) {
+	if data, err := os.ReadFile(cgroupV2IOStatPath); err == nil {
+		read, write = parseCgroupV2IOStat(data)
+		return read, write, nil
+	}
+
+	if data, err := os.ReadFile(cgroupV1IOStatPath); err == nil {
+		read, write = parseCgroupV1IOStat(data)
+		return read, write, nil
+	}
+
+	return 0, 0, nil
+}
+
+// parseCgroupV2IOStat sums the rbytes/wbytes fields across every device line
+// of a cgroup v2 io.stat file, e.g. "8:0 rbytes=1234 wbytes=5678 ...".
+func parseCgroupV2IOStat(data []byte) (read, write int64) {
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	for sc.Scan() {
+		fields := strings.FieldsSeq(sc.Text())
+		for field := range fields {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				continue
+			}
+			switch k {
+			case "rbytes":
+				read += n
+			case "wbytes":
+				write += n
+			}
+		}
+	}
+	return read, write
+}
+
+// parseCgroupV1IOStat sums the Read/Write totals across every device line of
+// a cgroup v1 blkio.throttle.io_service_bytes file, e.g. "8:0 Read 1234".
+func parseCgroupV1IOStat(data []byte) (read, write int64) {
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) < 3 {
+			continue
+		}
+		n, err := strconv.ParseInt(fields[2], 10, 64)
+		if err != nil {
+			continue
+		}
+		switch fields[1] {
+		case "Read":
+			read += n
+		case "Write":
+			write += n
+		}
+	}
+	return read, write
+}
+
 // Run  continuously collects and writes samples to w.
 func Run(ctx context.Context, w io.Writer, interval time.Duration) error {
 	c := NewCollector()
@@ -218,35 +298,41 @@ func Run(ctx context.Context, w io.Writer, interval time.Duration) error {
 
 // Sample is a single resource-usage sample.
 type Sample struct {
-	CPUMillicores int64
-	MemBytes      int64
-	NetRxBytes    int64
-	NetTxBytes    int64
+	CPUMillicores  int64
+	MemBytes       int64
+	NetRxBytes     int64
+	NetTxBytes     int64
+	DiskReadBytes  int64
+	DiskWriteBytes int64
 }
 
 // Unmarshal decodes b, as produced by Marshal, into c.
 func (c *Sample) Unmarshal(b []byte) error {
-	if len(b) != 32 {
-		return fmt.Errorf("expected %d bytes, got %d", 32, len(b))
+	if len(b) != 48 {
+		return fmt.Errorf("expected %d bytes, got %d", 48, len(b))
 	}
 
 	c.CPUMillicores = int64(binary.BigEndian.Uint64(b[0:8]))
 	c.MemBytes = int64(binary.BigEndian.Uint64(b[8:16]))
 	c.NetRxBytes = int64(binary.BigEndian.Uint64(b[16:24]))
 	c.NetTxBytes = int64(binary.BigEndian.Uint64(b[24:32]))
+	c.DiskReadBytes = int64(binary.BigEndian.Uint64(b[32:40]))
+	c.DiskWriteBytes = int64(binary.BigEndian.Uint64(b[40:48]))
 
 	return nil
 }
 
-// Marshal encodes c as four fixed-width big-endian uint64 fields, in the
+// Marshal encodes c as six fixed-width big-endian uint64 fields, in the
 // same order as Sample' fields.
 func (c *Sample) Marshal() ([]byte, error) {
-	b := make([]byte, 32)
+	b := make([]byte, 48)
 
 	binary.BigEndian.PutUint64(b[0:8], uint64(c.CPUMillicores))
 	binary.BigEndian.PutUint64(b[8:16], uint64(c.MemBytes))
 	binary.BigEndian.PutUint64(b[16:24], uint64(c.NetRxBytes))
 	binary.BigEndian.PutUint64(b[24:32], uint64(c.NetTxBytes))
+	binary.BigEndian.PutUint64(b[32:40], uint64(c.DiskReadBytes))
+	binary.BigEndian.PutUint64(b[40:48], uint64(c.DiskWriteBytes))
 
 	return b, nil
 }

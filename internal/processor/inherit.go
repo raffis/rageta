@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/raffis/rageta/internal/provider"
@@ -15,8 +16,8 @@ func WithInherit(builder PipelineBuilder, provider provider.Interface) Processor
 		}
 
 		return &Inherit{
-			stepName: spec.Name,
-			step:     *spec.Inherit,
+			taskName: spec.Name,
+			spec:     *spec.Inherit,
 			provider: provider,
 			builder:  builder,
 		}
@@ -26,13 +27,13 @@ func WithInherit(builder PipelineBuilder, provider provider.Interface) Processor
 type Inherit struct {
 	builder  PipelineBuilder
 	provider provider.Interface
-	stepName string
-	step     v1beta1.InheritTask
+	taskName string
+	spec     v1beta1.InheritTask
 }
 
 func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		inherit := s.step.DeepCopy()
+		inherit := s.spec.DeepCopy()
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(),
 			inherit.Inputs,
@@ -45,13 +46,14 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to resolve pipeline: %w", err)
 		}
 
-		inheritCtx := ctx.DeepCopy().WithNamespace(s.stepName)
+		inheritCtx := ctx.DeepCopy().WithNamespace(s.taskName)
+		inheritCtx.Context = context.WithValue(inheritCtx, parentContext{}, ctx.UniqueName())
 		inheritCtx.Labels.Add(Label{
 			Key:   "pipeline",
 			Value: pipe.Name,
 		})
 
-		cmd, err := s.builder.Build(pipe, inherit.Entrypoint, s.mapInputs(inherit.Inputs), inheritCtx)
+		cmd, err := s.builder.Build(pipe, s.spec.Target, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}

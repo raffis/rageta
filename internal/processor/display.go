@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/raffis/rageta/internal/stats"
@@ -18,12 +17,12 @@ type Display interface {
 	WritePullProgress(current, total int64) error
 }
 
-type DisplayFactory func(ctx TaskContext, stepName, short string) Display
+type DisplayFactory func(ctx TaskContext, taskName, short string) Display
 
 func WithDisplay(outputFactory DisplayFactory) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		stdio := &displayBootstraper{
-			stepName:      spec.Name,
+		stdio := &display{
+			taskName:      spec.Name,
 			short:         spec.Short,
 			spec:          spec,
 			outputFactory: outputFactory,
@@ -33,12 +32,11 @@ func WithDisplay(outputFactory DisplayFactory) ProcessorBuilder {
 	}
 }
 
-type displayBootstraper struct {
-	stepName      string
+type display struct {
+	taskName      string
 	short         string
 	spec          *v1beta1.Task
 	outputFactory DisplayFactory
-	decouple      bool
 }
 
 type DisplayContext struct {
@@ -48,32 +46,11 @@ type DisplayContext struct {
 	Events            io.Writer
 	WriteStats        func(sample *stats.Sample) error `json:"-"`
 	WritePullProgress func(current, total int64) error `json:"-"`
-	Grouped           bool
-	// DependsOn holds the unique runtime names (matching TaskContext.UniqueName)
-	// of the tasks this task depends on, resolved from the pipeline's static
-	// dependency graph. Populated in displayBootstraper.Bootstrap for display
-	// factories that want to render the pipeline as a dependency tree.
-	DependsOn []string
 }
 
-func (s *displayBootstraper) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
+func (s *display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		if ctx.Display.Grouped {
-			return next(ctx)
-		}
-
-		deps := pipelineCtx.TaskDependencies(s.stepName)
-		dependsOn := make([]string, 0, len(deps))
-		for _, dep := range deps {
-			uniqueDep := dep
-			if ctx.namespace != "" {
-				uniqueDep = fmt.Sprintf("%s-%s", ctx.namespace, dep)
-			}
-			dependsOn = append(dependsOn, uniqueDep)
-		}
-		ctx.Display.DependsOn = dependsOn
-
-		d := s.outputFactory(ctx, s.stepName, s.short)
+		d := s.outputFactory(ctx, s.taskName, s.short)
 
 		ctx.Display.WriteStats = d.WriteStats
 		ctx.Display.WritePullProgress = d.WritePullProgress

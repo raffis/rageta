@@ -20,6 +20,7 @@ import (
 )
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 type Pipeline struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -28,7 +29,7 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Entrypoint       string      `json:"entrypoint,omitempty"`
+	DefaultTarget    string      `json:"defaultTarget,omitempty"`
 	ShortDescription string      `json:"shortDescription,omitempty"`
 	LongDescription  string      `json:"longDescription,omitempty"`
 	Inputs           InputParams `json:"inputs,omitempty"`
@@ -44,6 +45,7 @@ func (p Pipeline) SetDefaults() {
 }
 
 type TaskOptions struct {
+	Targets      []LocalReference  `json:"targets,omitempty"`
 	Templates    []LocalReference  `json:"templates,omitempty"`
 	When         []Condition       `json:"when,omitempty"`
 	Hide         bool              `json:"expose,omitempty"`
@@ -52,7 +54,7 @@ type TaskOptions struct {
 	AllowFailure bool              `json:"allowFailure,omitempty"`
 	Matrix       *Matrix           `json:"matrix,omitempty"`
 	Outputs      []TaskOutputParam `json:"outputs,omitempty"`
-	DependsOn    []TaskReference   `json:"dependsOn,omitempty"`
+	DependsOn    []TaskDependency  `json:"dependsOn,omitempty"`
 	Retry        *Retry            `json:"retry,omitempty"`
 	Secrets      []SecretVar       `json:"secrets,omitempty"`
 	Envs         []EnvVar          `json:"envs,omitempty"`
@@ -65,24 +67,17 @@ type TaskOptions struct {
 }
 
 // +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=1
-type TaskReference struct {
-	Name        *string           `json:"name,omitempty"`
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+type TaskDependency struct {
+	Name        string `json:"name,omitempty"`
+	AwaitMatrix bool   `json:"awaitMatrix,omitempty"`
 }
 
 // +kubebuilder:validation:MinProperties=1
 // +kubebuilder:validation:MaxProperties=1
 type Source struct {
-	Local   *SourceLocal   `json:"local,omitempty"`
-	Task    *SourceTask    `json:"task,omitempty"`
-	Tasks   *SourceTasks   `json:"tasks,omitempty"`
-	Context *SourceContext `json:"context,omitempty"`
-}
-
-type SourceContext struct {
-	Path string `json:"path,omitempty"`
-	To   string `json:"to,omitempty"`
+	Local *SourceLocal `json:"local,omitempty"`
+	Task  *SourceTask  `json:"task,omitempty"`
+	Tasks *SourceTasks `json:"tasks,omitempty"`
 }
 
 type SourceLocal struct {
@@ -222,9 +217,9 @@ type ServiceTask struct {
 }
 
 type InheritTask struct {
-	Pipeline   string  `json:"pipeline,omitempty"`
-	Entrypoint string  `json:"entrypoint,omitempty"`
-	Inputs     []Param `json:"inputs,omitempty"`
+	Pipeline string  `json:"pipeline,omitempty"`
+	Target   string  `json:"target,omitempty"`
+	Inputs   []Param `json:"inputs,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -40,7 +40,6 @@ type DisplayOptions struct {
 
 func (s *DisplayOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.Display, "display", "o", s.Display, "Display renderer. One of [prefix, ui, buffer[=gotpl], passthrough, discard]. The default `prefix` adds a step name prefix with a distinguished color while `ui` renders the tasks in a terminal ui. `passthrough` dumps all displays directly without any modification.")
-	flags.StringSliceVarP(&s.GroupBy, "group-by", "", s.GroupBy, "Collapse a task's descendants into its own display when the task carries one of these label keys.")
 }
 
 func (s DisplayOptions) Build() Task {
@@ -70,7 +69,6 @@ type Display struct {
 
 type DisplayContext struct {
 	Factory processor.DisplayFactory
-	GroupBy []string
 	Type    string
 	Stdout  io.Writer
 	Stderr  io.Writer
@@ -92,7 +90,6 @@ func (s *Display) Run(rc *RunContext, next Next) error {
 	}
 
 	rc.Display.Factory = displayFactory
-	rc.Display.GroupBy = s.opts.GroupBy
 	rc.Display.Type = s.opts.Display
 
 	err = next(rc)

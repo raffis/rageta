@@ -33,6 +33,7 @@ type TaskContext struct {
 	Workdir         WorkdirContext
 	Service         ServiceContext
 	Stats           StatsContext
+	Parent          ParentContext
 	mu              *sync.Mutex
 }
 
@@ -92,7 +93,6 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Display.Events = c.Display.Events
 	copy.Display.WriteStats = c.Display.WriteStats
 	copy.Display.WritePullProgress = c.Display.WritePullProgress
-	copy.Display.Grouped = c.Display.Grouped
 	copy.Tasks = maps.Clone(c.Tasks)
 	copy.Labels.labels = append(copy.Labels.labels, c.Labels.labels...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
@@ -107,6 +107,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Workdir.Path = c.Workdir.Path
 	copy.Service.NetIP = c.Service.NetIP
 	copy.Style.Style = c.Style.Style
+	copy.Parent.Refs = append(copy.Parent.Refs, c.Parent.Refs...)
 
 	return copy
 }

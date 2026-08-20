@@ -10,9 +10,11 @@ type pipelineTask struct {
 	processors []processor.Bootstraper
 	name       string
 	pipeline   *pipeline
-	dependsOn  []string
+	dependsOn  []dependsOnRef
+	targets    []string
 	labels     map[string]string
 	claims     map[string]processor.TaskClaim
+	pending    map[string]int
 	mu         sync.Mutex
 }
 
@@ -48,6 +50,29 @@ func (p *pipelineTask) Claim(ctx processor.TaskContext) (processor.TaskClaim, bo
 	p.claims[key] = claim
 
 	return claim, true
+}
+
+// Ready decrements the number of unmet dependencies of this task for the
+// given run and reports whether that was the last one, i.e. whether all of
+// this task's dependencies have now completed and it may be launched.
+func (p *pipelineTask) Ready(ctx processor.TaskContext) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.pending == nil {
+		p.pending = make(map[string]int)
+	}
+
+	key := ctx.Namespace()
+	remaining, ok := p.pending[key]
+	if !ok {
+		remaining = len(p.dependsOn)
+	}
+
+	remaining--
+	p.pending[key] = remaining
+
+	return remaining <= 0
 }
 
 type taskClaim struct {

@@ -47,7 +47,7 @@ func (r *table) Finalize() error {
 
 		rows = append(rows, []string{
 			fmt.Sprintf("%d", i),
-			step.stepName,
+			step.taskName,
 			status,
 			duration,
 			strings.Join(tags, " "),

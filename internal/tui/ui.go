@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -42,7 +43,7 @@ const (
 	KeyEnter      = "enter"
 	KeyQuit       = "ctrl+c"
 	KeyQ          = "q"
-	KeyDebugShell = "s"
+	KeyDebugShell = "i"
 	KeyShowAll    = "a"
 )
 
@@ -58,7 +59,7 @@ func (uiKeyMap) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys(KeyFilter), key.WithHelp(KeyFilter, "filter")),
 		key.NewBinding(key.WithKeys(KeyTab), key.WithHelp("⇅", "switch panel")),
 		key.NewBinding(key.WithKeys(KeyShowAll), key.WithHelp(KeyShowAll, "show/hide all")),
-		key.NewBinding(key.WithKeys(KeyDebugShell), key.WithHelp(KeyDebugShell, "shell")),
+		key.NewBinding(key.WithKeys(KeyDebugShell), key.WithHelp(KeyDebugShell, "interactive")),
 		key.NewBinding(key.WithKeys(KeyQ), key.WithHelp(KeyQ, "quit")),
 	}
 }
@@ -88,7 +89,6 @@ type UI struct {
 	height       int
 	mu           *sync.Mutex
 	logger       logr.Logger
-	exitErr      error
 	activePanel  Panel
 	lastSelected list.Item
 	debugShell   DebugShellFactory
@@ -121,6 +121,27 @@ type PipelineDoneMsg struct {
 	Error  error
 }
 
+// compactDelegate wraps list.DefaultDelegate to drop the blank description
+// row bubbles' DefaultDelegate otherwise always reserves (it renders
+// "title\ndesc" even when desc is empty), which shows up as a gap line
+// between every task. The description row is only ever used to display the
+// image-pull progress bar (see TaskMsg.Description), so it's included only
+// when that's actually non-empty.
+type compactDelegate struct {
+	list.DefaultDelegate
+}
+
+func (d compactDelegate) Height() int {
+	return 1
+}
+
+func (d compactDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	if di, ok := item.(list.DefaultItem); !ok || di.Description() == "" {
+		d.ShowDescription = false
+	}
+	d.DefaultDelegate.Render(w, m, index, item)
+}
+
 func NewUI(logger logr.Logger) UI {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
@@ -136,7 +157,7 @@ func NewUI(logger logr.Logger) UI {
 
 	ui := UI{
 		status:      TaskStatusWaiting,
-		list:        list.New(nil, delegate, 0, 0),
+		list:        list.New(nil, compactDelegate{delegate}, 0, 0),
 		help:        help.New(),
 		mu:          &sync.Mutex{},
 		activePanel: PanelList,
@@ -193,7 +214,7 @@ func (m *UI) sortList() {
 }
 
 // treeOrder returns m.tasks reordered so that every task appears after all
-// of its resolved dependencies (DependsOn entries that match another task
+// of its resolved dependencies (Parents entries that match another task
 // currently in the list), with a task's dependents grouped as a contiguous
 // run immediately following it (depth-first), rather than levelled
 // breadth-first. Tasks with no resolved dependency are treated as roots.
@@ -221,7 +242,7 @@ func (m *UI) treeOrder() []TaskMsg {
 	children := make(map[string][]string, len(m.tasks))
 	hasResolvedDep := make(map[string]bool, len(m.tasks))
 	for _, t := range m.tasks {
-		for _, dep := range t.DependsOn {
+		for _, dep := range t.Parents {
 			if _, ok := byName[dep]; ok {
 				children[dep] = append(children[dep], t.Name)
 				hasResolvedDep[t.Name] = true
@@ -257,7 +278,7 @@ func (m *UI) treeOrder() []TaskMsg {
 			}
 
 			ready := true
-			for _, dep := range byName[child].DependsOn {
+			for _, dep := range byName[child].Parents {
 				if _, ok := byName[dep]; ok && !placed[dep] {
 					ready = false
 					break
@@ -316,7 +337,7 @@ func buildTreeGuides(tasks []TaskMsg) map[string]treeGuide {
 	for _, t := range tasks {
 		parent := ""
 		parentIdx := -1
-		for _, dep := range t.DependsOn {
+		for _, dep := range t.Parents {
 			if idx, ok := index[dep]; ok && idx > parentIdx {
 				parentIdx = idx
 				parent = dep
@@ -546,12 +567,11 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handlePipelineDone handles pipeline completion
 func (m *UI) handlePipelineDone(msg PipelineDoneMsg) []tea.Cmd {
-	if m.status == TaskStatusWaiting && msg.Error == nil {
+	if m.status == TaskStatusWaiting {
 		return []tea.Cmd{tea.Quit}
 	}
 
 	m.status = msg.Status
-	m.exitErr = msg.Error
 
 	if msg.Status == TaskStatusFailed {
 		for i, t := range m.tasks {
@@ -662,20 +682,32 @@ func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 	return cmd
 }
 
-// handleKeyMessage handles keyboard input
+// handleKeyMessage handles keyboard input. Single-letter shortcuts (as
+// opposed to ctrl+c, which always quits) are suppressed while the list
+// filter is actively capturing keystrokes, so typing e.g. "queue" or
+// "database" into the filter box doesn't quit the app or toggle show-all
+// instead of inserting the letter.
 func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	filtering := m.list.FilterState() == list.Filtering
+
 	switch msg.String() {
-	case KeyQuit, KeyQ:
+	case KeyQuit:
 		return m, tea.Quit
+	case KeyQ:
+		if !filtering {
+			return m, tea.Quit
+		}
 	case KeyTab:
 		m.toggleActivePanel()
 		return m, nil
 	case KeyShowAll:
-		m.showAll = !m.showAll
-		m.refreshList()
-		return m, nil
+		if !filtering {
+			m.showAll = !m.showAll
+			m.refreshList()
+			return m, nil
+		}
 	case KeyDebugShell:
-		if m.list.FilterState() == 0 {
+		if !filtering {
 			if cmd := m.openDebugShell(); cmd != nil {
 				return m, cmd
 			}
@@ -988,6 +1020,7 @@ func (m UI) renderListHeader() string {
 	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
 	memWidth := int(float64(listWidth) * MemColumnPercent / 100)
 	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
+	diskWidth := int(float64(listWidth) * DiskColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
 	headerStyle := listHeaderStyle
@@ -998,12 +1031,13 @@ func (m UI) renderListHeader() string {
 		headerStyle = headerStyle.Border(lipgloss.NormalBorder(), true, true, false, true).MaxHeight(2)
 	}
 
-	return headerStyle.Width(m.list.Width()).Render(fmt.Sprintf("  %s %s %s %s %s %s",
+	return headerStyle.Width(m.list.Width()).Render(fmt.Sprintf("  %s %s %s %s %s %s %s",
 		listColumnStyle.Width(nameWidth).Render(ellipsis("TASK", nameWidth)),
 		listColumnStyle.Width(labelsWidth).Render("LABELS"),
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render("CPU"),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render("MEM"),
 		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render("NET"),
+		listColumnStyle.Width(diskWidth).Align(lipgloss.Right).Render("DISK"),
 		listColumnStyle.Width(durationWidth).Align(lipgloss.Right).Render("DUR"),
 	))
 }

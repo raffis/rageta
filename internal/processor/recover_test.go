@@ -36,7 +36,7 @@ func TestRecoverBuilder(t *testing.T) {
 			recover, ok := bootstraper.(*Recover)
 			assert.True(t, ok)
 			if tt.spec != nil {
-				assert.Equal(t, tt.spec.Name, recover.stepName)
+				assert.Equal(t, tt.spec.Name, recover.taskName)
 			}
 		})
 	}
@@ -45,42 +45,42 @@ func TestRecoverBuilder(t *testing.T) {
 func TestRecoverBootstrap(t *testing.T) {
 	tests := []struct {
 		name        string
-		stepName    string
+		taskName    string
 		nextError   error
 		shouldPanic bool
 		expectError bool
 	}{
 		{
 			name:        "no error from next function",
-			stepName:    "test-step",
+			taskName:    "test-step",
 			nextError:   nil,
 			shouldPanic: false,
 			expectError: false,
 		},
 		{
 			name:        "error from next function",
-			stepName:    "test-step",
+			taskName:    "test-step",
 			nextError:   errors.New("test error"),
 			shouldPanic: false,
 			expectError: true,
 		},
 		{
 			name:        "panic in next function",
-			stepName:    "test-step",
+			taskName:    "test-step",
 			nextError:   nil,
 			shouldPanic: true,
 			expectError: true,
 		},
 		{
 			name:        "panic with error in next function",
-			stepName:    "test-step",
+			taskName:    "test-step",
 			nextError:   errors.New("test error"),
 			shouldPanic: true,
 			expectError: true,
 		},
 		{
 			name:        "panic with empty step name",
-			stepName:    "",
+			taskName:    "",
 			nextError:   nil,
 			shouldPanic: true,
 			expectError: true,
@@ -89,7 +89,7 @@ func TestRecoverBootstrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			recover := &Recover{stepName: tt.stepName}
+			recover := &Recover{taskName: tt.taskName}
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
@@ -114,7 +114,7 @@ func TestRecoverBootstrap(t *testing.T) {
 				assert.Error(t, resultErr)
 				if tt.shouldPanic {
 					assert.Contains(t, resultErr.Error(), "panic in step")
-					assert.Contains(t, resultErr.Error(), tt.stepName)
+					assert.Contains(t, resultErr.Error(), tt.taskName)
 					assert.Contains(t, resultErr.Error(), "test panic")
 				} else {
 					assert.Equal(t, tt.nextError, resultErr)
@@ -128,7 +128,7 @@ func TestRecoverBootstrap(t *testing.T) {
 }
 
 func TestRecoverPanicRecovery(t *testing.T) {
-	recover := &Recover{stepName: "panic-step"}
+	recover := &Recover{taskName: "panic-step"}
 	pipeline := &mockPipeline{}
 	nextCalled := false
 
@@ -154,7 +154,7 @@ func TestRecoverPanicRecovery(t *testing.T) {
 }
 
 func TestRecoverContextPreservation(t *testing.T) {
-	recover := &Recover{stepName: "context-step"}
+	recover := &Recover{taskName: "context-step"}
 	pipeline := &mockPipeline{}
 	nextCalled := false
 

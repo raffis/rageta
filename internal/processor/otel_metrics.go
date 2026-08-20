@@ -21,14 +21,14 @@ func WithOtelMetrics(meter metric.Meter) ProcessorBuilder {
 		}
 
 		return &OtelMetrics{
-			stepName: spec.Name,
+			taskName: spec.Name,
 			meter:    meter,
 		}
 	}
 }
 
 type OtelMetrics struct {
-	stepName string
+	taskName string
 	meter    metric.Meter
 }
 
@@ -46,7 +46,7 @@ func (s *OtelMetrics) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		duration := time.Since(start).Seconds()
 
 		attrs := []attribute.KeyValue{
-			attribute.String("step", s.stepName),
+			attribute.String("step", s.taskName),
 			attribute.String("result", ErrorResult(err)),
 		}
 		for _, tag := range ctx.Labels.Labels() {

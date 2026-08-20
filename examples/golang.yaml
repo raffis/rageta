@@ -9,7 +9,7 @@ inputs:
   description: Image name used for docker-build/build
   default: ghcr.io/rageta/rageta
 
-#entrypoint: all
+defaultTarget: build
 
 templates:
 - name: golang
@@ -35,15 +35,9 @@ templates:
   workingDir: /workspace
 
 tasks:
-- name: all
-  dependsOn:
-  - name: lint
-  - name: test
-  - name: build
-  - name: generate
-  - name: docker-build
-
 - name: tidy
+  targets:
+  - name: build
   templates:
   - name: golang
   artifacts:
@@ -57,6 +51,8 @@ tasks:
   - script: go mod tidy -compat=1.20
 
 - name: fmt
+  targets:
+  - name: build
   templates:
   - name: golang
   artifacts:
@@ -67,12 +63,18 @@ tasks:
     - script: go fmt ./...
 
 - name: vet
+  targets:
+  - name: build
+  - name: lint
   templates:
   - name: golang
   steps:
   - script: go vet ./...
 
 - name: golangci-lint
+  targets:
+  - name: build
+  - name: lint
   image: golangci/golangci-lint:v2.12.2
   sources:
   - local:
@@ -82,12 +84,9 @@ tasks:
   steps:
   - script: golangci-lint run --timeout=3m
 
-- name: lint
-  dependsOn:
-  - name: vet
-  - name: golangci-lint
-
 - name: test
+  targets:
+  - name: build
   templates:
   - name: golang
   artifacts:
@@ -98,27 +97,9 @@ tasks:
   - script: export
   - script: go test -coverprofile coverage.out -v ./...
 
-- name: generate
-  templates:
-  - name: golang
-  artifacts:
-  - local:
-      path: ./crds/*
-      to: crds
-  steps:
-  - script: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
-  - script: controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=crds
-  - script: controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
-    
-- name: code-gen
-  artifacts:
-  - local:
-      path: ./*
-      to: .
-  steps:
-  - script: ./hack/code-gen.sh
-
 - name: build
+  targets:
+  - name: build
   templates:
   - name: golang
   artifacts:
@@ -132,6 +113,8 @@ tasks:
   - script: go build -C cmd/cli/ -o ../../rageta
 
 - name: docker-build
+  targets:
+  - name: build
   dependsOn:
   - name: build
   templates:

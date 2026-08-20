@@ -11,6 +11,7 @@ import (
 
 	"maps"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -25,7 +26,7 @@ func WithMatrix() ProcessorBuilder {
 			matrix:   spec.Matrix.Params,
 			include:  spec.Matrix.Include,
 			failFast: spec.Matrix.FailFast,
-			stepName: spec.Name,
+			taskName: spec.Name,
 			pool:     make(chan struct{}, spec.Matrix.MaxConcurrent),
 		}
 	}
@@ -35,7 +36,7 @@ type Matrix struct {
 	matrix   []v1beta1.Param
 	include  []v1beta1.IncludeParam
 	failFast bool
-	stepName string
+	taskName string
 	pool     chan struct{}
 }
 
@@ -89,7 +90,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		//If a matrix combination needs to be processed the step needs to start from beginning in order to through all step
 		//processors
-		next, err := pipeline.Entrypoint(s.stepName)
+		next, err := pipeline.Entrypoint(s.taskName)
 		if err != nil {
 			return ctx, err
 		}
@@ -117,9 +118,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			b := hasher.Sum(nil)
 
 			copyCtx := ctx.DeepCopy().WithNamespace(fmt.Sprintf("%x", b)[:6])
-			copyCtx.Context = cancelCtx
+			copyCtx.Context = context.WithValue(cancelCtx, parentContext{}, ctx.UniqueName())
 			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
 			copyCtx.Matrix.Params = matrix
+			copyCtx.Build.State = llb.Scratch()
 
 			go func() {
 				if cap(s.pool) > 0 {
@@ -188,7 +190,24 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, errors.Join(errs...)
 		}
 
-		return ctx, nil
+		var children []Task
+		for _, task := range pipeline.AwaitMatrixChildren(s.taskName) {
+			if _, started := ctx.Tasks[task.Name()]; started {
+				continue
+			}
+
+			// Only launch the child once all of its dependencies have
+			// completed, not just this one.
+			if !task.Ready(ctx) {
+				continue
+			}
+
+			mergeDependencyResults(pipeline, ctx, task.Name())
+
+			children = append(children, task)
+		}
+
+		return launchTasks(ctx, children)
 	}, nil
 }
 

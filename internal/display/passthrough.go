@@ -11,7 +11,7 @@ import (
 )
 
 func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
-	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
+	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
 		d := &passthroughDisplay{
 			stdout: xio.NewLineWriter(stdout),
 		}

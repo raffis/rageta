@@ -15,11 +15,10 @@ type Executable func() (TaskContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
 	Task(name string) (Task, error)
-	TasksByLabels(labels map[string]string) []Task
-	DependantTasks(name string) []Task
 	TaskDependencies(name string) []string
+	ChildTasks(name string) []Task
+	AwaitMatrixChildren(name string) []Task
 	Entrypoint(name string) (Next, error)
-	EntrypointName() (string, error)
 	Name() string
 	ID() string
 }
@@ -32,6 +31,7 @@ type Bootstraper interface {
 
 type Task interface {
 	Claim(TaskContext) (TaskClaim, bool)
+	Ready(TaskContext) bool
 	Processors() []Bootstraper
 	Entrypoint() (Next, error)
 	Name() string

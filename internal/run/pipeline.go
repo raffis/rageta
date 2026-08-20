@@ -44,6 +44,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithImage(rc.Buildkit.GatewayClient),
 			processor.WithWorkdir(),
 			processor.WithStyle(),
+			processor.WithParent(),
 			processor.WithDisplay(rc.Display.Factory),
 			processor.WithStats(),
 			processor.WithMatrix(),
@@ -63,9 +64,9 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithServiceBinding(),
 			processor.WithService(rc.Buildkit.GatewayClient, rc.Teardown.Teardown),
 			processor.WithVolumes(),
+			processor.WithBusybox(),
 			processor.WithSteps(rc.Secrets.Store, rc.Buildkit.NoCache),
 			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.VertexRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),
-			processor.WithGroup(rc.Display.GroupBy),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
 		)
 

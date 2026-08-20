@@ -14,7 +14,7 @@ import (
 )
 
 func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
-	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
+	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
 		prefix := fmt.Appendf(nil, "%s ", ctx.Style.Style.Render(ctx.UniqueName()))
 		d := &prefixDisplay{
 			stdout:         xio.NewLineWriter(xio.NewPrefixWriter(stdout, prefix)),
@@ -108,7 +108,7 @@ func (d *prefixDisplay) Close(ctx processor.TaskContext, err error) error {
 }
 
 func (d *prefixDisplay) WriteStats(sample *stats.Sample) error {
-	fmt.Fprintf(d.events, "STATS: cpu=%dm mem=%s net_rx=%s net_tx=%s\n", sample.CPUMillicores, utils.FormatBytes(sample.MemBytes), utils.FormatBps(sample.NetRxBytes), utils.FormatBps(sample.NetTxBytes))
+	fmt.Fprintf(d.events, "STATS: cpu=%dm mem=%s net_rx=%s net_tx=%s disk_read=%s disk_write=%s\n", sample.CPUMillicores, utils.FormatBytes(sample.MemBytes), utils.FormatBps(sample.NetRxBytes), utils.FormatBps(sample.NetTxBytes), utils.FormatBps(sample.DiskReadBytes), utils.FormatBps(sample.DiskWriteBytes))
 	return nil
 }
 

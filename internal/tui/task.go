@@ -29,9 +29,10 @@ const (
 const (
 	NameColumnPercent     = 35
 	LabelsColumnPercent   = 10
-	CPUColumnPercent      = 10
-	MemColumnPercent      = 10
-	NetColumnPercent      = 20
+	CPUColumnPercent      = 5
+	MemColumnPercent      = 5
+	NetColumnPercent      = 15
+	DiskColumnPercent     = 15
 	DurationColumnPercent = 10
 )
 
@@ -67,16 +68,13 @@ type TaskMsg struct {
 	Stats             *stats.Sample
 	Pull              PullProgress
 	Context           processor.TaskContext
-	// DependsOn holds the unique names of the tasks this task depends on,
-	// used to render the task list as a dependency tree (see treeOrder and
-	// buildTreeGuides in ui.go).
-	DependsOn      []string
-	ready          bool
-	started        time.Time
-	finished       time.Time
-	listWidth      int
-	listHeight     int
-	shellHintShown bool
+	Parents           []string
+	ready             bool
+	started           time.Time
+	finished          time.Time
+	listWidth         int
+	listHeight        int
+	shellHintShown    bool
 	// treePrefix is the tree branch/indentation string rendered before the
 	// task name, computed by buildTreeGuides in refreshList and cached here
 	// so per-task patch updates (stats, pull progress, ticks) don't need to
@@ -217,18 +215,20 @@ func (t TaskMsg) Title() string {
 	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
 	memWidth := int(float64(listWidth) * MemColumnPercent / 100)
 	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
+	diskWidth := int(float64(listWidth) * DiskColumnPercent / 100)
 	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
 
 	prefixWidth := lipgloss.Width(t.treePrefix)
 	name := t.treePrefix + ellipsis(t.DisplayName, max(nameWidth-prefixWidth, EllipsisLength))
 
-	return fmt.Sprintf("%s %s %s %s %s %s %s",
+	return fmt.Sprintf("%s %s %s %s %s %s %s %s",
 		status,
 		listColumnStyle.Width(nameWidth).Render(name),
 		listColumnStyle.Width(tagsWidth).Render(t.shortLabels()),
 		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
 		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
 		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render(t.netString()),
+		listColumnStyle.Width(diskWidth).Align(lipgloss.Right).Render(t.diskString()),
 		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration().Round(10*time.Millisecond).String()),
 	)
 }
@@ -252,6 +252,13 @@ func (t *TaskMsg) netString() string {
 		return "—"
 	}
 	return fmt.Sprintf("⇩ %s ⇧ %s", utils.FormatBps(t.Stats.NetRxBytes), utils.FormatBps(t.Stats.NetTxBytes))
+}
+
+func (t *TaskMsg) diskString() string {
+	if t.Stats == nil || t.Stats.DiskReadBytes == 0 && t.Stats.DiskWriteBytes == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("R %s W %s", utils.FormatBps(t.Stats.DiskReadBytes), utils.FormatBps(t.Stats.DiskWriteBytes))
 }
 
 // Description returns the description line rendered below the task's title,

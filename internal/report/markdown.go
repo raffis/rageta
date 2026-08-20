@@ -39,7 +39,7 @@ func (r *markdown) Finalize() error {
 		errMsg, status, duration := r.stringify(step.result)
 		fmt.Fprintf(r.w, "| %d | %s | %s | %s | %s | %s |\n",
 			i,
-			step.stepName,
+			step.taskName,
 			status,
 			duration,
 			strings.Join(tags, " "),

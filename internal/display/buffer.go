@@ -14,14 +14,14 @@ import (
 func Buffer(tmpl *template.Template, dev io.Writer) processor.DisplayFactory {
 	mu := sync.RWMutex{}
 
-	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
+	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
 		return &bufferDisplay{
 			buf:   &bytes.Buffer{},
 			mu:    &mu,
 			tmpl:  tmpl,
 			dev:   dev,
 			ctx:   ctx,
-			name:  stepName,
+			name:  taskName,
 			short: short,
 		}
 	}

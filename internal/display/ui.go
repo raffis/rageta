@@ -14,8 +14,8 @@ import (
 )
 
 func UI(sender sender) processor.DisplayFactory {
-	return func(ctx processor.TaskContext, stepName, short string) processor.Display {
-		displayName := stepName
+	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
+		displayName := taskName
 		if short != "" {
 			displayName = short
 		}
@@ -25,7 +25,7 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Name = uniqueName
 		step.DisplayName = displayName
 		step.Labels = ctx.Labels.Labels()
-		step.DependsOn = ctx.Display.DependsOn
+		step.Parents = ctx.Parent.Refs
 		step.Status = tui.TaskStatusWaiting
 		sender.Send(step)
 		events := xio.NewCallbackOnceWriter(

@@ -38,19 +38,26 @@ func (s *Stats) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 
 			last.CPUMillicores += sample.CPUMillicores
-			last.MemBytes += last.MemBytes
+			last.MemBytes += sample.MemBytes
+			last.NetRxBytes += sample.NetRxBytes
+			last.NetTxBytes += sample.NetTxBytes
+			last.DiskReadBytes += sample.DiskReadBytes
+			last.DiskWriteBytes += sample.DiskWriteBytes
 			count++
 
 			if count == 3 {
 				rateSample := stats.Sample{
-					CPUMillicores: last.CPUMillicores / 3,
-					MemBytes:      last.MemBytes / 3,
-					NetRxBytes:    max(sample.NetRxBytes-last.NetRxBytes, 0) / 3,
-					NetTxBytes:    max(sample.NetTxBytes-last.NetTxBytes, 0) / 3,
+					CPUMillicores:  last.CPUMillicores / 3,
+					MemBytes:       last.MemBytes / 3,
+					NetRxBytes:     last.NetRxBytes / 3,
+					NetTxBytes:     last.NetTxBytes / 3,
+					DiskReadBytes:  last.DiskReadBytes / 3,
+					DiskWriteBytes: last.DiskWriteBytes / 3,
 				}
 
 				ctx.Display.WriteStats(&rateSample)
 				last = stats.Sample{}
+				count = 0
 			}
 
 			return len(payload), nil

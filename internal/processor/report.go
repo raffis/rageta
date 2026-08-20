@@ -15,21 +15,21 @@ func WithReport(report Reporter) ProcessorBuilder {
 		}
 
 		return &Report{
-			stepName: spec.Name,
+			taskName: spec.Name,
 			report:   report,
 		}
 	}
 }
 
 type Report struct {
-	stepName string
+	taskName string
 	report   Reporter
 }
 
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		ctx, err := next(ctx)
-		if reportErr := s.report.Report(ctx, s.stepName); reportErr != nil {
+		if reportErr := s.report.Report(ctx, s.taskName); reportErr != nil {
 			if err == nil {
 				err = reportErr
 			}

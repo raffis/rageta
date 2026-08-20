@@ -111,9 +111,9 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
-		name:       command.Name,
-		id:         utils.RandString(5),
-		entrypoint: command.Entrypoint,
+		name:          command.Name,
+		id:            utils.RandString(5),
+		defaultTarget: command.DefaultTarget,
 	}
 
 	steps, err := resolveTemplates(command.Tasks, command.Templates)
@@ -124,21 +124,17 @@ func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	for _, spec := range steps {
 		processors := e.stepBuilder(spec)
 
-		var refs []string
+		var refs []dependsOnRef
 		for _, ref := range spec.DependsOn {
-			if ref.Name != nil {
-				refs = append(refs, *ref.Name)
-			} else if ref.MatchLabels != nil {
-				for _, s := range steps {
-					if matchLabels(specLabels(s), ref.MatchLabels) {
-						refs = append(refs, s.Name)
-					}
-				}
-			}
+			refs = append(refs, dependsOnRef{name: ref.Name, awaitMatrix: ref.AwaitMatrix})
 		}
 
-		labels := specLabels(spec)
-		if err := p.withTask(spec.Name, refs, labels, processors); err != nil {
+		var targets []string
+		for _, target := range spec.Targets {
+			targets = append(targets, target.Name)
+		}
+
+		if err := p.withTask(spec.Name, refs, targets, processors); err != nil {
 			return p, err
 		}
 	}

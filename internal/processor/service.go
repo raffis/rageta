@@ -26,7 +26,6 @@ func WithService(gwClient gwclient.Client, teardown chan Teardown) ProcessorBuil
 		}
 
 		return &Service{
-			stepName: spec.Name,
 			command:  spec.Service.Command,
 			args:     spec.Service.Args,
 			gwClient: gwClient,
@@ -36,7 +35,6 @@ func WithService(gwClient gwclient.Client, teardown chan Teardown) ProcessorBuil
 }
 
 type Service struct {
-	stepName string
 	command  []string
 	args     []string
 	gwClient gwclient.Client
@@ -148,7 +146,7 @@ func (s *Service) start(ctx TaskContext, command, args []string) (TaskContext, e
 
 		ctx.Service.NetIP = netIP
 	case <-time.After(5 * time.Second):
-		return ctx, fmt.Errorf("timed out waiting for service %s to report its IP", s.stepName)
+		return ctx, errors.New("timed out waiting for service to report its IP")
 	case <-ctx.Done():
 		return ctx, ctx.Err()
 	}

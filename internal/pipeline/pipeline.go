@@ -1,19 +1,19 @@
 package pipeline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 type pipeline struct {
-	name       string
-	id         string
-	entrypoint string
-	tasks      []*pipelineTask
+	name          string
+	id            string
+	defaultTarget string
+	tasks         []*pipelineTask
 }
 
 func (p *pipeline) Name() string {
@@ -34,39 +34,36 @@ func (p *pipeline) Task(name string) (processor.Task, error) {
 	return nil, fmt.Errorf("no such task: %s", name)
 }
 
-func (p *pipeline) TasksByLabels(labels map[string]string) []processor.Task {
-	var tasks []processor.Task
+// dependsOnRef records one dependsOn edge together with the modifiers that
+// were declared on it, e.g. whether it should await a matrix in full instead
+// of running once per matrix combination.
+type dependsOnRef struct {
+	name        string
+	awaitMatrix bool
+}
+
+func (p *pipeline) TaskDependencies(name string) []string {
 	for _, task := range p.tasks {
-		if matchLabels(task.labels, labels) {
-			tasks = append(tasks, task)
+		if task.name == name {
+			names := make([]string, 0, len(task.dependsOn))
+			for _, ref := range task.dependsOn {
+				names = append(names, ref.name)
+			}
+			return names
 		}
 	}
-	return tasks
+	return nil
 }
 
-func specLabels(spec v1beta1.Task) map[string]string {
-	labels := make(map[string]string, len(spec.Labels))
-	for _, l := range spec.Labels {
-		labels[l.Name] = l.Value
-	}
-	return labels
-}
-
-func matchLabels(taskLabels map[string]string, selector map[string]string) bool {
-	for k, v := range selector {
-		if taskLabels[k] != v {
-			return false
-		}
-	}
-	return true
-}
-
-func (p *pipeline) DependantTasks(name string) []processor.Task {
+// ChildTasks returns tasks that depend on name and should be launched once
+// per matrix combination of name (the default dependsOn behavior).
+func (p *pipeline) ChildTasks(name string) []processor.Task {
 	var tasks []processor.Task
 	for _, task := range p.tasks {
 		for _, ref := range task.dependsOn {
-			if name == ref {
+			if ref.name == name && !ref.awaitMatrix {
 				tasks = append(tasks, task)
+				break
 			}
 		}
 	}
@@ -74,16 +71,24 @@ func (p *pipeline) DependantTasks(name string) []processor.Task {
 	return tasks
 }
 
-func (p *pipeline) TaskDependencies(name string) []string {
+// AwaitMatrixChildren returns tasks that depend on name with awaitMatrix set,
+// i.e. tasks that should be launched exactly once after every matrix
+// combination of name has finished.
+func (p *pipeline) AwaitMatrixChildren(name string) []processor.Task {
+	var tasks []processor.Task
 	for _, task := range p.tasks {
-		if task.name == name {
-			return task.dependsOn
+		for _, ref := range task.dependsOn {
+			if ref.name == name && ref.awaitMatrix {
+				tasks = append(tasks, task)
+				break
+			}
 		}
 	}
-	return nil
+
+	return tasks
 }
 
-func (p *pipeline) withTask(name string, dependsOn []string, labels map[string]string, processors []processor.Bootstraper) error {
+func (p *pipeline) withTask(name string, dependsOn []dependsOnRef, targets []string, processors []processor.Bootstraper) error {
 	if slices.ContainsFunc(p.tasks, func(s *pipelineTask) bool {
 		return s.name == name
 	}) {
@@ -95,37 +100,101 @@ func (p *pipeline) withTask(name string, dependsOn []string, labels map[string]s
 		processors: processors,
 		pipeline:   p,
 		dependsOn:  dependsOn,
-		labels:     labels,
+		targets:    targets,
 	})
 
 	return nil
 }
 
-func (p *pipeline) EntrypointName() (string, error) {
-	if p.entrypoint == "" {
-		if len(p.tasks) == 0 {
-			return "", errors.New("no tasks defined")
-		}
-
-		return p.tasks[0].name, nil
-	}
-
-	return p.entrypoint, nil
-}
-
 func (p *pipeline) Entrypoint(name string) (processor.Next, error) {
-	if name == "" {
-		name = p.entrypoint
+	var tasks []*pipelineTask
+
+	if name == "" && p.defaultTarget == "" {
+		for _, task := range p.tasks {
+			if len(task.dependsOn) == 0 {
+				tasks = append(tasks, task)
+
+			}
+		}
 	}
 
-	if name != "" {
-		task, err := p.Task(name)
-		if err != nil {
-			return nil, fmt.Errorf("entrypoint not found: %w", err)
+	if name == "" {
+		name = p.defaultTarget
+	}
+
+	for _, task := range p.tasks {
+		if slices.Contains(task.targets, name) || task.name == name {
+			tasks = append(tasks, task)
+		}
+	}
+
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("no target found")
+	}
+
+	return func(ctx processor.TaskContext) (processor.TaskContext, error) {
+		results := make(chan error)
+		var errs []error
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		var launched int
+		for _, task := range tasks {
+			claim, owner := task.Claim(ctx)
+			launched++
+
+			if !owner {
+				go func(claim processor.TaskClaim) {
+					_, err := claim.Wait()
+					results <- err
+				}(claim)
+				continue
+			}
+
+			next, err := task.Entrypoint()
+			if err != nil {
+				claim.Release(ctx.DeepCopy(), err)
+				return ctx, err
+			}
+
+			copyCTX := ctx.DeepCopy()
+			copyCTX.Context = cancelCtx
+
+			go func(claim processor.TaskClaim) {
+				t, err := next(copyCTX)
+				claim.Release(t, err)
+				results <- err
+			}(claim)
 		}
 
-		return task.Entrypoint()
-	}
+		if launched == 0 {
+			return ctx, nil
+		}
 
-	return processor.Chain(p, p.tasks[0].processors...)
+		var done int
+	WAIT:
+		for res := range results {
+			done++
+
+			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
+			case res != nil && processor.AbortOnError(res):
+				errs = append(errs, res)
+			default:
+			}
+
+			if done == launched {
+				break WAIT
+			}
+		}
+
+		if len(errs) > 0 {
+			return ctx, errors.Join(errs...)
+		}
+
+		return ctx, nil
+
+	}, nil
+
 }

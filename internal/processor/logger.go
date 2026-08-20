@@ -16,7 +16,7 @@ func WithLogger(defaultLogger logr.Logger, logBuilder LogBuilder, detached bool)
 		}
 
 		return &Logger{
-			stepName:   spec.Name,
+			taskName:   spec.Name,
 			logger:     defaultLogger,
 			logBuilder: logBuilder,
 			detached:   detached,
@@ -25,7 +25,7 @@ func WithLogger(defaultLogger logr.Logger, logBuilder LogBuilder, detached bool)
 }
 
 type Logger struct {
-	stepName   string
+	taskName   string
 	logBuilder LogBuilder
 	logger     logr.Logger
 	detached   bool
@@ -47,7 +47,7 @@ func (s *Logger) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
-		logger = logger.WithValues("step", s.stepName)
+		logger = logger.WithValues("step", s.taskName)
 		ctx.Context = logr.NewContext(ctx, logger)
 		logger.V(2).Info("step context input", "context", ctx)
 		ctx, err := next(ctx)

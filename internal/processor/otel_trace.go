@@ -14,7 +14,7 @@ func WithOtelTrace(logger logr.Logger, tracer trace.Tracer) ProcessorBuilder {
 		}
 
 		return &OtelTrace{
-			stepName: spec.Name,
+			taskName: spec.Name,
 			logger:   logger,
 			tracer:   tracer,
 		}
@@ -22,7 +22,7 @@ func WithOtelTrace(logger logr.Logger, tracer trace.Tracer) ProcessorBuilder {
 }
 
 type OtelTrace struct {
-	stepName string
+	taskName string
 	logger   logr.Logger
 	tracer   trace.Tracer
 }
@@ -30,7 +30,7 @@ type OtelTrace struct {
 func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		var span trace.Span
-		ctx.Context, span = s.tracer.Start(ctx, s.stepName, trace.WithSpanKind(trace.SpanKindInternal))
+		ctx.Context, span = s.tracer.Start(ctx, s.taskName, trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
 		for _, tag := range ctx.Labels.Labels() {
@@ -38,7 +38,7 @@ func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		ctx.Context = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues(
-			"step", s.stepName,
+			"step", s.taskName,
 			"span-id", span.SpanContext().SpanID(),
 			"trace-id", span.SpanContext().TraceID()),
 		)

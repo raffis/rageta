@@ -6,7 +6,6 @@ import (
 
 	"github.com/raffis/rageta/internal/buildkit/progressui"
 	"github.com/raffis/rageta/internal/buildkit/vertex"
-	"github.com/raffis/rageta/internal/processor/shimbin"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
 	"github.com/moby/buildkit/client"
@@ -68,9 +67,6 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		var def *llb.Definition
 		var err error
-
-		ctx.Build.State = bakeBusybox(ctx.Build.State)
-		ctx.Build.State = bakeShim(ctx.Build.State)
 
 		def, err = ctx.Build.State.Marshal(ctx)
 		if err != nil {
@@ -179,37 +175,4 @@ func solveWithProgress(ctx TaskContext, gwClient gwclient.Client, statusRouter v
 	<-displayDone
 
 	return res, cached, err
-}
-
-const shimPath = "/rageta/shim"
-
-func bakeShim(state llb.State) llb.State {
-	state = state.File(
-		llb.Mkdir("/rageta", 0755),
-	)
-
-	return state.File(
-		llb.Mkfile(shimPath, 0755, shimbin.Binary),
-	)
-}
-
-func bakeBusybox(state llb.State) llb.State {
-	busybox := llb.Image("busybox:uclibc", llb.ResolveModePreferLocal)
-	state = state.File(
-		llb.Copy(busybox, "/bin/busybox", "/bin/", &llb.CopyInfo{
-			CreateDestPath:                 true,
-			AlwaysReplaceExistingDestPaths: false,
-		}),
-		llb.WithCustomNamef("copy busybox:%s → %s", "/*", "/"),
-	)
-
-	state = state.File(
-		llb.Mkdir("/bin", 0755),
-	)
-
-	state = state.Run(
-		llb.Shlex("/bin/busybox --install -s /bin"),
-	).Root()
-
-	return state
 }

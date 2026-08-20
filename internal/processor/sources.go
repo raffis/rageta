@@ -44,8 +44,6 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				subst = append(subst, &sources[i].Task.Name, &sources[i].Task.Path, &sources[i].Task.To)
 			case sources[i].Tasks != nil:
 				subst = append(subst, &sources[i].Tasks.Path, &sources[i].Tasks.To)
-			case sources[i].Context != nil:
-				subst = append(subst, &sources[i].Context.Path, &sources[i].Context.To)
 			default:
 				return ctx, ErrUnknownSourceType
 			}
@@ -132,31 +130,9 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 						llb.WithCustomNamef("copy %s:%s → %s", name, srcPath, dstPath),
 					)
 				}
-				if matched == 0 {
+				/*if matched == 0 {
 					return ctx, fmt.Errorf("no tasks matched label selector %v", source.Tasks.MatchLabels)
-				}
-
-			case source.Context != nil:
-				if ctx.Build.ContextState == nil {
-					return ctx, fmt.Errorf("context source requires running inside an inherit")
-				}
-
-				srcPath := source.Context.Path
-				if srcPath == "" {
-					srcPath = "."
-				}
-				dst := source.Context.To
-				if dst == "" {
-					dst = "."
-				}
-
-				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
-
-				ctx.Build.State = ctx.Build.State.File(
-					llb.Copy(*ctx.Build.ContextState, srcPath, dst, copyInfo),
-					llb.WithCustomNamef("copy INHERIT:%s → %s", srcPath, dst),
-				)
-
+				}*/
 			default:
 				return ctx, ErrUnknownSourceType
 			}

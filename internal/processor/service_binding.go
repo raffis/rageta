@@ -16,28 +16,23 @@ func WithServiceBinding() ProcessorBuilder {
 }
 
 type ServiceBinding struct {
-	dependsOn []v1beta1.TaskReference
+	dependsOn []v1beta1.TaskDependency
 }
 
 func (s *ServiceBinding) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		for _, ref := range s.dependsOn {
-			//TODO : support match labels
-			if ref.Name == nil {
-				continue
-			}
-
-			depCtx, ok := ctx.Tasks[*ref.Name]
+			depCtx, ok := ctx.Tasks[ref.Name]
 			if !ok {
-				return ctx, fmt.Errorf("unable to resolve service binding: %s", *ref.Name)
+				return ctx, fmt.Errorf("unable to resolve service binding: %s", ref.Name)
 			}
 
 			if len(depCtx.Service.NetIP) == 0 {
 				continue
 			}
 
-			ctx.Build.State = ctx.Build.State.AddExtraHost(*ref.Name, depCtx.Service.NetIP)
-			envName := strings.ToUpper(strings.Replace(*ref.Name, "-", "_", -1))
+			ctx.Build.State = ctx.Build.State.AddExtraHost(ref.Name, depCtx.Service.NetIP)
+			envName := strings.ToUpper(strings.Replace(ref.Name, "-", "_", -1))
 			ctx.Build.State = ctx.Build.State.AddEnv(fmt.Sprintf("SERVICE_%s", envName), depCtx.Service.NetIP.String())
 		}
 
