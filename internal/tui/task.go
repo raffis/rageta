@@ -25,16 +25,96 @@ const (
 	NotStartedDuration = "<not started>"
 )
 
-// Column width percentages for wide layouts
+// Column width percentages for wide layouts. Name and labels flex with the
+// available width; the stat columns get fixed minimum widths (see
+// computeColumnLayout) so they can be dropped one at a time, right to left,
+// when the terminal is too narrow to fit them all.
 const (
 	NameColumnPercent     = 35
 	LabelsColumnPercent   = 10
-	CPUColumnPercent      = 5
-	MemColumnPercent      = 5
-	NetColumnPercent      = 15
-	DiskColumnPercent     = 15
 	DurationColumnPercent = 10
 )
+
+// Minimum widths for the resource-stat columns. computeColumnLayout hides
+// columns right to left (DiskWWidth first) when the list isn't wide enough
+// to show all of them at their minimum width.
+const (
+	MinCPUWidth      = 5
+	MinMemWidth      = 6
+	MinNetWidth      = 9
+	MinDiskWidth     = 9
+	MinDurationWidth = 8
+)
+
+// columnLayout describes which columns fit in a list of the given width and
+// how wide each one is. Duration is always shown; the stat columns
+// (cpu, mem, net rx/tx, disk r/w) are dropped right to left as space runs
+// out. Shared between the list header (ui.go) and each row (TaskMsg.Title)
+// so they always agree on layout.
+type columnLayout struct {
+	nameWidth     int
+	labelsWidth   int
+	cpuWidth      int
+	memWidth      int
+	netRxWidth    int
+	netTxWidth    int
+	diskRWidth    int
+	diskWWidth    int
+	durationWidth int
+
+	showCPU   bool
+	showMem   bool
+	showNetRx bool
+	showNetTx bool
+	showDiskR bool
+	showDiskW bool
+}
+
+// computeColumnLayout derives the visible columns and their widths for a
+// list of the given width. listWidth is expected to already account for the
+// status column and outer padding (see StatusColumnWidth usages at the call
+// sites).
+func computeColumnLayout(listWidth int) columnLayout {
+	avail := max(listWidth, 0)
+
+	nameWidth := int(float64(avail) * NameColumnPercent / 100)
+	labelsWidth := int(float64(avail) * LabelsColumnPercent / 100)
+	durationWidth := max(int(float64(avail)*DurationColumnPercent/100), MinDurationWidth)
+
+	statMins := [...]int{MinCPUWidth, MinMemWidth, MinNetWidth, MinNetWidth, MinDiskWidth, MinDiskWidth}
+
+	remaining := avail - nameWidth - labelsWidth - durationWidth
+
+	visible := len(statMins)
+	for visible > 0 {
+		needed := 0
+		for i := 0; i < visible; i++ {
+			needed += statMins[i] + 1 // +1 for the separating space
+		}
+		if needed <= remaining {
+			break
+		}
+		visible--
+	}
+
+	return columnLayout{
+		nameWidth:     nameWidth,
+		labelsWidth:   labelsWidth,
+		cpuWidth:      MinCPUWidth,
+		memWidth:      MinMemWidth,
+		netRxWidth:    MinNetWidth,
+		netTxWidth:    MinNetWidth,
+		diskRWidth:    MinDiskWidth,
+		diskWWidth:    MinDiskWidth,
+		durationWidth: durationWidth,
+		showCPU:       visible >= 1,
+		showMem:       visible >= 2,
+		showNetRx:     visible >= 3,
+		showNetTx:     visible >= 4,
+		showDiskR:     visible >= 5,
+		showDiskW:     visible >= 6,
+	}
+}
 
 // ResourceStatsMsg is sent by the stats filter writer to update a task's metrics.
 type ResourceStatsMsg struct {
@@ -68,7 +148,7 @@ type TaskMsg struct {
 	Stats             *stats.Sample
 	Pull              PullProgress
 	Context           processor.TaskContext
-	Parents           []string
+	Ancestors         []string
 	ready             bool
 	started           time.Time
 	finished          time.Time
@@ -202,6 +282,7 @@ func (t *TaskMsg) shortLabels() string {
 // Title returns the formatted title for list display
 func (t TaskMsg) Title() string {
 	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
+	layout := computeColumnLayout(listWidth)
 
 	var status string
 	if t.Status == TaskStatusRunning {
@@ -210,27 +291,35 @@ func (t TaskMsg) Title() string {
 		status = t.Status.Render()
 	}
 
-	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
-	tagsWidth := int(float64(listWidth) * LabelsColumnPercent / 100)
-	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
-	memWidth := int(float64(listWidth) * MemColumnPercent / 100)
-	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
-	diskWidth := int(float64(listWidth) * DiskColumnPercent / 100)
-	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
-
 	prefixWidth := lipgloss.Width(t.treePrefix)
-	name := t.treePrefix + ellipsis(t.DisplayName, max(nameWidth-prefixWidth, EllipsisLength))
+	name := t.treePrefix + ellipsis(t.DisplayName, max(layout.nameWidth-prefixWidth, EllipsisLength))
 
-	return fmt.Sprintf("%s %s %s %s %s %s %s %s",
-		status,
-		listColumnStyle.Width(nameWidth).Render(name),
-		listColumnStyle.Width(tagsWidth).Render(t.shortLabels()),
-		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render(t.cpuString()),
-		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render(t.memString()),
-		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render(t.netString()),
-		listColumnStyle.Width(diskWidth).Align(lipgloss.Right).Render(t.diskString()),
-		durationStyle.Width(durationWidth).Align(lipgloss.Right).Render(t.duration().Round(10*time.Millisecond).String()),
-	)
+	cols := []string{
+		listColumnStyle.Width(layout.nameWidth).Render(name),
+		listColumnStyle.Width(layout.labelsWidth).Render(t.shortLabels()),
+	}
+	if layout.showCPU {
+		cols = append(cols, listColumnStyle.Width(layout.cpuWidth).Align(lipgloss.Right).Render(t.cpuString()))
+	}
+	if layout.showMem {
+		cols = append(cols, listColumnStyle.Width(layout.memWidth).Align(lipgloss.Right).Render(t.memString()))
+	}
+	if layout.showNetRx {
+		cols = append(cols, listColumnStyle.Width(layout.netRxWidth).Align(lipgloss.Right).Render(t.netRxString()))
+	}
+	if layout.showNetTx {
+		cols = append(cols, listColumnStyle.Width(layout.netTxWidth).Align(lipgloss.Right).Render(t.netTxString()))
+	}
+	if layout.showDiskR {
+		cols = append(cols, listColumnStyle.Width(layout.diskRWidth).Align(lipgloss.Right).Render(t.diskRString()))
+	}
+	if layout.showDiskW {
+		cols = append(cols, listColumnStyle.Width(layout.diskWWidth).Align(lipgloss.Right).Render(t.diskWString()))
+	}
+	cols = append(cols, durationStyle.Width(layout.durationWidth).Align(lipgloss.Right).
+		Render(t.duration().Round(10*time.Millisecond).String()))
+
+	return status + " " + strings.Join(cols, " ")
 }
 
 func (t *TaskMsg) cpuString() string {
@@ -247,18 +336,32 @@ func (t *TaskMsg) memString() string {
 	return utils.FormatBytes(t.Stats.MemBytes)
 }
 
-func (t *TaskMsg) netString() string {
-	if t.Stats == nil || t.Stats.NetRxBytes == 0 && t.Stats.NetTxBytes == 0 {
+func (t *TaskMsg) netRxString() string {
+	if t.Stats == nil || t.Stats.NetRxBytes == 0 {
 		return "—"
 	}
-	return fmt.Sprintf("⇩ %s ⇧ %s", utils.FormatBps(t.Stats.NetRxBytes), utils.FormatBps(t.Stats.NetTxBytes))
+	return utils.FormatBps(t.Stats.NetRxBytes)
 }
 
-func (t *TaskMsg) diskString() string {
-	if t.Stats == nil || t.Stats.DiskReadBytes == 0 && t.Stats.DiskWriteBytes == 0 {
+func (t *TaskMsg) netTxString() string {
+	if t.Stats == nil || t.Stats.NetTxBytes == 0 {
 		return "—"
 	}
-	return fmt.Sprintf("R %s W %s", utils.FormatBps(t.Stats.DiskReadBytes), utils.FormatBps(t.Stats.DiskWriteBytes))
+	return utils.FormatBps(t.Stats.NetTxBytes)
+}
+
+func (t *TaskMsg) diskRString() string {
+	if t.Stats == nil || t.Stats.DiskReadBytes == 0 {
+		return "—"
+	}
+	return utils.FormatBps(t.Stats.DiskReadBytes)
+}
+
+func (t *TaskMsg) diskWString() string {
+	if t.Stats == nil || t.Stats.DiskWriteBytes == 0 {
+		return "—"
+	}
+	return utils.FormatBps(t.Stats.DiskWriteBytes)
 }
 
 // Description returns the description line rendered below the task's title,

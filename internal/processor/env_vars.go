@@ -11,7 +11,7 @@ import (
 func WithEnvVars(osEnv, defaultEnv map[string]string) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		return &EnvVars{
-			env: envMap(spec.Envs, osEnv, defaultEnv),
+			env: envMap(spec.Env, osEnv, defaultEnv),
 		}
 	}
 }

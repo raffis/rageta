@@ -11,7 +11,6 @@ type pipelineTask struct {
 	name       string
 	pipeline   *pipeline
 	dependsOn  []dependsOnRef
-	targets    []string
 	labels     map[string]string
 	claims     map[string]processor.TaskClaim
 	pending    map[string]int

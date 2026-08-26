@@ -162,6 +162,9 @@ func NewUI(logger logr.Logger) UI {
 		mu:          &sync.Mutex{},
 		activePanel: PanelList,
 		logger:      logger,
+		// Done/cached/skipped tasks are shown by default; 'a' toggles them
+		// back to hidden for users who want a quieter, in-progress-only view.
+		showAll: true,
 	}
 
 	ui.initializeList()
@@ -214,7 +217,7 @@ func (m *UI) sortList() {
 }
 
 // treeOrder returns m.tasks reordered so that every task appears after all
-// of its resolved dependencies (Parents entries that match another task
+// of its resolved dependencies (Ancestors entries that match another task
 // currently in the list), with a task's dependents grouped as a contiguous
 // run immediately following it (depth-first), rather than levelled
 // breadth-first. Tasks with no resolved dependency are treated as roots.
@@ -242,7 +245,7 @@ func (m *UI) treeOrder() []TaskMsg {
 	children := make(map[string][]string, len(m.tasks))
 	hasResolvedDep := make(map[string]bool, len(m.tasks))
 	for _, t := range m.tasks {
-		for _, dep := range t.Parents {
+		for _, dep := range t.Ancestors {
 			if _, ok := byName[dep]; ok {
 				children[dep] = append(children[dep], t.Name)
 				hasResolvedDep[t.Name] = true
@@ -278,7 +281,7 @@ func (m *UI) treeOrder() []TaskMsg {
 			}
 
 			ready := true
-			for _, dep := range byName[child].Parents {
+			for _, dep := range byName[child].Ancestors {
 				if _, ok := byName[dep]; ok && !placed[dep] {
 					ready = false
 					break
@@ -337,7 +340,7 @@ func buildTreeGuides(tasks []TaskMsg) map[string]treeGuide {
 	for _, t := range tasks {
 		parent := ""
 		parentIdx := -1
-		for _, dep := range t.Parents {
+		for _, dep := range t.Ancestors {
 			if idx, ok := index[dep]; ok && idx > parentIdx {
 				parentIdx = idx
 				parent = dep
@@ -558,6 +561,7 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DebugShellDoneMsg:
 		if msg.Err != nil {
 			m.logger.Error(msg.Err, "debug shell exited with an error", "task", msg.Name)
+			m.writeDebugShellError(msg.Name, msg.Err)
 		}
 	}
 
@@ -643,6 +647,36 @@ func (m *UI) getTaskMsg(name string) (TaskMsg, int, error) {
 	return TaskMsg{}, -1, fmt.Errorf("no such task: %s", name)
 }
 
+// writeDebugShellError writes a visible error into the given task's viewport
+// when spawning or running its debug shell failed. UI mode redirects the
+// logger to a file (see Display.Run in the run package) so errors logged via
+// m.logger alone are otherwise invisible to the user, making a failed 'i'
+// press look like a silent no-op.
+func (m *UI) writeDebugShellError(name string, err error) {
+	m.writeTaskNotice(name, stepFailedStyle.Render(fmt.Sprintf("Debug shell failed: %s", err)))
+}
+
+// writeDebugShellInfo writes a visible, non-error notice into the given
+// task's viewport, e.g. explaining why an 'i' press was a no-op, so the key
+// never appears to silently do nothing.
+func (m *UI) writeDebugShellInfo(name, msg string) {
+	m.writeTaskNotice(name, stepWarningStyle.Render(msg))
+}
+
+// writeTaskNotice appends a rendered, already-styled line to the given
+// task's viewport and refreshes its visible row.
+func (m *UI) writeTaskNotice(name, rendered string) {
+	idx, ok := m.taskIndex[name]
+	if !ok {
+		return
+	}
+
+	item := m.tasks[idx]
+	fmt.Fprintf(&item, "\n%s\n", rendered)
+	item.Flush()
+	m.updateVisibleItem(item)
+}
+
 // writeDebugShellHint writes a hint into the task's viewport telling the user
 // they can press the debug shell key now that the task has finished. Tasks
 // can transition out of "running" more than once (e.g. across retries), so
@@ -725,18 +759,24 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // registered. It uses tea.Exec so bubbletea releases the terminal for the duration of the
 // interactive shell and restores it to the TUI once the shell exits.
 func (m *UI) openDebugShell() tea.Cmd {
-	if m.debugShell == nil || m.lastSelected == nil {
+	if m.debugShell == nil {
 		return nil
 	}
 
 	task, ok := m.lastSelected.(TaskMsg)
-	if !ok || task.Status == TaskStatusRunning || task.Status == TaskStatusWaiting {
+	if !ok {
+		return nil
+	}
+
+	if task.Status == TaskStatusRunning || task.Status == TaskStatusWaiting {
+		m.writeDebugShellInfo(task.Name, "Task hasn't finished yet — wait for it to complete before starting a debug shell")
 		return nil
 	}
 
 	execCmd, err := m.debugShell(task.Context)
 	if err != nil {
 		m.logger.Error(err, "failed to prepare debug shell", "task", task.Name)
+		m.writeDebugShellError(task.Name, err)
 		return nil
 	}
 
@@ -1015,13 +1055,7 @@ func (m UI) renderListPanel() string {
 
 func (m UI) renderListHeader() string {
 	listWidth := m.list.Width() - StatusColumnWidth - 2 // Account for status and padding
-	nameWidth := int(float64(listWidth) * NameColumnPercent / 100)
-	labelsWidth := int(float64(listWidth) * LabelsColumnPercent / 100)
-	cpuWidth := int(float64(listWidth) * CPUColumnPercent / 100)
-	memWidth := int(float64(listWidth) * MemColumnPercent / 100)
-	netWidth := int(float64(listWidth) * NetColumnPercent / 100)
-	diskWidth := int(float64(listWidth) * DiskColumnPercent / 100)
-	durationWidth := int(float64(listWidth) * DurationColumnPercent / 100)
+	layout := computeColumnLayout(listWidth)
 
 	headerStyle := listHeaderStyle
 	if m.width < AlignHorizontalBreakpoint {
@@ -1031,15 +1065,31 @@ func (m UI) renderListHeader() string {
 		headerStyle = headerStyle.Border(lipgloss.NormalBorder(), true, true, false, true).MaxHeight(2)
 	}
 
-	return headerStyle.Width(m.list.Width()).Render(fmt.Sprintf("  %s %s %s %s %s %s %s",
-		listColumnStyle.Width(nameWidth).Render(ellipsis("TASK", nameWidth)),
-		listColumnStyle.Width(labelsWidth).Render("LABELS"),
-		listColumnStyle.Width(cpuWidth).Align(lipgloss.Right).Render("CPU"),
-		listColumnStyle.Width(memWidth).Align(lipgloss.Right).Render("MEM"),
-		listColumnStyle.Width(netWidth).Align(lipgloss.Right).Render("NET"),
-		listColumnStyle.Width(diskWidth).Align(lipgloss.Right).Render("DISK"),
-		listColumnStyle.Width(durationWidth).Align(lipgloss.Right).Render("DUR"),
-	))
+	cols := []string{
+		listColumnStyle.Width(layout.nameWidth).Render(ellipsis("TASK", layout.nameWidth)),
+		listColumnStyle.Width(layout.labelsWidth).Render("LABELS"),
+	}
+	if layout.showCPU {
+		cols = append(cols, listColumnStyle.Width(layout.cpuWidth).Align(lipgloss.Right).Render("CPU"))
+	}
+	if layout.showMem {
+		cols = append(cols, listColumnStyle.Width(layout.memWidth).Align(lipgloss.Right).Render("MEM"))
+	}
+	if layout.showNetRx {
+		cols = append(cols, listColumnStyle.Width(layout.netRxWidth).Align(lipgloss.Right).Render("NET RX"))
+	}
+	if layout.showNetTx {
+		cols = append(cols, listColumnStyle.Width(layout.netTxWidth).Align(lipgloss.Right).Render("NET TX"))
+	}
+	if layout.showDiskR {
+		cols = append(cols, listColumnStyle.Width(layout.diskRWidth).Align(lipgloss.Right).Render("DISK R"))
+	}
+	if layout.showDiskW {
+		cols = append(cols, listColumnStyle.Width(layout.diskWWidth).Align(lipgloss.Right).Render("DISK W"))
+	}
+	cols = append(cols, listColumnStyle.Width(layout.durationWidth).Align(lipgloss.Right).Render("DUR"))
+
+	return headerStyle.Width(m.list.Width()).Render("  " + strings.Join(cols, " "))
 }
 
 func (m UI) renderPagerPanel() string {

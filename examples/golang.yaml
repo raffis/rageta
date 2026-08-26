@@ -9,7 +9,7 @@ inputs:
   description: Image name used for docker-build/build
   default: ghcr.io/rageta/rageta
 
-defaultTarget: build
+defaultTask: all
 
 templates:
 - name: golang
@@ -21,108 +21,89 @@ templates:
     cache:
       name: go-build
   sources:
-  - local:
-      path: .
-      to: .
+  - path: .
   image: golang:1.25-alpine
   workingDir: /workspace
 - name: docker
   sources:
-  - local:
-      path: .
-      to: .
+  - path: .
   image: docker:27-cli
   workingDir: /workspace
 
 tasks:
+- name: all
 - name: tidy
-  targets:
-  - name: build
+  dependsOn: 
+  - name: all
   templates:
   - name: golang
-  artifacts:
-  - local:
-      path: ./go.mod
-      to: go.mod
-  - local:
-      path: ./go.sum
-      to: go.sum
+  exports:
+  - path: ./go.mod
+  - path: ./go.sum
   steps:
   - script: go mod tidy -compat=1.20
 
 - name: fmt
-  targets:
-  - name: build
+  dependsOn: 
+  - name: all
   templates:
   - name: golang
-  artifacts:
-  - local:
-      path: ./*
-      to: .
+  exports:
+  - path: .
   steps:
     - script: go fmt ./...
 
 - name: vet
-  targets:
-  - name: build
-  - name: lint
+  dependsOn: 
+  - name: all
   templates:
   - name: golang
   steps:
   - script: go vet ./...
 
 - name: golangci-lint
-  targets:
-  - name: build
-  - name: lint
   image: golangci/golangci-lint:v2.12.2
+  volumeMounts:
+  - mountPath: /root/.cache/golangci-lint
+    cache: 
+      name: golangci-lint
+  dependsOn: 
+  - name: all
   sources:
-  - local:
-      path: .
-      to: .
+  - path: .
   workingDir: /workspace
   steps:
   - script: golangci-lint run --timeout=3m
 
 - name: test
-  targets:
-  - name: build
+  dependsOn: 
+  - name: all
   templates:
   - name: golang
-  artifacts:
-  - local:
-      path: coverage.out
-      to: coverage.out
   steps:
-  - script: export
   - script: go test -coverprofile coverage.out -v ./...
 
 - name: build
-  targets:
-  - name: build
+  dependsOn: 
+  - name: all
   templates:
   - name: golang
-  artifacts:
-  - local:
-      path: /workspace/rageta
-      to: rageta
-  envs:
-  - name: CGO_ENABLED
-    value: "0"
+  #exports:
+  #- path: ./rageta
+  #env:
+  #- name: CGO_ENABLED
+  #  value: "0"
   steps:
   - script: go build -C cmd/cli/ -o ../../rageta
 
 - name: docker-build
-  targets:
-  - name: build
   dependsOn:
   - name: build
   templates:
   - name: docker
   sources:
-  - task:
-      name: build
-      path: /workspace/rageta
+  - from: build
+    path: ./rageta
   steps:
   - script: docker build -t $(context.inputs.image) .
 

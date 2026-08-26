@@ -3,11 +3,9 @@ package processor
 import (
 	"errors"
 	"fmt"
-	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
 	"github.com/moby/buildkit/client/llb"
@@ -32,38 +30,18 @@ var ErrUnknownSourceType = errors.New("unknown source type")
 
 func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		sources := make([]v1beta1.Source, len(s.sources))
-		subst := []any{}
-
-		for i := range sources {
-			sources[i] = *s.sources[i].DeepCopy()
-			switch {
-			case sources[i].Local != nil:
-				subst = append(subst, &sources[i].Local.Path, &sources[i].Local.To)
-			case sources[i].Task != nil:
-				subst = append(subst, &sources[i].Task.Name, &sources[i].Task.Path, &sources[i].Task.To)
-			case sources[i].Tasks != nil:
-				subst = append(subst, &sources[i].Tasks.Path, &sources[i].Tasks.To)
-			default:
-				return ctx, ErrUnknownSourceType
+		for _, source := range s.sources {
+			srcPath := source.Path
+			if srcPath == "" {
+				srcPath = "."
 			}
-		}
-		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
-			return ctx, err
-		}
+			copyTo := source.Path
+			if copyTo == "" {
+				copyTo = "."
+			}
 
-		for _, source := range sources {
 			switch {
-			case source.Local != nil:
-				srcPath := source.Local.Path
-				if srcPath == "" {
-					srcPath = "."
-				}
-				copyTo := source.Local.To
-				if copyTo == "" {
-					copyTo = "."
-				}
-
+			case source.From == nil:
 				var contextSrc llb.State
 				var copyFrom string
 				if strings.ContainsAny(srcPath, "*?[") {
@@ -82,57 +60,49 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 					llb.WithCustomNamef("copy CONTEXT:%s → %s", srcPath, copyTo),
 				)
 
-			case source.Task != nil:
-				stepCtx, ok := ctx.Tasks[source.Task.Name]
+			case source.From != nil:
+				taskName := *source.From
+				stepCtx, ok := ctx.Tasks[taskName]
 				if !ok {
-					return ctx, fmt.Errorf("source step %q dependency not found", source.Task.Name)
-				}
-
-				srcPath := source.Task.Path
-				if srcPath == "" {
-					srcPath = "."
-				}
-				dst := source.Task.To
-				if dst == "" {
-					dst = "."
+					return ctx, fmt.Errorf("source step %q dependency not found", taskName)
 				}
 
 				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
 
 				ctx.Build.State = ctx.Build.State.File(
-					llb.Copy(stepCtx.Build.State, srcPath, dst, copyInfo),
-					llb.WithCustomNamef("copy %s:%s → %s", source.Task.Name, srcPath, dst),
+					llb.Copy(stepCtx.Build.State, srcPath, copyTo, copyInfo),
+					llb.WithCustomNamef("copy %s:%s → %s", taskName, srcPath, copyTo),
 				)
 
-			case source.Tasks != nil:
-				srcPath := source.Tasks.Path
-				if srcPath == "" {
-					srcPath = "."
+			/*case source.Tasks != nil:
+			srcPath := source.Tasks.Path
+			if srcPath == "" {
+				srcPath = "."
+			}
+			dst := source.Tasks.To
+			if dst == "" {
+				dst = "."
+			}
+
+			copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
+
+			var matched int
+			for name, stepCtx := range ctx.Tasks {
+				if !stepCtx.Labels.Match(source.Tasks.MatchLabels) {
+					continue
 				}
-				dst := source.Tasks.To
-				if dst == "" {
-					dst = "."
-				}
 
-				copyInfo := &llb.CopyInfo{CreateDestPath: true, CopyDirContentsOnly: true}
+				dstPath := path.Join(dst, stepCtx.uniqueName)
 
-				var matched int
-				for name, stepCtx := range ctx.Tasks {
-					if !stepCtx.Labels.Match(source.Tasks.MatchLabels) {
-						continue
-					}
-
-					dstPath := path.Join(dst, stepCtx.uniqueName)
-
-					matched++
-					ctx.Build.State = ctx.Build.State.File(
-						llb.Copy(stepCtx.Build.State, srcPath, dstPath, copyInfo),
-						llb.WithCustomNamef("copy %s:%s → %s", name, srcPath, dstPath),
-					)
-				}
-				/*if matched == 0 {
-					return ctx, fmt.Errorf("no tasks matched label selector %v", source.Tasks.MatchLabels)
-				}*/
+				matched++
+				ctx.Build.State = ctx.Build.State.File(
+					llb.Copy(stepCtx.Build.State, srcPath, dstPath, copyInfo),
+					llb.WithCustomNamef("copy %s:%s → %s", name, srcPath, dstPath),
+				)
+			}*/
+			/*if matched == 0 {
+				return ctx, fmt.Errorf("no tasks matched label selector %v", source.Tasks.MatchLabels)
+			}*/
 			default:
 				return ctx, ErrUnknownSourceType
 			}

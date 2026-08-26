@@ -6,25 +6,25 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithParent() ProcessorBuilder {
+func WithAncestors() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		return &parent{
+		return &ancestors{
 			taskName: spec.Name,
 		}
 	}
 }
 
-type parent struct {
+type ancestors struct {
 	taskName string
 }
 
-type ParentContext struct {
+type AncestorsContext struct {
 	Refs []string
 }
 
-type parentContext struct{}
+type ancestorsContext struct{}
 
-func (s *parent) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
+func (s *ancestors) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		deps := pipelineCtx.TaskDependencies(s.taskName)
 		for _, dep := range deps {
@@ -32,11 +32,11 @@ func (s *parent) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 			if ctx.namespace != "" {
 				uniqueDep = fmt.Sprintf("%s-%s", ctx.namespace, dep)
 			}
-			ctx.Parent.Refs = append(ctx.Parent.Refs, uniqueDep)
+			ctx.Ancestors.Refs = append(ctx.Ancestors.Refs, uniqueDep)
 		}
 
-		if parent, ok := ctx.Value(parentContext{}).(string); ok {
-			ctx.Parent.Refs = append(ctx.Parent.Refs, parent)
+		if ancestors, ok := ctx.Value(ancestorsContext{}).(string); ok {
+			ctx.Ancestors.Refs = append(ctx.Ancestors.Refs, ancestors)
 		}
 
 		return next(ctx)

@@ -47,13 +47,13 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		inheritCtx := ctx.DeepCopy().WithNamespace(s.taskName)
-		inheritCtx.Context = context.WithValue(inheritCtx, parentContext{}, ctx.UniqueName())
+		inheritCtx.Context = context.WithValue(inheritCtx, ancestorsContext{}, ctx.UniqueName())
 		inheritCtx.Labels.Add(Label{
 			Key:   "pipeline",
 			Value: pipe.Name,
 		})
 
-		cmd, err := s.builder.Build(pipe, s.spec.Target, s.mapInputs(inherit.Inputs), inheritCtx)
+		cmd, err := s.builder.Build(pipe, s.spec.Task, s.mapInputs(inherit.Inputs), inheritCtx)
 		if err != nil {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}

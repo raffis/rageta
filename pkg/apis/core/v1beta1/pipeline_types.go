@@ -29,13 +29,12 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	DefaultTarget    string      `json:"defaultTarget,omitempty"`
+	DefaultTask      string      `json:"defaultTask,omitempty"`
 	ShortDescription string      `json:"shortDescription,omitempty"`
 	LongDescription  string      `json:"longDescription,omitempty"`
 	Inputs           InputParams `json:"inputs,omitempty"`
-	//Outputs          OutputParams `json:"outputs,omitempty"`
-	Tasks     []Task `json:"tasks,omitempty"`
-	Templates []Task `json:"templates,omitempty"`
+	Tasks            []Task      `json:"tasks,omitempty"`
+	Templates        []Task      `json:"templates,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -45,25 +44,29 @@ func (p Pipeline) SetDefaults() {
 }
 
 type TaskOptions struct {
-	Targets      []LocalReference  `json:"targets,omitempty"`
-	Templates    []LocalReference  `json:"templates,omitempty"`
-	When         []Condition       `json:"when,omitempty"`
-	Hide         bool              `json:"expose,omitempty"`
-	Inputs       []InputParam      `json:"inputs,omitempty"`
-	Timeout      metav1.Duration   `json:"timeout,omitempty"`
-	AllowFailure bool              `json:"allowFailure,omitempty"`
-	Matrix       *Matrix           `json:"matrix,omitempty"`
-	Outputs      []TaskOutputParam `json:"outputs,omitempty"`
-	DependsOn    []TaskDependency  `json:"dependsOn,omitempty"`
-	Retry        *Retry            `json:"retry,omitempty"`
-	Secrets      []SecretVar       `json:"secrets,omitempty"`
-	Envs         []EnvVar          `json:"envs,omitempty"`
-	Labels       []Label           `json:"labels,omitempty"`
-	Sources      []Source          `json:"sources,omitempty"`
-	Artifacts    []Artifact        `json:"artifacts,omitempty"`
-	VolumeMounts []VolumeMount     `json:"volumeMounts,omitempty"`
-	Image        string            `json:"image,omitempty"`
-	WorkingDir   string            `json:"workingDir,omitempty"`
+	Templates    []LocalReference `json:"templates,omitempty"`
+	When         []Condition      `json:"when,omitempty"`
+	Hide         bool             `json:"expose,omitempty"`
+	Exports      []Export         `json:"exports,omitempty"`
+	Inputs       []InputParam     `json:"inputs,omitempty"`
+	Timeout      metav1.Duration  `json:"timeout,omitempty"`
+	AllowFailure bool             `json:"allowFailure,omitempty"`
+	Matrix       *Matrix          `json:"matrix,omitempty"`
+	DependsOn    []TaskDependency `json:"dependsOn,omitempty"`
+	Retry        *Retry           `json:"retry,omitempty"`
+	Secrets      []SecretVar      `json:"secrets,omitempty"`
+	Env          []EnvVar         `json:"env,omitempty"`
+	InputFrom    []InputFrom      `json:"inputFrom,omitempty"`
+	EnvFrom      []EnvFrom        `json:"envFrom,omitempty"`
+	Labels       []Label          `json:"labels,omitempty"`
+	Sources      []Source         `json:"sources,omitempty"`
+	VolumeMounts []VolumeMount    `json:"volumeMounts,omitempty"`
+	Image        string           `json:"image,omitempty"`
+	WorkingDir   string           `json:"workingDir,omitempty"`
+}
+
+type Export struct {
+	Path *string `json:"path,omitempty"`
 }
 
 // +kubebuilder:validation:MinProperties=1
@@ -72,54 +75,9 @@ type TaskDependency struct {
 	AwaitMatrix bool   `json:"awaitMatrix,omitempty"`
 }
 
-// +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=1
 type Source struct {
-	Local *SourceLocal `json:"local,omitempty"`
-	Task  *SourceTask  `json:"task,omitempty"`
-	Tasks *SourceTasks `json:"tasks,omitempty"`
-}
-
-type SourceLocal struct {
-	Path string `json:"path,omitempty"`
-	To   string `json:"to,omitempty"`
-}
-
-type SourceTask struct {
-	Name string `json:"name,omitempty"`
-	Path string `json:"path,omitempty"`
-	To   string `json:"to,omitempty"`
-}
-
-type SourceTasks struct {
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-	Path        string            `json:"path,omitempty"`
-	To          string            `json:"to,omitempty"`
-}
-
-// +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=1
-type Artifact struct {
-	Local      *ArtifactLocal      `json:"local,omitempty"`
-	Image      *ArtifactImage      `json:"image,omitempty"`
-	EnvVars    *ArtifactEnvVars    `json:"envVars,omitempty"`
-	OutputVars *ArtifactOutputVars `json:"outputVars,omitempty"`
-}
-
-type ArtifactEnvVars struct {
-	Path string `json:"path,omitempty"`
-}
-
-type ArtifactOutputVars struct {
-	Path string `json:"path,omitempty"`
-}
-
-type ArtifactLocal struct {
-	Path string `json:"path,omitempty"`
-	To   string `json:"to,omitempty"`
-}
-
-type ArtifactImage struct {
+	From *string `json:"from,omitempty"`
+	Path string  `json:"path,omitempty"`
 }
 
 type Label struct {
@@ -136,6 +94,14 @@ type SecretVar struct {
 type EnvVar struct {
 	Name  string  `json:"name,omitempty"`
 	Value *string `json:"value,omitempty"`
+}
+
+type InputFrom struct {
+	File *string `json:"file,omitempty"`
+}
+
+type EnvFrom struct {
+	File *string `json:"file,omitempty"`
 }
 
 type Condition struct {
@@ -218,7 +184,7 @@ type ServiceTask struct {
 
 type InheritTask struct {
 	Pipeline string  `json:"pipeline,omitempty"`
-	Target   string  `json:"target,omitempty"`
+	Task     string  `json:"task,omitempty"`
 	Inputs   []Param `json:"inputs,omitempty"`
 }
 

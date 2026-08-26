@@ -127,7 +127,15 @@ func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskCo
 	stepCtx = stepCtx.DeepCopy()
 	gwClient := rc.Buildkit.GatewayClient
 
-	def, err := stepCtx.Build.State.Marshal(ctx)
+	// A task with exports: has Build.State shrunk down to just the exported
+	// paths (see Exports.Bootstrap), for cross-task artifact sharing. For
+	// debugging we want the task's own full environment instead.
+	buildState := stepCtx.Build.State
+	if stepCtx.Build.DebugState != nil {
+		buildState = *stepCtx.Build.DebugState
+	}
+
+	def, err := buildState.Marshal(ctx)
 	if err != nil {
 		return err
 	}

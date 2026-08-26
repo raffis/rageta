@@ -1,1 +1,40 @@
-examples/golang.yaml
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: rageta
+
+templates:
+- name: golang
+  volumeMounts:
+  - mountPath: /go/pkg/mod
+    cache:
+      name: go-mod
+  - mountPath: /root/.cache/go-build
+    cache:
+      name: go-build
+  sources:
+  - path: .
+  image: golang:1.25-alpine
+  workingDir: /workspace
+
+defaultTask: all
+
+tasks:
+- name: all
+- name: go
+  dependsOn: 
+  - name: all
+  inherit:
+    pipeline: ./examples/golang.yaml
+- name: generate
+  dependsOn: 
+  - name: all
+  templates:
+  - name: golang
+  exports:
+  - path: crds
+  steps:
+  - script: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
+  - script: controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=crds
+  - script: controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."

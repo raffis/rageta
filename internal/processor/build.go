@@ -61,6 +61,14 @@ type BuildContext struct {
 	Mounts       []v1beta1.VolumeMount `json:"-"`
 	Ref          gwclient.Reference    `json:"-"`
 	Cached       bool
+
+	// DebugState, when set, is the task's own full filesystem before
+	// WithExports shrank State down to just the exported paths for
+	// cross-task sharing (see Exports.Bootstrap). The debug shell
+	// (run.RunDebugShell) prefers this over State so debugging a task with
+	// exports still gets its real environment (busybox/ash included)
+	// instead of the minimal exported-artifact scratch state.
+	DebugState *llb.State `json:"-"`
 }
 
 func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
@@ -96,7 +104,21 @@ func (s *Build) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			*s.builtRefs = append(*s.builtRefs, res.Ref)
 		}
 		ctx.Build.Cached = cached
-		ctx.Build.State = state.With(llb.Dir(ctx.Workdir.Path), llb.AddEnv("PWD", ctx.Workdir.Path))
+
+		// res.Ref.ToState() starts a fresh state with none of the env/dir
+		// metadata the pre-solve state had (it just wraps "read this solved
+		// snapshot"), so every previously baked env var (PATH from the base
+		// image, user-declared env, ...) has to be re-applied explicitly
+		// here, not just PWD, or anything running against this state
+		// afterwards (a further Run(), or an interactive debug shell) loses
+		// them.
+		stateOpts := make([]llb.StateOption, 0, len(ctx.EnvVars.Envs)+2)
+		stateOpts = append(stateOpts, llb.Dir(ctx.Workdir.Path))
+		for k, v := range ctx.EnvVars.Envs {
+			stateOpts = append(stateOpts, llb.AddEnv(k, v))
+		}
+		stateOpts = append(stateOpts, llb.AddEnv("PWD", ctx.Workdir.Path))
+		ctx.Build.State = state.With(stateOpts...)
 
 		return next(ctx)
 	}, nil

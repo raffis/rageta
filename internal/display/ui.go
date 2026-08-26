@@ -25,7 +25,7 @@ func UI(sender sender) processor.DisplayFactory {
 		step.Name = uniqueName
 		step.DisplayName = displayName
 		step.Labels = ctx.Labels.Labels()
-		step.Parents = ctx.Parent.Refs
+		step.Ancestors = ctx.Ancestors.Refs
 		step.Status = tui.TaskStatusWaiting
 		sender.Send(step)
 		events := xio.NewCallbackOnceWriter(

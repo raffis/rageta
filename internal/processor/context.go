@@ -33,7 +33,7 @@ type TaskContext struct {
 	Workdir         WorkdirContext
 	Service         ServiceContext
 	Stats           StatsContext
-	Parent          ParentContext
+	Ancestors       AncestorsContext
 	mu              *sync.Mutex
 }
 
@@ -104,21 +104,41 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Build.State = c.Build.State
 	copy.Build.ContextState = c.Build.ContextState
 	copy.Build.Ref = c.Build.Ref
+	copy.Build.DebugState = c.Build.DebugState
 	copy.Workdir.Path = c.Workdir.Path
 	copy.Service.NetIP = c.Service.NetIP
 	copy.Style.Style = c.Style.Style
-	copy.Parent.Refs = append(copy.Parent.Refs, c.Parent.Refs...)
+	copy.Ancestors.Refs = append(copy.Ancestors.Refs, c.Ancestors.Refs...)
 
 	return copy
 }
 
+// Merge folds a dependency/child task's context into t, e.g. so a later
+// sibling's CEL expressions can reference $(tasks.<name>...). It's additive
+// only: a key t already has (its own env/secret/input, set from its own
+// image or spec) is never overwritten by c's value for that same key. This
+// matters because DependsOn's fan-out (see depends_on.go) merges every
+// dependent's result back into the task that launched it — without the
+// additive guard, a dependent using a completely different base image (e.g.
+// docker-build's docker:27-cli after build's golang:*-alpine) would clobber
+// build's own PATH with its own.
 func (t TaskContext) Merge(c TaskContext) TaskContext {
-	maps.Copy(t.EnvVars.Envs, c.EnvVars.Envs)
-	maps.Copy(t.SecretVars.Secrets, c.SecretVars.Secrets)
-	maps.Copy(t.InputVars.Inputs, c.InputVars.Inputs)
+	mergeAdditive(t.EnvVars.Envs, c.EnvVars.Envs)
+	mergeAdditive(t.SecretVars.Secrets, c.SecretVars.Secrets)
+	mergeAdditive(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Tasks, c.Tasks)
 
 	return t
+}
+
+// mergeAdditive copies entries from src into dst, skipping any key dst
+// already has.
+func mergeAdditive[K comparable, V any](dst, src map[K]V) {
+	for k, v := range src {
+		if _, exists := dst[k]; !exists {
+			dst[k] = v
+		}
+	}
 }
 
 func (t TaskContext) FromV1Beta1(vars *v1beta1.Context) {

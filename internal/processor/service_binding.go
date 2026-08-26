@@ -24,7 +24,8 @@ func (s *ServiceBinding) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for _, ref := range s.dependsOn {
 			depCtx, ok := ctx.Tasks[ref.Name]
 			if !ok {
-				return ctx, fmt.Errorf("unable to resolve service binding: %s", ref.Name)
+				continue
+				//return ctx, fmt.Errorf("unable to resolve service binding: %s", ref.Name)
 			}
 
 			if len(depCtx.Service.NetIP) == 0 {

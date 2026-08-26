@@ -118,7 +118,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			b := hasher.Sum(nil)
 
 			copyCtx := ctx.DeepCopy().WithNamespace(fmt.Sprintf("%x", b)[:6])
-			copyCtx.Context = context.WithValue(cancelCtx, parentContext{}, ctx.UniqueName())
+			copyCtx.Context = context.WithValue(cancelCtx, ancestorsContext{}, ctx.UniqueName())
 			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
 			copyCtx.Matrix.Params = matrix
 			copyCtx.Build.State = llb.Scratch()

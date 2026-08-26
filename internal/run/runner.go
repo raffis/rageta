@@ -75,6 +75,7 @@ type Options struct {
 	SummaryOptions     SummaryOptions
 	InteractiveOptions InteractiveOptions
 	ExitCodeOptions    ExitCodeOptions
+	ExportOptions      ExportOptions
 }
 
 func (s *Options) BindFlags(flags flagset.Interface) {
@@ -94,6 +95,7 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.SecretOptions.BindFlags(pipelineFlags)
 	s.ExecuteOptions.BindFlags(pipelineFlags)
 	s.InputsOptions.BindFlags(pipelineFlags)
+	s.ExportOptions.BindFlags(pipelineFlags)
 	flags.AddFlagSet(pipelineFlags)
 }
 
@@ -128,5 +130,6 @@ func (o Options) Build() *Runner {
 		o.InputsOptions.Build(),
 		o.DisplayOptions.Build(),
 		o.ExecuteOptions.Build(),
+		o.ExportOptions.Build(),
 	)
 }

@@ -834,7 +834,7 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
-          defaultTarget:
+          defaultTask:
             type: string
           inputs:
             description: InputParams is a list of InputParam
@@ -905,37 +905,10 @@ spec:
           shortDescription:
             type: string
           tasks:
-            description: Outputs          OutputParams `json:"outputs,omitempty"`
             items:
               properties:
                 allowFailure:
                   type: boolean
-                artifacts:
-                  items:
-                    maxProperties: 1
-                    minProperties: 1
-                    properties:
-                      envVars:
-                        properties:
-                          path:
-                            type: string
-                        type: object
-                      image:
-                        type: object
-                      local:
-                        properties:
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      outputVars:
-                        properties:
-                          path:
-                            type: string
-                        type: object
-                    type: object
-                  type: array
                 dependsOn:
                   items:
                     minProperties: 1
@@ -946,12 +919,26 @@ spec:
                         type: string
                     type: object
                   type: array
-                envs:
+                env:
                   items:
                     properties:
                       name:
                         type: string
                       value:
+                        type: string
+                    type: object
+                  type: array
+                envFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
+                exports:
+                  items:
+                    properties:
+                      path:
                         type: string
                     type: object
                   type: array
@@ -977,9 +964,16 @@ spec:
                       type: array
                     pipeline:
                       type: string
-                    target:
+                    task:
                       type: string
                   type: object
+                inputFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
                 inputs:
                   items:
                     description: |-
@@ -1098,23 +1092,6 @@ spec:
                   type: object
                 name:
                   type: string
-                outputs:
-                  items:
-                    properties:
-                      name:
-                        description: Name declares the name by which a parameter is
-                          referenced.
-                        type: string
-                      step:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                    required:
-                    - name
-                    - step
-                    type: object
-                  type: array
                 retry:
                   properties:
                     constant:
@@ -1158,49 +1135,17 @@ spec:
                   type: string
                 sources:
                   items:
-                    maxProperties: 1
-                    minProperties: 1
                     properties:
-                      local:
-                        properties:
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      task:
-                        properties:
-                          name:
-                            type: string
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      tasks:
-                        properties:
-                          matchLabels:
-                            additionalProperties:
-                              type: string
-                            type: object
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
+                      from:
+                        type: string
+                      path:
+                        type: string
                     type: object
                   type: array
                 steps:
                   items:
                     properties:
                       script:
-                        type: string
-                    type: object
-                  type: array
-                targets:
-                  items:
-                    properties:
-                      name:
                         type: string
                     type: object
                   type: array
@@ -1261,32 +1206,6 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
-                artifacts:
-                  items:
-                    maxProperties: 1
-                    minProperties: 1
-                    properties:
-                      envVars:
-                        properties:
-                          path:
-                            type: string
-                        type: object
-                      image:
-                        type: object
-                      local:
-                        properties:
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      outputVars:
-                        properties:
-                          path:
-                            type: string
-                        type: object
-                    type: object
-                  type: array
                 dependsOn:
                   items:
                     minProperties: 1
@@ -1297,12 +1216,26 @@ spec:
                         type: string
                     type: object
                   type: array
-                envs:
+                env:
                   items:
                     properties:
                       name:
                         type: string
                       value:
+                        type: string
+                    type: object
+                  type: array
+                envFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
+                exports:
+                  items:
+                    properties:
+                      path:
                         type: string
                     type: object
                   type: array
@@ -1328,9 +1261,16 @@ spec:
                       type: array
                     pipeline:
                       type: string
-                    target:
+                    task:
                       type: string
                   type: object
+                inputFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
                 inputs:
                   items:
                     description: |-
@@ -1449,23 +1389,6 @@ spec:
                   type: object
                 name:
                   type: string
-                outputs:
-                  items:
-                    properties:
-                      name:
-                        description: Name declares the name by which a parameter is
-                          referenced.
-                        type: string
-                      step:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                    required:
-                    - name
-                    - step
-                    type: object
-                  type: array
                 retry:
                   properties:
                     constant:
@@ -1509,49 +1432,17 @@ spec:
                   type: string
                 sources:
                   items:
-                    maxProperties: 1
-                    minProperties: 1
                     properties:
-                      local:
-                        properties:
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      task:
-                        properties:
-                          name:
-                            type: string
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
-                      tasks:
-                        properties:
-                          matchLabels:
-                            additionalProperties:
-                              type: string
-                            type: object
-                          path:
-                            type: string
-                          to:
-                            type: string
-                        type: object
+                      from:
+                        type: string
+                      path:
+                        type: string
                     type: object
                   type: array
                 steps:
                   items:
                     properties:
                       script:
-                        type: string
-                    type: object
-                  type: array
-                targets:
-                  items:
-                    properties:
-                      name:
                         type: string
                     type: object
                   type: array

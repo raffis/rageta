@@ -9,6 +9,8 @@ inputs:
   description: file which should be served and requested
   default: index.html
 
+defaultTask: http-server
+
 tasks:
 - name: http-server
   image: busybox:1
