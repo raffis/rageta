@@ -47,6 +47,12 @@ var (
 	lineNumberActiveStyle   lipgloss.Style
 	lineNumberInactiveStyle lipgloss.Style
 	listLabelStyle          lipgloss.Style
+	listStatsStyle          lipgloss.Style
+	selectedNameStyle       lipgloss.Style
+
+	helpKeyStyle  lipgloss.Style
+	helpDescStyle lipgloss.Style
+	helpSepStyle  lipgloss.Style
 
 	activePanelColor = lipgloss.Color("#7D56F4")
 	lightGrey        = compat.AdaptiveColor{
@@ -97,12 +103,25 @@ func init() {
 		MaxHeight(1)
 
 	listLabelStyle = newStyle().PaddingRight(1)
+	selectedNameStyle = newStyle().Foreground(activePanelColor)
+	// No MaxHeight here (unlike listColumnStyle/durationStyle): this style
+	// also carries the stats bar's closing bottom border (added in
+	// renderListStats), which needs its own extra line — a MaxHeight(1)
+	// would crop that border line away.
+	listStatsStyle = newStyle().
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(lightGrey).
+		PaddingLeft(2)
 	listStyle = newStyle().
 		BorderForeground(activePanelColor).
 		Border(lipgloss.NormalBorder(), false, true, true, false)
 
 	listColumnStyle = newStyle().MaxHeight(1)
-	durationStyle = newStyle().Foreground(lightGrey)
+	// MaxHeight(1) guards against lipgloss wrapping (rather than truncating)
+	// a duration string that's wider than the column's Width, e.g.
+	// "15m30.46s" against the 8-char minimum — without it, the wrap inserts
+	// a literal newline into the row and pushes duration onto its own line.
+	durationStyle = newStyle().Foreground(lightGrey).MaxHeight(1)
 	treeGuideStyle = newStyle().Foreground(lightGrey)
 
 	topStyle = lipgloss.NewStyle()
@@ -121,4 +140,10 @@ func init() {
 	helpDelimiterStyle = newStyle().
 		Foreground(inactivePanelColor).
 		Padding(0, 1)
+
+	// Brighter than bubbles' default help styles (which use very dim greys
+	// tuned for a light background and are hard to read on a dark terminal).
+	helpKeyStyle = newStyle().Foreground(lipgloss.Color("#CCCCCC"))
+	helpDescStyle = newStyle().Foreground(lipgloss.Color("#909090"))
+	helpSepStyle = newStyle().Foreground(lightGrey)
 }

@@ -243,6 +243,17 @@ func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskCo
 			defer term.RestoreTerminal(f.Fd(), oldState)
 		}
 
+		// Apply the current window size synchronously before anything can
+		// run inside the shell. gwclient.StartRequest has no way to set an
+		// initial winsize, so without this the container's pty starts out
+		// at whatever default size BuildKit picked; a pager launched inside
+		// the shell (e.g. `less`) reads that size once at startup via
+		// TIOCGWINSZ, so it would otherwise see the wrong dimensions until
+		// an actual terminal resize happens to fire a real SIGWINCH.
+		if ws, err := term.GetWinsize(f.Fd()); err == nil {
+			_ = proc.Resize(ctx, gwclient.WinSize{Rows: uint32(ws.Height), Cols: uint32(ws.Width)})
+		}
+
 		resize := make(chan os.Signal, 1)
 		signal.Notify(resize, syscall.SIGWINCH)
 		defer signal.Stop(resize)
@@ -254,7 +265,6 @@ func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskCo
 				}
 			}
 		}()
-		resize <- syscall.SIGWINCH
 	}
 
 	return proc.Wait()

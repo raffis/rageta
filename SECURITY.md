@@ -12,7 +12,7 @@
 - Your issue is not security-related.
 
 ### Please use the below process to report a vulnerability to the project:
-1. Email raffael.sahli+security@gmail.com
+1. Email <email>
     * Emails should contain:
         * description of the problem
         * precise and detailed steps (include screenshots) that created the problem

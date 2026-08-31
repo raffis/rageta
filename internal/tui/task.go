@@ -43,7 +43,14 @@ const (
 	MinMemWidth      = 6
 	MinNetWidth      = 9
 	MinDiskWidth     = 9
-	MinDurationWidth = 8
+	// MMmSS.SSs (e.g. "15m30.46s") is 9 characters, the common case once a
+	// task has run for at least a minute.
+	MinDurationWidth = 9
+
+	// RightMargin is left unconsumed at the right edge of the row (see
+	// computeColumnLayout) as a buffer against ambiguous-width glyphs
+	// rendering wider than lipgloss expects.
+	RightMargin = 6
 )
 
 // columnLayout describes which columns fit in a list of the given width and
@@ -75,7 +82,15 @@ type columnLayout struct {
 // status column and outer padding (see StatusColumnWidth usages at the call
 // sites).
 func computeColumnLayout(listWidth int) columnLayout {
-	avail := max(listWidth, 0)
+	// RightMargin is reserved unconditionally, up front, rather than only
+	// trimmed from whatever's left over after fitting the stat columns:
+	// when the stat columns already exactly consume the full budget (a
+	// common case), there's no leftover to trim from, so a
+	// leftover-only margin provides no protection at all. Reserving it
+	// against avail itself guarantees the row never uses more than
+	// listWidth-RightMargin regardless. See the margin's own doc comment
+	// below for why it exists.
+	avail := max(listWidth-RightMargin, 0)
 
 	nameWidth := int(float64(avail) * NameColumnPercent / 100)
 	labelsWidth := int(float64(avail) * LabelsColumnPercent / 100)
@@ -92,10 +107,26 @@ func computeColumnLayout(listWidth int) columnLayout {
 			needed += statMins[i] + 1 // +1 for the separating space
 		}
 		if needed <= remaining {
+			remaining -= needed
 			break
 		}
 		visible--
 	}
+	if visible == 0 {
+		remaining = max(remaining, 0)
+	}
+
+	// Give whatever's left over after fitting the stat columns to the name
+	// column, so the row roughly fills the reserved budget and the
+	// duration column stays close to the right edge instead of leaving a
+	// gap that grows as the terminal is resized. RightMargin itself was
+	// already reserved out of avail above and is never touched here — a
+	// few of the glyphs used per row (status icons, label dots, and the
+	// list panel's own border, which differs between wide and narrow
+	// layout) can render up to a couple of columns wider than lipgloss
+	// assumes, and this margin absorbs that instead of letting the row
+	// overflow the real terminal width and wrap.
+	nameWidth += remaining
 
 	return columnLayout{
 		nameWidth:     nameWidth,
@@ -160,6 +191,11 @@ type TaskMsg struct {
 	// so per-task patch updates (stats, pull progress, ticks) don't need to
 	// recompute it.
 	treePrefix string
+	// selected is set transiently by compactDelegate.Render just before
+	// each render pass (not persisted), so Title can color the name
+	// explicitly for the active row — see compactDelegate.Render for why
+	// that can't just be left to the outer SelectedTitle style wrap.
+	selected bool
 }
 
 // NewTask creates a new TaskMsg with initialized components
@@ -284,6 +320,22 @@ func (t TaskMsg) Title() string {
 	listWidth := t.listWidth - StatusColumnWidth - 2 // Account for status and padding
 	layout := computeColumnLayout(listWidth)
 
+	// On the selected row most columns render in the active panel color
+	// rather than their usual per-metric color, so the row reads as a
+	// highlighted unit (the status icon and labels keep their own color
+	// regardless of selection). Each piece is colored explicitly here
+	// (rather than wrapping the finished row in one outer style) because
+	// several pieces already carry their own ANSI color+reset (status
+	// icon, label dots), and a reset isn't scoped to whatever style opened
+	// it — it clears back to the default color regardless of any outer
+	// wrap, so inheritance alone can't reach past them.
+	colStyle := listColumnStyle
+	durStyle := durationStyle
+	if t.selected {
+		colStyle = colStyle.Foreground(activePanelColor)
+		durStyle = selectedNameStyle.MaxHeight(1)
+	}
+
 	var status string
 	if t.Status == TaskStatusRunning {
 		status = t.loader.View()
@@ -291,32 +343,44 @@ func (t TaskMsg) Title() string {
 		status = t.Status.Render()
 	}
 
+	// t.treePrefix already carries its own ANSI color + reset (see
+	// renderTreePrefix), so it's rendered on its own rather than folded into
+	// the name string below and handed to colStyle.Render as one blob: a
+	// reset isn't scoped to whichever style opened it, so the prefix's own
+	// reset would otherwise cut off colStyle's color right after the
+	// prefix, leaving the display name in the default color even when the
+	// row is selected.
 	prefixWidth := lipgloss.Width(t.treePrefix)
-	name := t.treePrefix + ellipsis(t.DisplayName, max(layout.nameWidth-prefixWidth, EllipsisLength))
+	displayName := ellipsis(t.DisplayName, max(layout.nameWidth-prefixWidth, EllipsisLength))
+	name := t.treePrefix + colStyle.Width(layout.nameWidth-prefixWidth).Render(displayName)
 
 	cols := []string{
-		listColumnStyle.Width(layout.nameWidth).Render(name),
+		name,
 		listColumnStyle.Width(layout.labelsWidth).Render(t.shortLabels()),
 	}
-	if layout.showCPU {
-		cols = append(cols, listColumnStyle.Width(layout.cpuWidth).Align(lipgloss.Right).Render(t.cpuString()))
+	if pull, ok := t.pullProgressBar(layout); ok {
+		cols = append(cols, pull)
+	} else {
+		if layout.showCPU {
+			cols = append(cols, colStyle.Width(layout.cpuWidth).Align(lipgloss.Right).Render(t.cpuString()))
+		}
+		if layout.showMem {
+			cols = append(cols, colStyle.Width(layout.memWidth).Align(lipgloss.Right).Render(t.memString()))
+		}
+		if layout.showNetRx {
+			cols = append(cols, colStyle.Width(layout.netRxWidth).Align(lipgloss.Right).Render(t.netRxString()))
+		}
+		if layout.showNetTx {
+			cols = append(cols, colStyle.Width(layout.netTxWidth).Align(lipgloss.Right).Render(t.netTxString()))
+		}
+		if layout.showDiskR {
+			cols = append(cols, colStyle.Width(layout.diskRWidth).Align(lipgloss.Right).Render(t.diskRString()))
+		}
+		if layout.showDiskW {
+			cols = append(cols, colStyle.Width(layout.diskWWidth).Align(lipgloss.Right).Render(t.diskWString()))
+		}
 	}
-	if layout.showMem {
-		cols = append(cols, listColumnStyle.Width(layout.memWidth).Align(lipgloss.Right).Render(t.memString()))
-	}
-	if layout.showNetRx {
-		cols = append(cols, listColumnStyle.Width(layout.netRxWidth).Align(lipgloss.Right).Render(t.netRxString()))
-	}
-	if layout.showNetTx {
-		cols = append(cols, listColumnStyle.Width(layout.netTxWidth).Align(lipgloss.Right).Render(t.netTxString()))
-	}
-	if layout.showDiskR {
-		cols = append(cols, listColumnStyle.Width(layout.diskRWidth).Align(lipgloss.Right).Render(t.diskRString()))
-	}
-	if layout.showDiskW {
-		cols = append(cols, listColumnStyle.Width(layout.diskWWidth).Align(lipgloss.Right).Render(t.diskWString()))
-	}
-	cols = append(cols, durationStyle.Width(layout.durationWidth).Align(lipgloss.Right).
+	cols = append(cols, durStyle.Width(layout.durationWidth).Align(lipgloss.Right).
 		Render(t.duration().Round(10*time.Millisecond).String()))
 
 	return status + " " + strings.Join(cols, " ")
@@ -364,16 +428,69 @@ func (t *TaskMsg) diskWString() string {
 	return utils.FormatBps(t.Stats.DiskWriteBytes)
 }
 
-// Description returns the description line rendered below the task's title,
-// used to display an image pull progress bar while a build step is running.
-// It is hidden once the pull completes (current >= total).
+// Description is always empty: TaskMsg renders everything (including the
+// image-pull progress bar, see pullProgressBar) on a single row, so
+// compactDelegate never reserves the description row bubbles' DefaultDelegate
+// otherwise draws below each item.
 func (t TaskMsg) Description() string {
-	if t.Status != TaskStatusRunning || t.Pull.Total <= 0 || t.Pull.Current >= t.Pull.Total {
-		return ""
+	return ""
+}
+
+// statsColumnsWidth returns the combined width of the resource-stat columns
+// currently visible in layout, including the single space that
+// strings.Join places between each of them - the same span the pull
+// progress bar takes over in pullProgressBar so it lines up with the
+// columns it's temporarily replacing.
+func statsColumnsWidth(layout columnLayout) int {
+	widths := make([]int, 0, 6)
+	if layout.showCPU {
+		widths = append(widths, layout.cpuWidth)
+	}
+	if layout.showMem {
+		widths = append(widths, layout.memWidth)
+	}
+	if layout.showNetRx {
+		widths = append(widths, layout.netRxWidth)
+	}
+	if layout.showNetTx {
+		widths = append(widths, layout.netTxWidth)
+	}
+	if layout.showDiskR {
+		widths = append(widths, layout.diskRWidth)
+	}
+	if layout.showDiskW {
+		widths = append(widths, layout.diskWWidth)
+	}
+	if len(widths) == 0 {
+		return 0
 	}
 
+	width := len(widths) - 1 // separating spaces
+	for _, w := range widths {
+		width += w
+	}
+	return width
+}
+
+// pullProgressBar renders the image-pull progress bar over the span the
+// resource-stat columns would otherwise occupy, so it appears inline on the
+// task's row instead of on a separate line below it. It returns ok == false
+// while nothing should replace those columns: the task isn't running, no
+// pull is in flight, or the pull has already finished (current >= total).
+func (t TaskMsg) pullProgressBar(layout columnLayout) (rendered string, ok bool) {
+	if t.Status != TaskStatusRunning || t.Pull.Total <= 0 || t.Pull.Current >= t.Pull.Total {
+		return "", false
+	}
+
+	width := statsColumnsWidth(layout)
+	if width <= 0 {
+		return "", false
+	}
+
+	bar := t.pullImageProgress
+	bar.SetWidth(width)
 	percent := float64(t.Pull.Current) / float64(t.Pull.Total)
-	return t.pullImageProgress.ViewAs(percent)
+	return listColumnStyle.Width(width).Render(bar.ViewAs(percent)), true
 }
 
 // ellipsis truncates a string to maxLen characters, adding "..." if needed
@@ -435,22 +552,42 @@ func (e TaskStatus) String() string {
 	return stepStatusStrings[e]
 }
 
-// Render returns the styled visual representation of the step status
+// Symbol returns the status's bare glyph, uncolored.
+func (e TaskStatus) Symbol() string {
+	switch e {
+	case TaskStatusRunning:
+		return "◴"
+	case TaskStatusDone:
+		return "✔"
+	case TaskStatusFailed:
+		return "✕"
+	case TaskStatusWaiting:
+		return "◎"
+	case TaskStatusCached:
+		return "◈"
+	case TaskStatusSkipped:
+		return "⚠"
+	default:
+		return "?"
+	}
+}
+
+// Render returns the styled visual representation of the step status.
 func (e TaskStatus) Render() string {
 	switch e {
 	case TaskStatusRunning:
-		return stepRunningStyle.Render("◴")
+		return stepRunningStyle.Render(e.Symbol())
 	case TaskStatusDone:
-		return stepOkStyle.Render("✔")
+		return stepOkStyle.Render(e.Symbol())
 	case TaskStatusFailed:
-		return stepFailedStyle.Render("✗")
+		return stepFailedStyle.Render(e.Symbol())
 	case TaskStatusWaiting:
-		return stepWaitingStyle.Render("◎")
+		return stepWaitingStyle.Render(e.Symbol())
 	case TaskStatusCached:
-		return stepCachedStyle.Render("◈")
+		return stepCachedStyle.Render(e.Symbol())
 	case TaskStatusSkipped:
-		return stepWarningStyle.Render("⚠")
+		return stepWarningStyle.Render(e.Symbol())
 	default:
-		return stepWaitingStyle.Render("?")
+		return stepWaitingStyle.Render(e.Symbol())
 	}
 }

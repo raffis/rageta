@@ -27,13 +27,21 @@ const (
 )
 
 const (
-	ListWidthPercentage       = 35.0
-	ListHeightPercentage      = 40.0
-	LayoutAreaHeight          = 4
-	LayoutAreaHeightNarrow    = 6
-	FilterInputHeightOffset   = 1
-	LabelsHeightOffset        = 1
-	AlignHorizontalBreakpoint = 250
+	ListWidthPercentage     = 35.0
+	ListHeightPercentage    = 40.0
+	LayoutAreaHeight        = 4
+	LayoutAreaHeightNarrow  = 7
+	FilterInputHeightOffset = 1
+	LabelsHeightOffset      = 1
+	// StatsHeightOffset reserves 2 lines, not 1: the stats bar's own
+	// content line plus the closing bottom border it draws for the list
+	// body's box (see renderListPanel/renderListStats).
+	StatsHeightOffset = 2
+	// WideStatsHeightOffset is the wide-layout equivalent of
+	// StatsHeightOffset — see its use in handleWindowResize for why the
+	// two layouts need different values.
+	WideStatsHeightOffset     = 1
+	AlignHorizontalBreakpoint = 350
 )
 
 const (
@@ -139,6 +147,18 @@ func (d compactDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	if di, ok := item.(list.DefaultItem); !ok || di.Description() == "" {
 		d.ShowDescription = false
 	}
+
+	// Color the task name explicitly when this row is the selected one,
+	// rather than relying on the outer SelectedTitle wrap bubbles applies:
+	// the status icon segment carries its own ANSI color+reset, and that
+	// reset clears the wrap's color for everything after it (ANSI resets
+	// aren't scoped to the style that opened them), so the name would
+	// otherwise render in the default color regardless of SelectedTitle.
+	if task, ok := item.(TaskMsg); ok {
+		task.selected = index == m.Index() && m.FilterState() != list.Filtering
+		item = task
+	}
+
 	d.DefaultDelegate.Render(w, m, index, item)
 }
 
@@ -170,6 +190,7 @@ func NewUI(logger logr.Logger) UI {
 	ui.initializeList()
 	ui.initializeScanInput()
 	ui.initializeLoader()
+	ui.initializeHelp()
 
 	return ui
 }
@@ -200,6 +221,15 @@ func (m *UI) initializeLoader() {
 	m.loader = spinner.New()
 	m.loader.Spinner = spinner.Dot
 	m.loader.Style = lipgloss.NewStyle().Foreground(activePanelColor)
+}
+
+// initializeHelp sets up the bottom help bar, brightening it beyond bubbles'
+// default styles (tuned dim for a light background, hard to read on dark).
+func (m *UI) initializeHelp() {
+	m.help.Styles.ShortKey = helpKeyStyle
+	m.help.Styles.ShortDesc = helpDescStyle
+	m.help.Styles.ShortSeparator = helpSepStyle
+	m.help.Styles.Ellipsis = helpSepStyle
 }
 
 // sortList reorders m.tasks into dependency-tree order (see treeOrder),
@@ -368,10 +398,17 @@ func buildTreeGuides(tasks []TaskMsg) map[string]treeGuide {
 			continue
 		}
 
+		// The parent's own guide column is only added from depth 1 onward:
+		// a root (depth 0) renders no prefix at all (see the g.depth == 0
+		// case in renderTreePrefix), so there's no vertical guide line to
+		// continue under it. Adding a column for it anyway is what used to
+		// push every first-level row's branch glyph one extra "   "/"│  "
+		// to the right, as if the invisible root still occupied a column.
 		pg := guides[parent]
-		ancestorLast := make([]bool, len(pg.ancestorLast)+1)
-		copy(ancestorLast, pg.ancestorLast)
-		ancestorLast[len(pg.ancestorLast)] = pg.isLast
+		ancestorLast := append([]bool{}, pg.ancestorLast...)
+		if pg.depth > 0 {
+			ancestorLast = append(ancestorLast, pg.isLast)
+		}
 
 		guides[t.Name] = treeGuide{
 			depth:        pg.depth + 1,
@@ -602,7 +639,6 @@ func (m *UI) handleTaskMessage(msg TaskMsg) []tea.Cmd {
 		msg.ready = true
 		msg.listWidth = m.list.Width()
 		msg.listHeight = m.list.Height()
-		msg.pullImageProgress.SetWidth(pullImageProgressWidth(msg.listWidth))
 
 		// Initialize viewport dimensions
 		if msg.viewport != nil {
@@ -847,26 +883,32 @@ func (m *UI) handleWindowResize(msg tea.WindowSizeMsg) []tea.Cmd {
 
 	if m.width < AlignHorizontalBreakpoint {
 		listHeight := float64(m.height) * ListHeightPercentage / 100
-		m.list.SetSize(m.width, int(listHeight)-LayoutAreaHeightNarrow)
+		m.list.SetSize(m.width, int(listHeight)-LayoutAreaHeightNarrow-StatsHeightOffset)
 	} else {
+		// Wide layout sits list and pager side by side (see
+		// renderMainLayout), so unlike the narrow layout above, the list
+		// body's height must make the list panel's total rendered height
+		// (list header + body + stats bar) come out exactly equal to the
+		// pager panel's (viewport + its border), or JoinHorizontal pads
+		// the shorter one with blank lines — visible as a gap under the
+		// shorter panel. That equality needs only WideStatsHeightOffset
+		// (1) subtracted here, not the full StatsHeightOffset (2) used in
+		// the narrow branch, because the two layouts' height formulas
+		// have different structure (the narrow branch's viewport height
+		// is itself derived from the list's height, which isn't true in
+		// wide layout — see updateViewportDimensions).
 		listWidth := float64(m.width) * ListWidthPercentage / 100
-		m.list.SetSize(int(listWidth), m.height-LayoutAreaHeight)
+		m.list.SetSize(int(listWidth), m.height-LayoutAreaHeight-WideStatsHeightOffset)
 	}
 
 	for i, t := range m.tasks {
 		t.listWidth = m.list.Width()
 		t.listHeight = m.list.Height()
-		t.pullImageProgress.SetWidth(pullImageProgressWidth(t.listWidth))
 		m.tasks[i] = t
 	}
 	m.refreshList()
 
 	return nil
-}
-
-// pullImageProgressWidth derives a sensible progress bar width from the list width.
-func pullImageProgressWidth(listWidth int) int {
-	return max(listWidth-StatusColumnWidth-2, 10)
 }
 
 // handlePullProgress updates the pull progress of a running task
@@ -989,16 +1031,22 @@ func (m UI) renderHeaderPanel() string {
 		listStyle = listStyle.Foreground(inactivePanelColor)
 		pagerStyle = listStyle.Foreground(activePanelColor)
 	}
+	task := m.lastSelected.(TaskMsg)
 
 	if m.width < AlignHorizontalBreakpoint {
 		tab := activeStyle.Render(" ⇅ ")
-		line := strings.Repeat("─", max(0, (m.width-4)/2))
+		line1 := strings.Repeat("─", max(0, (((m.width-4)/2)-10-lipgloss.Width(task.GetName()))))
+		line2 := strings.Repeat("─", max(0, ((m.width-5)/2)))
 
-		pagerHeader = fmt.Sprintf("%s%s%s%s",
+		pagerHeader = fmt.Sprintf("%s%s %s %s %s %s%s%s",
 			pagerStyle.Render("┌"),
-			pagerStyle.Render(line),
+			pagerStyle.Render("─── ·"),
+			topTitleStyle.Render(task.GetName()),
+			pagerStyle.Render("·"),
+			pagerStyle.Render(line1),
 			pagerStyle.Render(tab),
-			pagerStyle.Render(line),
+			pagerStyle.Render(line2),
+			pagerStyle.Render("┐"),
 		)
 
 		return lipgloss.JoinVertical(lipgloss.Top, pagerHeader)
@@ -1008,7 +1056,6 @@ func (m UI) renderHeaderPanel() string {
 		Render(strings.Repeat("─", max(0, m.list.Width()-2)))
 
 	if m.lastSelected != nil {
-		task := m.lastSelected.(TaskMsg)
 		headerWidth := max(0, task.viewport.Width-10-lipgloss.Width(task.GetName()))
 		pagerHeader = fmt.Sprintf("%s %s %s %s",
 			pagerStyle.Render("─── ·"),
@@ -1031,17 +1078,26 @@ func (m UI) renderListPanel() string {
 		m.list.SetHeight(m.list.Height() - FilterInputHeightOffset)
 	}
 
-	var style lipgloss.Style
-	if m.activePanel == PanelList {
-		style = listStyle.BorderForeground(activePanelColor)
-	} else {
-		style = listStyle.BorderForeground(inactivePanelColor)
-	}
+	active := m.activePanel == PanelList
+	narrow := m.width < AlignHorizontalBreakpoint
 
-	if m.width < AlignHorizontalBreakpoint {
-		// In vertical layout the list panel isn't flanked by the pager, so
-		// mirror the right border on the left for a symmetric box.
-		style = style.Border(lipgloss.NormalBorder(), false, true, true, true)
+	// No bottom border here — the stats bar below supplies it. Rendering
+	// the stats bar as its own top-level bordered block (rather than
+	// appending it into listPanelContent, to then be re-rendered through
+	// this Width()-applying style) matters: lipgloss trims trailing
+	// whitespace off nested content before repadding it to a style's own
+	// Width, which would strip the stats bar's background fill and leave
+	// it looking cut short instead of spanning the full panel width.
+	style := listStyle
+	if active {
+		style = style.BorderForeground(activePanelColor)
+	} else {
+		style = style.BorderForeground(inactivePanelColor)
+	}
+	if narrow {
+		style = style.Border(lipgloss.NormalBorder(), false, true, false, true)
+	} else {
+		style = style.Border(lipgloss.NormalBorder(), false, true, false, false)
 	}
 
 	header := m.renderListHeader()
@@ -1050,7 +1106,9 @@ func (m UI) renderListPanel() string {
 		Width(m.list.Width()).
 		Render(lipgloss.JoinVertical(lipgloss.Top, listPanelContent...))
 
-	return lipgloss.JoinVertical(lipgloss.Top, header, list)
+	statsBar := m.renderListStats(active, narrow)
+
+	return lipgloss.JoinVertical(lipgloss.Top, header, list, statsBar)
 }
 
 func (m UI) renderListHeader() string {
@@ -1058,6 +1116,11 @@ func (m UI) renderListHeader() string {
 	layout := computeColumnLayout(listWidth)
 
 	headerStyle := listHeaderStyle
+	if m.activePanel == PanelList {
+		headerStyle = headerStyle.Background(activePanelColor).BorderForeground(activePanelColor)
+	} else {
+		headerStyle = headerStyle.Background(inactivePanelColor).BorderForeground(inactivePanelColor)
+	}
 	if m.width < AlignHorizontalBreakpoint {
 		// Close off the top of the box and mirror the list panel's left
 		// border added in vertical layout. The extra top border line adds
@@ -1090,6 +1153,36 @@ func (m UI) renderListHeader() string {
 	cols = append(cols, listColumnStyle.Width(layout.durationWidth).Align(lipgloss.Right).Render("DUR"))
 
 	return headerStyle.Width(m.list.Width()).Render("  " + strings.Join(cols, " "))
+}
+
+// renderListStats renders the bottom bar of the list panel, summarizing how
+// many of the total tasks are left to run versus finished. It closes off
+// the list body's box (see renderListPanel) with its own bottom border, so
+// active/narrow need to match the body's border styling.
+func (m UI) renderListStats(active, narrow bool) string {
+	total := len(m.tasks)
+	done := 0
+	for _, t := range m.tasks {
+		if isTaskFinished(t.Status) {
+			done++
+		}
+	}
+
+	text := fmt.Sprintf("Total: %d │ Left: %d │ Done: %d", total, total-done, done)
+
+	style := listStatsStyle.Width(m.list.Width())
+	if active {
+		style = style.Background(activePanelColor).BorderForeground(activePanelColor)
+	} else {
+		style = style.Background(inactivePanelColor).BorderForeground(inactivePanelColor)
+	}
+	if narrow {
+		style = style.Border(lipgloss.NormalBorder(), false, true, true, true)
+	} else {
+		style = style.Border(lipgloss.NormalBorder(), false, true, true, false)
+	}
+
+	return style.Render(text)
 }
 
 func (m UI) renderPagerPanel() string {
@@ -1176,11 +1269,18 @@ func (m UI) renderBottomPanel() string {
 	helpWidth := max(0, m.width-lipgloss.Width(status)-lipgloss.Width(scrollPercentage)-lipgloss.Width(delimiter))
 	m.help.SetWidth(helpWidth)
 
+	// MaxHeight(1): bubbles' own ShortHelpView doesn't strictly respect the
+	// width passed to SetWidth — when there's no room left for its "…"
+	// ellipsis, it renders the last oversized item anyway rather than
+	// dropping it. Without this cap, that overflow would wrap onto a
+	// second line here (Width() alone wraps rather than truncates), which
+	// pushes this entire bottom bar's content down and, since nothing
+	// budgets height for that extra line, off the bottom of the screen.
 	return lipgloss.JoinHorizontal(
 		lipgloss.Bottom,
 		status,
 		delimiter,
-		lipgloss.NewStyle().Width(helpWidth).Render(m.help.View(uiKeyMap{})),
+		lipgloss.NewStyle().Width(helpWidth).MaxHeight(1).Render(m.help.View(uiKeyMap{})),
 		scrollPercentage,
 	)
 }

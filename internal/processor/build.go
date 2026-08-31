@@ -151,6 +151,7 @@ func solveWithProgress(ctx TaskContext, gwClient gwclient.Client, statusRouter v
 
 		pullStatuses := map[string]*bkclient.VertexStatus{}
 		var lastProgressWrite time.Time
+		var hadPullStatuses bool
 		const progressWriteInterval = 100 * time.Millisecond
 		for ss := range rawCh {
 			for _, v := range ss.Statuses {
@@ -165,16 +166,29 @@ func solveWithProgress(ctx TaskContext, gwClient gwclient.Client, statusRouter v
 				}
 			}
 
-			// throttle pull messages
-			if ctx.Display.WritePullProgress != nil && len(pullStatuses) > 0 &&
-				time.Since(lastProgressWrite) >= progressWriteInterval {
-				var current, total int64
-				for _, v := range pullStatuses {
-					current += v.Current
-					total += v.Total
+			if ctx.Display.WritePullProgress != nil {
+				if len(pullStatuses) > 0 {
+					hadPullStatuses = true
+
+					// throttle pull messages
+					if time.Since(lastProgressWrite) >= progressWriteInterval {
+						var current, total int64
+						for _, v := range pullStatuses {
+							current += v.Current
+							total += v.Total
+						}
+						ctx.Display.WritePullProgress(current, total)
+						lastProgressWrite = time.Now()
+					}
+				} else if hadPullStatuses {
+					// All in-flight pulls just completed: send a final,
+					// unthrottled update so the UI clears the progress bar
+					// right away instead of leaving it stuck at whatever
+					// value the last throttled write happened to show,
+					// potentially for as long as the step keeps running.
+					ctx.Display.WritePullProgress(0, 0)
+					hadPullStatuses = false
 				}
-				ctx.Display.WritePullProgress(current, total)
-				lastProgressWrite = time.Now()
 			}
 
 			for _, v := range ss.Vertexes {
