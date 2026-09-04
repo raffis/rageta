@@ -5,31 +5,31 @@ import (
 )
 
 type Reporter interface {
-	Report(ctx StepContext, name string) error
+	Report(ctx TaskContext, name string) error
 }
 
 func WithReport(report Reporter) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if report == nil {
 			return nil
 		}
 
 		return &Report{
-			stepName: spec.Name,
+			taskName: spec.Name,
 			report:   report,
 		}
 	}
 }
 
 type Report struct {
-	stepName string
+	taskName string
 	report   Reporter
 }
 
 func (s *Report) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		ctx, err := next(ctx)
-		if reportErr := s.report.Report(ctx, s.stepName); reportErr != nil {
+		if reportErr := s.report.Report(ctx, s.taskName); reportErr != nil {
 			if err == nil {
 				err = reportErr
 			}

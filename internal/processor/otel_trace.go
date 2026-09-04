@@ -8,13 +8,13 @@ import (
 )
 
 func WithOtelTrace(logger logr.Logger, tracer trace.Tracer) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if tracer == nil {
 			return nil
 		}
 
 		return &OtelTrace{
-			stepName: spec.Name,
+			taskName: spec.Name,
 			logger:   logger,
 			tracer:   tracer,
 		}
@@ -22,23 +22,23 @@ func WithOtelTrace(logger logr.Logger, tracer trace.Tracer) ProcessorBuilder {
 }
 
 type OtelTrace struct {
-	stepName string
+	taskName string
 	logger   logr.Logger
 	tracer   trace.Tracer
 }
 
 func (s *OtelTrace) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		var span trace.Span
-		ctx.Context, span = s.tracer.Start(ctx, s.stepName, trace.WithSpanKind(trace.SpanKindInternal))
+		ctx.Context, span = s.tracer.Start(ctx, s.taskName, trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
-		for _, tag := range ctx.Tags.Tags() {
+		for _, tag := range ctx.Labels.Labels() {
 			span.SetAttributes(attribute.String(tag.Key, tag.Value))
 		}
 
 		ctx.Context = logr.NewContext(ctx, logr.FromContextOrDiscard(ctx).WithValues(
-			"step", s.stepName,
+			"step", s.taskName,
 			"span-id", span.SpanContext().SpanID(),
 			"trace-id", span.SpanContext().TraceID()),
 		)

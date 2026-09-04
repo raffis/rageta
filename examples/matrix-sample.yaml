@@ -1,0 +1,38 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: sample-matrix
+
+tasks:
+#- name: generate-matrix
+#  image: busybox
+#  dependsOn:
+#  - name: sample-matrix
+#  steps:
+#  - script: I also know the matrix context, $(context.matrix.key)
+
+- name: sample-matrix
+  image: ubuntu
+  matrix:
+    params:
+    - name: key
+      value: ["1","2", "3"]
+  steps:
+  - script: cat  /etc/lsb-release
+  - script: echo key:$(context.matrix.key)
+
+- name: matrix-task
+  image: busybox
+  dependsOn:
+  - name: sample-matrix
+  steps:
+  - script: echo "I also know the matrix context, $(context.matrix.key)"
+
+- name: wait-for-matrix-tasks
+  image: busybox
+  dependsOn:
+  - name: sample-matrix
+    awaitMatrix: true
+  steps:
+  - script: echo "all matrix tasks executed"

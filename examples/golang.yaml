@@ -1,0 +1,109 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: golang
+
+inputs:
+- name: image
+  description: Image name used for docker-build/build
+  default: ghcr.io/rageta/rageta
+
+defaultTask: default
+
+templates:
+- name: golang
+  volumeMounts:
+  - mountPath: /go/pkg/mod
+    cache:
+      name: go-mod
+  - mountPath: /root/.cache/go-build
+    cache:
+      name: go-build
+  sources:
+  - path: .
+  image: golang:1.25-alpine
+  workingDir: /workspace
+- name: docker
+  sources:
+  - path: .
+  image: docker:27-cli
+  workingDir: /workspace
+
+tasks:
+- name: default
+  targets:
+  - name: tidy
+  - name: vet
+  - name: fmt
+  - name: golangci-lint
+  - name: test
+  - name: build
+- name: tidy
+  templates:
+  - name: golang
+  exports:
+  - path: ./go.mod
+  - path: ./go.sum
+  steps:
+  - script: go mod tidy -compat=1.20
+
+- name: fmt
+  templates:
+  - name: golang
+  exports:
+  - path: .
+  steps:
+    - script: go fmt ./...
+
+- name: vet
+  templates:
+  - name: golang
+  steps:
+  - script: go vet ./...
+
+- name: golangci-lint
+  image: golangci/golangci-lint:v2.12.2
+  volumeMounts:
+  - mountPath: /root/.cache/golangci-lint
+    cache: 
+      name: golangci-lint
+  sources:
+  - path: .
+  workingDir: /workspace
+  steps:
+  - script: golangci-lint run --timeout=3m
+
+- name: test
+  templates:
+  - name: golang
+  steps:
+  - script: go test -coverprofile coverage.out -v ./...
+
+- name: build
+  templates:
+  - name: golang
+  #exports:
+  #- path: ./rageta
+  #env:
+  #- name: CGO_ENABLED
+  #  value: "0"
+  steps:
+  - script: go build -C cmd/cli/ -o ../../rageta
+
+- name: docker-build
+  dependsOn:
+  - name: build
+  templates:
+  - name: docker
+  sources:
+  - from: build
+    path: ./rageta
+  steps:
+  - script: docker build -t $(context.inputs.image) .
+
+- name: install
+  templates:
+  - name: golang
+  steps:
+  - script: go install .

@@ -8,23 +8,23 @@ import (
 )
 
 func WithRecover() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		return &Recover{
-			stepName: spec.Name,
+			taskName: spec.Name,
 		}
 	}
 }
 
 type Recover struct {
-	stepName string
+	taskName string
 }
 
 func (s *Recover) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (out StepContext, err error) {
+	return func(ctx TaskContext) (out TaskContext, err error) {
 		out = ctx
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("panic in step `%s`: %#v\n trace:\n%s", s.stepName, r, debug.Stack())
+				err = fmt.Errorf("panic occurred `%s`: %#v\n trace:\n%s", s.taskName, r, debug.Stack())
 			}
 		}()
 

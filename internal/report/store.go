@@ -10,8 +10,8 @@ import (
 )
 
 type stepResult struct {
-	stepName string
-	result   processor.StepContext
+	taskName string
+	result   processor.TaskContext
 }
 
 type store struct {
@@ -19,11 +19,11 @@ type store struct {
 	mu    sync.Mutex
 }
 
-func (s *store) Add(stepName string, ctx processor.StepContext) {
+func (s *store) Add(taskName string, ctx processor.TaskContext) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.steps = append(s.steps, stepResult{
-		stepName: stepName,
+		taskName: taskName,
 		result:   ctx,
 	})
 }
@@ -33,22 +33,22 @@ func (s *store) Ordered() []stepResult {
 	defer s.mu.Unlock()
 
 	sort.Slice(s.steps, func(i, j int) bool {
-		var iTags, jTags []string
-		for _, tag := range s.steps[i].result.Tags.Tags() {
-			iTags = append(iTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+		var iLabels, jLabels []string
+		for _, tag := range s.steps[i].result.Labels.Labels() {
+			iLabels = append(iLabels, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
 		}
-		for _, tag := range s.steps[j].result.Tags.Tags() {
-			jTags = append(jTags, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
+		for _, tag := range s.steps[j].result.Labels.Labels() {
+			jLabels = append(jLabels, fmt.Sprintf("%s:%s", tag.Key, tag.Value))
 		}
 
-		iTagsKey := strings.Join(iTags, "-")
-		jTagsKey := strings.Join(jTags, "-")
+		iLabelsKey := strings.Join(iLabels, "-")
+		jLabelsKey := strings.Join(jLabels, "-")
 
-		if iTagsKey == jTagsKey {
+		if iLabelsKey == jLabelsKey {
 			return s.steps[i].result.StartedAt.Before(s.steps[j].result.StartedAt)
 		}
 
-		return iTagsKey < jTagsKey
+		return iLabelsKey < jLabelsKey
 	})
 
 	return s.steps

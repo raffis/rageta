@@ -25,7 +25,7 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
-          entrypoint:
+          defaultTask:
             type: string
           inputs:
             description: InputParams is a list of InputParam
@@ -93,56 +93,23 @@ spec:
             type: string
           metadata:
             type: object
-          outputs:
-            items:
-              properties:
-                from:
-                  type: string
-                name:
-                  description: Name declares the name by which a parameter is referenced.
-                  type: string
-                step:
-                  properties:
-                    name:
-                      type: string
-                  type: object
-              required:
-              - name
-              - step
-              type: object
-            type: array
-            x-kubernetes-list-type: atomic
           shortDescription:
             type: string
-          steps:
+          tasks:
             items:
               properties:
                 allowFailure:
                   type: boolean
-                and:
-                  properties:
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
-                concurrent:
-                  properties:
-                    failFast:
-                      type: boolean
-                    maxConcurrent:
-                      type: integer
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
+                dependsOn:
+                  items:
+                    minProperties: 1
+                    properties:
+                      awaitMatrix:
+                        type: boolean
+                      name:
+                        type: string
+                    type: object
+                  type: array
                 env:
                   items:
                     properties:
@@ -152,31 +119,26 @@ spec:
                         type: string
                     type: object
                   type: array
-                expose:
-                  type: boolean
-                extends:
-                  properties:
-                    name:
-                      type: string
-                  type: object
-                generates:
+                envFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
+                exports:
                   items:
                     properties:
                       path:
                         type: string
                     type: object
                   type: array
-                if:
-                  items:
-                    properties:
-                      celExpression:
-                        type: string
-                    type: object
-                  type: array
+                expose:
+                  type: boolean
+                image:
+                  type: string
                 inherit:
                   properties:
-                    entrypoint:
-                      type: string
                     inputs:
                       items:
                         description: Param declares an ParamValues to use for the
@@ -193,7 +155,16 @@ spec:
                       type: array
                     pipeline:
                       type: string
+                    task:
+                      type: string
                   type: object
+                inputFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
                 inputs:
                   items:
                     description: |-
@@ -248,6 +219,17 @@ spec:
                     - name
                     type: object
                   type: array
+                labels:
+                  items:
+                    properties:
+                      hexColor:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
                 long:
                   type: string
                 matrix:
@@ -257,6 +239,13 @@ spec:
                     include:
                       items:
                         properties:
+                          label:
+                            properties:
+                              hexColor:
+                                type: string
+                              value:
+                                type: string
+                            type: object
                           name:
                             type: string
                           params:
@@ -273,15 +262,6 @@ spec:
                               - value
                               type: object
                             type: array
-                          tag:
-                            properties:
-                              color:
-                                type: string
-                              value:
-                                type: string
-                            type: object
-                        required:
-                        - tag
                         type: object
                       type: array
                     maxConcurrent:
@@ -303,40 +283,6 @@ spec:
                   type: object
                 name:
                   type: string
-                needs:
-                  items:
-                    properties:
-                      name:
-                        type: string
-                    type: object
-                  type: array
-                outputs:
-                  items:
-                    properties:
-                      name:
-                        description: Name declares the name by which a parameter is
-                          referenced.
-                        type: string
-                      step:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                    required:
-                    - name
-                    - step
-                    type: object
-                  type: array
-                pipe:
-                  properties:
-                    refs:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
                 retry:
                   properties:
                     constant:
@@ -345,55 +291,6 @@ spec:
                       type: string
                     maxRetries:
                       type: integer
-                  required:
-                  - constant
-                  - exponential
-                  type: object
-                run:
-                  properties:
-                    args:
-                      items:
-                        type: string
-                      type: array
-                    await:
-                      type: string
-                    command:
-                      items:
-                        type: string
-                      type: array
-                    guid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    image:
-                      type: string
-                    restartPolicy:
-                      type: string
-                    script:
-                      type: string
-                    stdin:
-                      type: boolean
-                    tty:
-                      type: boolean
-                    uid:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      x-kubernetes-int-or-string: true
-                    volumeMounts:
-                      items:
-                        properties:
-                          hostPath:
-                            type: string
-                          mountPath:
-                            type: string
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                    workingDir:
-                      type: string
                   type: object
                 secrets:
                   items:
@@ -404,51 +301,7 @@ spec:
                         type: string
                     type: object
                   type: array
-                short:
-                  type: string
-                sources:
-                  items:
-                    properties:
-                      match:
-                        type: string
-                    type: object
-                  type: array
-                streams:
-                  properties:
-                    stderr:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdin:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                    stdout:
-                      properties:
-                        append:
-                          type: boolean
-                        path:
-                          type: string
-                      type: object
-                  type: object
-                tags:
-                  items:
-                    properties:
-                      color:
-                        type: string
-                      name:
-                        type: string
-                      value:
-                        type: string
-                    type: object
-                  type: array
-                template:
+                service:
                   properties:
                     args:
                       items:
@@ -463,39 +316,395 @@ spec:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    image:
-                      type: string
-                    restartPolicy:
-                      type: string
-                    script:
-                      type: string
-                    stdin:
-                      type: boolean
-                    tty:
-                      type: boolean
                     uid:
                       anyOf:
                       - type: integer
                       - type: string
                       x-kubernetes-int-or-string: true
-                    volumeMounts:
-                      items:
-                        properties:
-                          hostPath:
-                            type: string
-                          mountPath:
-                            type: string
-                          name:
-                            type: string
-                        type: object
-                      type: array
-                    workingDir:
-                      type: string
                   type: object
+                short:
+                  type: string
+                sources:
+                  items:
+                    properties:
+                      from:
+                        type: string
+                      path:
+                        type: string
+                      to:
+                        type: string
+                    type: object
+                  type: array
+                steps:
+                  items:
+                    properties:
+                      script:
+                        type: string
+                    type: object
+                  type: array
+                targets:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                templates:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
                 timeout:
                   type: string
-              required:
-              - timeout
+                volumeMounts:
+                  items:
+                    properties:
+                      cache:
+                        properties:
+                          name:
+                            description: Name is the cache namespace. May contain
+                              substitution expressions.
+                            type: string
+                          sharing:
+                            description: Sharing controls concurrent access
+                            enum:
+                            - shared
+                            - private
+                            - locked
+                            type: string
+                        type: object
+                      hostPath:
+                        properties:
+                          path:
+                            description: Path is the source path relative to the build
+                              context. May contain substitution expressions.
+                            type: string
+                        type: object
+                      mountPath:
+                        type: string
+                      readOnly:
+                        type: boolean
+                      tmpfs:
+                        type: object
+                    type: object
+                  type: array
+                when:
+                  items:
+                    properties:
+                      celExpression:
+                        type: string
+                    type: object
+                  type: array
+                workingDir:
+                  type: string
+              type: object
+            type: array
+          templates:
+            items:
+              properties:
+                allowFailure:
+                  type: boolean
+                dependsOn:
+                  items:
+                    minProperties: 1
+                    properties:
+                      awaitMatrix:
+                        type: boolean
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                env:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                envFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
+                exports:
+                  items:
+                    properties:
+                      path:
+                        type: string
+                    type: object
+                  type: array
+                expose:
+                  type: boolean
+                image:
+                  type: string
+                inherit:
+                  properties:
+                    inputs:
+                      items:
+                        description: Param declares an ParamValues to use for the
+                          parameter called name.
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                    pipeline:
+                      type: string
+                    task:
+                      type: string
+                  type: object
+                inputFrom:
+                  items:
+                    properties:
+                      file:
+                        type: string
+                    type: object
+                  type: array
+                inputs:
+                  items:
+                    description: |-
+                      InputParam defines arbitrary parameters needed beyond typed inputs (such as
+                      resources). Parameter values are provided by users as inputs on a TaskRun
+                      or PipelineRun.
+                    properties:
+                      celExpression:
+                        type: string
+                      default:
+                        description: |-
+                          Default is the value a parameter takes if no input value is supplied. If
+                          default is set, a Task may be executed without a supplied value for the
+                          parameter.
+                        x-kubernetes-preserve-unknown-fields: true
+                      description:
+                        description: |-
+                          Description is a user-facing description of the parameter that may be
+                          used to populate a UI.
+                        type: string
+                      enum:
+                        description: |-
+                          Enum declares a set of allowed param input values for tasks/pipelines that can be validated.
+                          If Enum is not set, no input validation is performed for the param.
+                        items:
+                          type: string
+                        type: array
+                      name:
+                        description: Name declares the name by which a parameter is
+                          referenced.
+                        type: string
+                      properties:
+                        additionalProperties:
+                          description: PropertySpec defines the struct for object
+                            keys
+                          properties:
+                            type:
+                              description: |-
+                                ParamType indicates the type of an input parameter;
+                                Used to distinguish between a single string and an array of strings.
+                              type: string
+                          type: object
+                        description: Properties is the JSON Schema properties to support
+                          key-value pairs parameter.
+                        type: object
+                      type:
+                        description: |-
+                          Type is the user-specified type of the parameter. The possible types
+                          are currently "string", "array" and "object", and "string" is the default.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
+                labels:
+                  items:
+                    properties:
+                      hexColor:
+                        type: string
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                long:
+                  type: string
+                matrix:
+                  properties:
+                    failFast:
+                      type: boolean
+                    include:
+                      items:
+                        properties:
+                          label:
+                            properties:
+                              hexColor:
+                                type: string
+                              value:
+                                type: string
+                            type: object
+                          name:
+                            type: string
+                          params:
+                            items:
+                              description: Param declares an ParamValues to use for
+                                the parameter called name.
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  x-kubernetes-preserve-unknown-fields: true
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                        type: object
+                      type: array
+                    maxConcurrent:
+                      type: integer
+                    params:
+                      items:
+                        description: Param declares an ParamValues to use for the
+                          parameter called name.
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            x-kubernetes-preserve-unknown-fields: true
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                  type: object
+                name:
+                  type: string
+                retry:
+                  properties:
+                    constant:
+                      type: string
+                    exponential:
+                      type: string
+                    maxRetries:
+                      type: integer
+                  type: object
+                secrets:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                    type: object
+                  type: array
+                service:
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    guid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                    uid:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      x-kubernetes-int-or-string: true
+                  type: object
+                short:
+                  type: string
+                sources:
+                  items:
+                    properties:
+                      from:
+                        type: string
+                      path:
+                        type: string
+                      to:
+                        type: string
+                    type: object
+                  type: array
+                steps:
+                  items:
+                    properties:
+                      script:
+                        type: string
+                    type: object
+                  type: array
+                targets:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                templates:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  type: array
+                timeout:
+                  type: string
+                volumeMounts:
+                  items:
+                    properties:
+                      cache:
+                        properties:
+                          name:
+                            description: Name is the cache namespace. May contain
+                              substitution expressions.
+                            type: string
+                          sharing:
+                            description: Sharing controls concurrent access
+                            enum:
+                            - shared
+                            - private
+                            - locked
+                            type: string
+                        type: object
+                      hostPath:
+                        properties:
+                          path:
+                            description: Path is the source path relative to the build
+                              context. May contain substitution expressions.
+                            type: string
+                        type: object
+                      mountPath:
+                        type: string
+                      readOnly:
+                        type: boolean
+                      tmpfs:
+                        type: object
+                    type: object
+                  type: array
+                when:
+                  items:
+                    properties:
+                      celExpression:
+                        type: string
+                    type: object
+                  type: array
+                workingDir:
+                  type: string
               type: object
             type: array
         type: object

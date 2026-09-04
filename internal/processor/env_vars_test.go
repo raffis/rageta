@@ -12,14 +12,14 @@ import (
 func TestEnvVarsBuilder(t *testing.T) {
 	tests := []struct {
 		name       string
-		spec       *v1beta1.Step
+		spec       *v1beta1.Task
 		osEnv      map[string]string
 		defaultEnv map[string]string
 		expected   map[string]string
 	}{
 		{
 			name: "empty env vars",
-			spec: &v1beta1.Step{},
+			spec: &v1beta1.Task{},
 			osEnv: map[string]string{
 				"OS_VAR": "os_value",
 			},
@@ -32,8 +32,8 @@ func TestEnvVarsBuilder(t *testing.T) {
 		},
 		{
 			name: "spec env vars with values",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Env: []v1beta1.EnvVar{
 						{Name: "SPEC_VAR1", Value: stringPtr("spec_value1")},
 						{Name: "SPEC_VAR2", Value: stringPtr("spec_value2")},
@@ -49,8 +49,8 @@ func TestEnvVarsBuilder(t *testing.T) {
 		},
 		{
 			name: "spec env vars with OS fallback",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Env: []v1beta1.EnvVar{
 						{Name: "OS_VAR", Value: nil}, // Will use OS value
 						{Name: "SPEC_VAR", Value: stringPtr("spec_value")},
@@ -68,8 +68,8 @@ func TestEnvVarsBuilder(t *testing.T) {
 		},
 		{
 			name: "default env vars override",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Env: []v1beta1.EnvVar{
 						{Name: "VAR1", Value: stringPtr("spec_value")},
 					},
@@ -104,7 +104,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 	tests := []struct {
 		name        string
 		env         map[string]string
-		inputCtx    StepContext
+		inputCtx    TaskContext
 		nextError   error
 		expectError bool
 	}{
@@ -114,7 +114,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 				"TEST_VAR":    "test_value",
 				"ANOTHER_VAR": "another_value",
 			},
-			inputCtx: StepContext{
+			inputCtx: TaskContext{
 				ContextDir: "/tmp",
 				EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 			},
@@ -126,7 +126,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 			env: map[string]string{
 				"NEW_VAR": "new_value",
 			},
-			inputCtx: StepContext{
+			inputCtx: TaskContext{
 				ContextDir: "/tmp",
 				EnvVars: EnvVarsContext{Envs: map[string]string{
 					"EXISTING_VAR": "existing_value",
@@ -140,7 +140,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 			env: map[string]string{
 				"TEST_VAR": "test_value",
 			},
-			inputCtx: StepContext{
+			inputCtx: TaskContext{
 				ContextDir: "/tmp",
 				EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 			},
@@ -155,7 +155,7 @@ func TestEnvVarsBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				nextCalled = true
 				// Verify that env vars are set during execution
 				for k, v := range tt.env {
@@ -194,7 +194,7 @@ func TestEnvVarsFileCreation(t *testing.T) {
 	pipeline := &mockPipeline{}
 	nextCalled := false
 
-	next := func(ctx StepContext) (StepContext, error) {
+	next := func(ctx TaskContext) (TaskContext, error) {
 		nextCalled = true
 		// Verify that env file is created
 		assert.NotEmpty(t, ctx.EnvVars.OutputPath, "Env file path should be set")
@@ -207,7 +207,7 @@ func TestEnvVarsFileCreation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nextFunc)
 
-	inputCtx := StepContext{
+	inputCtx := TaskContext{
 		ContextDir: "/tmp",
 		EnvVars:    EnvVarsContext{Envs: map[string]string{}},
 	}

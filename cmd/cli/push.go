@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/raffis/rageta/internal/ocisetup"
+	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 

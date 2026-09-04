@@ -4,18 +4,18 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type EnvsOptions struct {
 	Envs []string
 }
 
-func (s *EnvsOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *EnvsOptions) BindFlags(flags flagset.Interface) {
 	flags.StringSliceVarP(&s.Envs, "env", "e", s.Envs, "Pass envs to the pipeline.")
 }
 
-func (s EnvsOptions) Build() Step {
+func (s EnvsOptions) Build() Task {
 	return &Envs{opts: s}
 }
 
@@ -25,6 +25,10 @@ type Envs struct {
 
 type EnvsContext struct {
 	Envs map[string]string
+}
+
+func (s *Envs) Label() string {
+	return "Applying environment variables"
 }
 
 func (s *Envs) Run(rc *RunContext, next Next) error {

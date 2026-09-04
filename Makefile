@@ -41,6 +41,7 @@ code-gen:
 	./hack/code-gen.sh
 
 build:
+	CGO_ENABLED=0 go build -C cmd/shim/ -o ../../internal/processor/shimbin/shim
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
 	docker build . -t ghcr.io/rageta/rageta:latest
 
@@ -59,7 +60,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 CONTROLLER_GEN = $(GOBIN)/controller-gen
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0)
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0)
 
 # go-install-tool will 'go install' any package $2 and install it to $1
 define go-install-tool

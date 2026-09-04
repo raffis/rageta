@@ -17,6 +17,7 @@ type Interface interface {
 type provider struct {
 	decoder  runtime.Decoder
 	handlers []Resolver
+	validate func([]byte) error
 }
 
 type Resolver func(ctx context.Context, ref string) (io.Reader, error)
@@ -26,6 +27,14 @@ func New(decoder runtime.Decoder, handlers ...Resolver) *provider {
 		decoder:  decoder,
 		handlers: handlers,
 	}
+}
+
+// WithValidation configures a manifest validation function which is invoked
+// against the raw manifest before it is decoded. A nil validate func disables
+// validation.
+func (s *provider) WithValidation(validate func([]byte) error) *provider {
+	s.validate = validate
+	return s
 }
 
 func (s *provider) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, error) {
@@ -38,6 +47,13 @@ func (s *provider) Resolve(ctx context.Context, ref string) (v1beta1.Pipeline, e
 			if err != nil {
 				return to, err
 			}
+
+			if s.validate != nil {
+				if err := s.validate(manifest); err != nil {
+					return to, fmt.Errorf("pipeline validation failed: %w", err)
+				}
+			}
+
 			_, _, err = s.decoder.Decode(
 				manifest,
 				nil,

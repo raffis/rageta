@@ -20,6 +20,7 @@ import (
 )
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 type Pipeline struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -28,12 +29,12 @@ type Pipeline struct {
 }
 
 type PipelineSpec struct {
-	Entrypoint       string       `json:"entrypoint,omitempty"`
-	ShortDescription string       `json:"shortDescription,omitempty"`
-	LongDescription  string       `json:"longDescription,omitempty"`
-	Inputs           InputParams  `json:"inputs,omitempty"`
-	Outputs          OutputParams `json:"outputs,omitempty"`
-	Steps            []Step       `json:"steps,omitempty"`
+	DefaultTask      string      `json:"defaultTask,omitempty"`
+	ShortDescription string      `json:"shortDescription,omitempty"`
+	LongDescription  string      `json:"longDescription,omitempty"`
+	Inputs           InputParams `json:"inputs,omitempty"`
+	Tasks            []Task      `json:"tasks,omitempty"`
+	Templates        []Task      `json:"templates,omitempty"`
 }
 
 func (p Pipeline) SetDefaults() {
@@ -42,30 +43,48 @@ func (p Pipeline) SetDefaults() {
 	}
 }
 
-type StepOptions struct {
-	Extends      *StepReference    `json:"extends,omitempty"`
-	If           []IfCondition     `json:"if,omitempty"`
-	Expose       bool              `json:"expose,omitempty"`
-	Inputs       []InputParam      `json:"inputs,omitempty"`
-	Timeout      metav1.Duration   `json:"timeout"`
-	AllowFailure bool              `json:"allowFailure,omitempty"`
-	Template     *Template         `json:"template,omitempty"`
-	Matrix       *Matrix           `json:"matrix,omitempty"`
-	Outputs      []StepOutputParam `json:"outputs,omitempty"`
-	Generates    []Generate        `json:"generates,omitempty"`
-	Sources      []Source          `json:"sources,omitempty"`
-	Needs        []StepReference   `json:"needs,omitempty"`
-	Streams      *Streams          `json:"streams,omitempty"`
-	Retry        *Retry            `json:"retry,omitempty"`
-	Secrets      []SecretVar       `json:"secrets,omitempty"`
-	Env          []EnvVar          `json:"env,omitempty"`
-	Tags         []Tag             `json:"tags,omitempty"`
+type TaskOptions struct {
+	Templates    []LocalReference `json:"templates,omitempty"`
+	When         []Condition      `json:"when,omitempty"`
+	Hide         bool             `json:"expose,omitempty"`
+	Exports      []Export         `json:"exports,omitempty"`
+	Inputs       []InputParam     `json:"inputs,omitempty"`
+	Timeout      metav1.Duration  `json:"timeout,omitempty"`
+	AllowFailure bool             `json:"allowFailure,omitempty"`
+	Matrix       *Matrix          `json:"matrix,omitempty"`
+	DependsOn    []TaskDependency `json:"dependsOn,omitempty"`
+	Retry        *Retry           `json:"retry,omitempty"`
+	Secrets      []SecretVar      `json:"secrets,omitempty"`
+	Env          []EnvVar         `json:"env,omitempty"`
+	InputFrom    []InputFrom      `json:"inputFrom,omitempty"`
+	EnvFrom      []EnvFrom        `json:"envFrom,omitempty"`
+	Labels       []Label          `json:"labels,omitempty"`
+	Sources      []Source         `json:"sources,omitempty"`
+	VolumeMounts []VolumeMount    `json:"volumeMounts,omitempty"`
+	Image        string           `json:"image,omitempty"`
+	WorkingDir   string           `json:"workingDir,omitempty"`
 }
 
-type Tag struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-	Color string `json:"color,omitempty"`
+type Export struct {
+	Path *string `json:"path,omitempty"`
+}
+
+// +kubebuilder:validation:MinProperties=1
+type TaskDependency struct {
+	Name        string `json:"name,omitempty"`
+	AwaitMatrix bool   `json:"awaitMatrix,omitempty"`
+}
+
+type Source struct {
+	From *string `json:"from,omitempty"`
+	Path string  `json:"path,omitempty"`
+	To   string  `json:"to,omitempty"`
+}
+
+type Label struct {
+	Name     string `json:"name,omitempty"`
+	Value    string `json:"value,omitempty"`
+	HEXColor string `json:"hexColor,omitempty"`
 }
 
 type SecretVar struct {
@@ -78,7 +97,15 @@ type EnvVar struct {
 	Value *string `json:"value,omitempty"`
 }
 
-type IfCondition struct {
+type InputFrom struct {
+	File *string `json:"file,omitempty"`
+}
+
+type EnvFrom struct {
+	File *string `json:"file,omitempty"`
+}
+
+type Condition struct {
 	CelExpression *string `json:"celExpression,omitempty"`
 }
 
@@ -90,117 +117,77 @@ type Matrix struct {
 }
 
 type IncludeParam struct {
-	Name   string    `json:"name,omitempty"`
-	Params []Param   `json:"params,omitempty"`
-	Tag    MatrixTag `json:"tag"`
+	Name   string      `json:"name,omitempty"`
+	Params []Param     `json:"params,omitempty"`
+	Label  MatrixLabel `json:"label,omitempty"`
 }
 
-type MatrixTag struct {
-	Value string `json:"value,omitempty"`
-	Color string `json:"color,omitempty"`
+type MatrixLabel struct {
+	Value    string `json:"value,omitempty"`
+	HEXColor string `json:"hexColor,omitempty"`
 }
 
 type Retry struct {
-	Exponential metav1.Duration `json:"exponential"`
-	Constant    metav1.Duration `json:"constant"`
+	Exponential metav1.Duration `json:"exponential,omitempty"`
+	Constant    metav1.Duration `json:"constant,omitempty"`
 	MaxRetries  int             `json:"maxRetries,omitempty"`
 }
 
-type Source struct {
-	Match string `json:"match,omitempty"`
-}
-
-type Generate struct {
-	Path string `json:"path,omitempty"`
-}
-
-type Step struct {
+type Task struct {
 	Name        string `json:"name,omitempty"`
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
-	StepOptions `json:",inline"`
-	Pipe        *PipeStep       `json:"pipe,omitempty"`
-	And         *AndStep        `json:"and,omitempty"`
-	Concurrent  *ConcurrentStep `json:"concurrent,omitempty"`
-	Run         *RunStep        `json:"run,omitempty"`
-	Inherit     *InheritStep    `json:"inherit,omitempty"`
+	TaskOptions `json:",inline"`
+	Steps       *[]Step           `json:"steps,omitempty"`
+	Targets     *[]LocalReference `json:"targets,omitempty"`
+	Service     *ServiceTask      `json:"service,omitempty"`
+	Inherit     *InheritTask      `json:"inherit,omitempty"`
 }
 
-type AndStep struct {
-	Refs []StepReference `json:"refs,omitempty"`
+type Step struct {
+	Script string `json:"script,omitempty"`
 }
 
-type StepReference struct {
+type LocalReference struct {
 	Name string `json:"name,omitempty"`
 }
 
-type ConcurrentStep struct {
-	FailFast      bool            `json:"failFast,omitempty"`
-	MaxConcurrent int             `json:"maxConcurrent,omitempty"`
-	Refs          []StepReference `json:"refs,omitempty"`
-}
-
-type PipeStep struct {
-	Refs []StepReference `json:"refs,omitempty"`
-}
-
-type RunStep struct {
-	Await     AwaitStatus `json:"await,omitempty"`
-	Container `json:",inline"`
-}
-
-type Template Container
-
-type Container struct {
-	Stdin         bool                `json:"stdin,omitempty"`
-	TTY           bool                `json:"tty,omitempty"`
-	Image         string              `json:"image,omitempty"`
-	Command       []string            `json:"command,omitempty"`
-	Args          []string            `json:"args,omitempty"`
-	Script        string              `json:"script,omitempty"`
-	WorkingDir    string              `json:"workingDir,omitempty"`
-	RestartPolicy RestartPolicy       `json:"restartPolicy,omitempty"`
-	VolumeMounts  []VolumeMount       `json:"volumeMounts,omitempty"`
-	Uid           *intstr.IntOrString `json:"uid,omitempty"`
-	Guid          *intstr.IntOrString `json:"guid,omitempty"`
-}
-
 type VolumeMount struct {
-	Name      string `json:"name,omitempty"`
-	MountPath string `json:"mountPath,omitempty"`
-	HostPath  string `json:"hostPath,omitempty"`
+	MountPath string          `json:"mountPath,omitempty"`
+	ReadOnly  bool            `json:"readOnly,omitempty"`
+	HostPath  *HostPathVolume `json:"hostPath,omitempty"`
+	Cache     *CacheVolume    `json:"cache,omitempty"`
+	TmpFS     *TmpFSVolume    `json:"tmpfs,omitempty"`
 }
 
-type AwaitStatus string
-
-var (
-	AwaitStatusReady AwaitStatus = "Ready"
-	AwaitStatusExit  AwaitStatus = "Exit"
-)
-
-type RestartPolicy string
-
-var (
-	RestartPolicyNever     RestartPolicy = "Never"
-	RestartPolicyOnFailure RestartPolicy = "OnFailure"
-	RestartPolicyAlways    RestartPolicy = "Always"
-)
-
-type InheritStep struct {
-	Pipeline   string  `json:"pipeline,omitempty"`
-	Entrypoint string  `json:"entrypoint,omitempty"`
-	Inputs     []Param `json:"inputs,omitempty"`
+type HostPathVolume struct {
+	// Path is the source path relative to the build context. May contain substitution expressions.
+	Path string `json:"path,omitempty"`
 }
 
-type Streams struct {
-	Stdout *Stream `json:"stdout,omitempty"`
-	Stdin  *Stream `json:"stdin,omitempty"`
-	Stderr *Stream `json:"stderr,omitempty"`
+type TmpFSVolume struct {
 }
 
-type Stream struct {
-	Path   string `json:"path,omitempty"`
-	Append bool   `json:"append,omitempty"`
+type CacheVolume struct {
+	// Name is the cache namespace. May contain substitution expressions.
+	Name string `json:"name,omitempty"`
+	// Sharing controls concurrent access
+	// +optional
+	// +kubebuilder:validation:Enum=shared;private;locked
+	Sharing string `json:"sharing,omitempty"`
+}
+
+type ServiceTask struct {
+	Command []string            `json:"command,omitempty"`
+	Args    []string            `json:"args,omitempty"`
+	Uid     *intstr.IntOrString `json:"uid,omitempty"`
+	Guid    *intstr.IntOrString `json:"guid,omitempty"`
+}
+
+type InheritTask struct {
+	Pipeline string  `json:"pipeline,omitempty"`
+	Task     string  `json:"task,omitempty"`
+	Inputs   []Param `json:"inputs,omitempty"`
 }
 
 // +kubebuilder:object:root=true

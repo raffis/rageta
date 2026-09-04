@@ -12,13 +12,13 @@ import (
 func TestAllowFailureBuilder(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name: "AllowFailure false returns nil",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					AllowFailure: false,
 				},
 			},
@@ -26,8 +26,8 @@ func TestAllowFailureBuilder(t *testing.T) {
 		},
 		{
 			name: "AllowFailure true returns AllowFailure struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					AllowFailure: true,
 				},
 			},
@@ -35,7 +35,7 @@ func TestAllowFailureBuilder(t *testing.T) {
 		},
 		{
 			name:      "AllowFailure not set returns nil",
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: true,
 		},
 	}
@@ -88,7 +88,7 @@ func TestAllowFailureBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				nextCalled = true
 				return ctx, tt.inputError
 			}
@@ -97,7 +97,7 @@ func TestAllowFailureBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			ctx := StepContext{}
+			ctx := TaskContext{}
 			resultCtx, resultErr := nextFunc(ctx)
 
 			assert.True(t, nextCalled)

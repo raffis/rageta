@@ -9,7 +9,7 @@ func AbortOnError(err error) bool {
 		return false
 	}
 
-	var abortPipeline ErrorIsAbortable
+	var abortPipeline IsAbortableError
 	if errors.As(err, &abortPipeline) {
 		return abortPipeline.AbortOnError()
 	}
@@ -22,7 +22,7 @@ func ErrorResult(err error) string {
 		return "success"
 	}
 
-	var result ErrorGetResult
+	var result ResultError
 	if errors.As(err, &result) {
 		return result.Result()
 	}
@@ -48,23 +48,21 @@ func (e *pipelineError) Result() string {
 	return e.result
 }
 
-type ErrorIsAbortable interface {
+type IsAbortableError interface {
 	AbortOnError() bool
 }
 
-type ErrorGetResult interface {
+type ResultError interface {
 	Result() string
 }
 
-type StepError interface {
-	StepName() string
-	Context() StepContext
+type TaskError interface {
+	TaskName() string
+	Context() TaskContext
 }
 
-type ErrorContainer interface {
-	ExitCode
+type ImageName interface {
 	Image() string
-	ContainerName() string
 }
 
 type ExitCode interface {

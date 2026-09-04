@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/raffis/rageta/internal/ocisetup"
 	"github.com/raffis/rageta/internal/run"
-	"github.com/raffis/rageta/internal/runtime"
+	"github.com/raffis/rageta/internal/setup/ocisetup"
 	"github.com/raffis/rageta/internal/styles"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/cobra"
@@ -49,7 +48,7 @@ func printHelpPipeline(cmd *cobra.Command, ref string, full bool) error {
 		defer cancel()
 	}
 
-	store, persistDB := run.CreateProvider(runtime.PullImagePolicyAlways, rootArgs.dbPath, helpArgs.ociOptions)
+	store, persistDB := run.CreateProvider(run.PullPolicyAlways, rootArgs.dbPath, helpArgs.ociOptions, false)
 	command, err := store.Resolve(ctx, ref)
 	if err != nil {
 		return err
@@ -124,16 +123,35 @@ func printHelpCommand(cmd *cobra.Command) {
 		}
 	}
 
-	if cmd == runCmd && len(runFlagGroups) > 0 {
-		// Run has grouped flag sets (Execution, Pipeline, etc.)
-		for _, group := range runFlagGroups {
-			flagBlocks := formatFlagSetStyle(group.Set)
+	if cmd == runCmd && runFlags != nil {
+		// Collect flag names that belong to a named sub-flagset.
+		inSubSet := map[string]bool{}
+		for _, set := range runFlags.FlagSets() {
+			set.VisitAll(func(f *pflag.Flag) { inSubSet[f.Name] = true })
+		}
+
+		// Render flags that are only on the root flagset (not in any sub-flagset).
+		directSet := pflag.NewFlagSet("Flags", pflag.ContinueOnError)
+		cmd.NonInheritedFlags().VisitAll(func(f *pflag.Flag) {
+			if !inSubSet[f.Name] {
+				directSet.AddFlag(f)
+			}
+		})
+		if directBlocks := formatFlagSetStyle(directSet); len(directBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(directBlocks, "\n\n"))
+		}
+
+		for _, set := range runFlags.FlagSets() {
+			flagBlocks := formatFlagSetStyle(set)
 			if len(flagBlocks) > 0 {
-				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+				sections = append(sections, styles.HelpSection.Render("\n\n"+set.Name()), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
 		}
+
+		if inheritedBlocks := formatFlagSetStyle(cmd.InheritedFlags()); len(inheritedBlocks) > 0 {
+			sections = append(sections, "\n\n", styles.HelpSection.Render("Global Flags:"), "\n\n", strings.Join(inheritedBlocks, "\n\n"))
+		}
 	} else {
-		// Generic: show this command's flags, then global (inherited) flags
 		localBlocks := formatFlagSetStyle(cmd.NonInheritedFlags())
 		if len(localBlocks) > 0 {
 			sections = append(sections, "\n\n", styles.HelpSection.Render("Flags:"), "\n\n", strings.Join(localBlocks, "\n\n"))
@@ -150,7 +168,7 @@ func printHelpCommand(cmd *cobra.Command) {
 func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 	var sections []string
 
-	title := styles.HelpTitle.Render(fmt.Sprintf("● %s ●\n", command.Name))
+	title := styles.HelpTitle.Render(fmt.Sprintf("%s\n", command.Name))
 	sections = append(sections, title)
 
 	if command.ShortDescription != "" {
@@ -164,28 +182,18 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 		sections = append(sections, descHeader, descBody)
 	}
 
-	hasTargets := false
-	for _, step := range command.Steps {
-		if step.Expose {
-			hasTargets = true
-			break
+	var targetBlocks []string
+	for _, step := range command.Tasks {
+		if step.Hide {
+			continue
 		}
-	}
-
-	if hasTargets {
-		var targetBlocks []string
-		for _, step := range command.Steps {
-			if !step.Expose {
-				continue
-			}
-			block := styles.HelpTargetName.Render(step.Name) + " " + styles.HelpTargetShort.Render(step.Short)
-			if step.Long != "" {
-				block += "\n" + styles.HelpTargetLong.Render(step.Long)
-			}
-			targetBlocks = append(targetBlocks, block)
+		block := styles.HelpTargetName.Render(step.Name) + " " + styles.HelpTargetShort.Render(step.Short)
+		if step.Long != "" {
+			block += "\n" + styles.HelpTargetLong.Render(step.Long)
 		}
-		sections = append(sections, styles.HelpSection.Render("\n\nTargets:"), styles.HelpBody.Render("\n\n"), strings.Join(targetBlocks, "\n\n"))
+		targetBlocks = append(targetBlocks, block)
 	}
+	sections = append(sections, styles.HelpSection.Render("\n\nTargets:"), styles.HelpBody.Render("\n\n"), strings.Join(targetBlocks, "\n\n"))
 
 	if len(command.Inputs) > 0 {
 		var inputBlocks []string
@@ -204,10 +212,10 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 		sections = append(sections, styles.HelpSection.Render("\n\nInputs:"), styles.HelpBody.Render("\n\n"), strings.Join(inputBlocks, "\n\n"))
 	}
 
-	if full {
-		for _, group := range runFlagGroups {
+	if full && runFlags != nil {
+		for _, set := range runFlags.FlagSets() {
 			var flagBlocks []string
-			group.Set.VisitAll(func(f *pflag.Flag) {
+			set.VisitAll(func(f *pflag.Flag) {
 				name := "--" + f.Name
 				if f.Shorthand != "" {
 					name = "-" + string(f.Shorthand) + ", " + name
@@ -224,7 +232,7 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 			})
 
 			if len(flagBlocks) > 0 {
-				sections = append(sections, styles.HelpSection.Render("\n\n"+group.DisplayName), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
+				sections = append(sections, styles.HelpSection.Render("\n\n"+set.Name()), styles.HelpBody.Render("\n\n"), strings.Join(flagBlocks, "\n\n"))
 			}
 		}
 	}

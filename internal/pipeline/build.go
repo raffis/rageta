@@ -1,10 +1,7 @@
 package pipeline
 
 import (
-	"os"
-
 	"github.com/go-logr/logr"
-	"github.com/raffis/rageta/internal/runtime"
 	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
@@ -13,12 +10,11 @@ import (
 
 type builder struct {
 	logger      logr.Logger
-	tmpDir      string
-	stepBuilder StepBuilder
+	stepBuilder TaskBuilder
 }
 
 type builderOption func(*builder)
-type StepBuilder func(spec v1beta1.Step) []processor.Bootstraper
+type TaskBuilder func(spec v1beta1.Task) []processor.Bootstraper
 
 func WithLogger(logger logr.Logger) func(*builder) {
 	return func(s *builder) {
@@ -26,22 +22,15 @@ func WithLogger(logger logr.Logger) func(*builder) {
 	}
 }
 
-func WithStepBuilder(stepBuilder StepBuilder) func(*builder) {
+func WithTaskBuilder(stepBuilder TaskBuilder) func(*builder) {
 	return func(s *builder) {
 		s.stepBuilder = stepBuilder
-	}
-}
-
-func WithTmpDir(tmpDir string) func(*builder) {
-	return func(s *builder) {
-		s.tmpDir = tmpDir
 	}
 }
 
 func NewBuilder(opts ...builderOption) *builder {
 	e := &builder{
 		logger: logr.Discard(),
-		tmpDir: os.TempDir(),
 	}
 
 	for _, o := range opts {
@@ -87,7 +76,7 @@ func (e *builder) mapInputs(params []v1beta1.InputParam, inputs map[string]v1bet
 	return result, nil
 }
 
-func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.StepContext) (processor.Executable, error) {
+func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs map[string]v1beta1.ParamValue, stepCtx processor.TaskContext) (processor.Executable, error) {
 	pipeline.SetDefaults()
 
 	mappedInputs, err := e.mapInputs(pipeline.Inputs, inputs)
@@ -107,43 +96,14 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		return nil, err
 	}
 
-	contextDir := e.tmpDir
-
-	/*if pipeline.Name != "" {
-		contextDir = filepath.Join(contextDir, pipeline.Name)
-	}*/
-
-	return func() (processor.StepContext, map[string]v1beta1.ParamValue, error) {
-		stepCtx.ContextDir = contextDir
-		stepCtx.Containers = make(map[string]runtime.ContainerStatus)
-		stepCtx.Steps = make(map[string]*processor.StepContext)
+	return func() (processor.TaskContext, map[string]v1beta1.ParamValue, error) {
+		stepCtx.Tasks = make(map[string]*processor.TaskContext)
 		stepCtx.InputVars.Inputs = mappedInputs
+		inheritedState := stepCtx.Build.State
+		stepCtx.Build.ContextState = &inheritedState
 		outputs := make(map[string]v1beta1.ParamValue)
 
-		/*if _, err := os.Stat(stepCtx.DataDir); errors.Is(err, os.ErrNotExist) {
-			err := os.MkdirAll(stepCtx.DataDir, 0700)
-			if err != nil {
-				return stepCtx, outputs, fmt.Errorf("failed to create context dir: %w", err)
-			}
-		}*/
-
 		stepCtx, pipelineErr := entrypoint(stepCtx)
-
-		for _, pipelineOutput := range pipeline.Outputs {
-			if _, ok := stepCtx.Steps[pipelineOutput.Step.Name]; !ok {
-				continue
-			}
-
-			from := pipelineOutput.Name
-			if pipelineOutput.From != "" {
-				from = pipelineOutput.From
-			}
-
-			if output, ok := stepCtx.OutputVars.OutputVars[from]; ok {
-				outputs[pipelineOutput.Name] = output
-			}
-		}
-
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
 		return stepCtx, outputs, pipelineErr
 	}, nil
@@ -151,17 +111,25 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 
 func (e *builder) buildPipeline(command v1beta1.Pipeline) (*pipeline, error) {
 	p := &pipeline{
-		name:       command.Name,
-		id:         utils.RandString(5),
-		entrypoint: command.Entrypoint,
+		name:        command.Name,
+		id:          utils.RandString(5),
+		defaultTask: command.DefaultTask,
 	}
 
-	for _, spec := range command.Steps {
-		name := spec.Name
-		origName := name
+	steps, err := resolveTemplates(command.Tasks, command.Templates)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, spec := range steps {
 		processors := e.stepBuilder(spec)
 
-		if err := p.withStep(origName, processors); err != nil {
+		var refs []dependsOnRef
+		for _, ref := range spec.DependsOn {
+			refs = append(refs, dependsOnRef{name: ref.Name, awaitMatrix: ref.AwaitMatrix})
+		}
+
+		if err := p.withTask(spec.Name, refs, processors); err != nil {
 			return p, err
 		}
 	}

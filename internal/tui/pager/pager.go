@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // SearchState represents the current state of the filter
@@ -427,20 +428,19 @@ func (m Model) View() string {
 			}
 
 			virtualLines := m.Width - width - 1
-			runes := []rune(line.msg)
 
 			for i := 0; i <= line.width; i += virtualLines {
 				end := i + virtualLines
 
-				if end > line.width {
-					end = len(runes)
-				}
-				chunk := runes[i:end]
+				// ansi.Cut is ANSI-escape-aware: it re-applies any open style
+				// codes at the start of each chunk, so wrapped continuation
+				// lines keep the original styling (e.g. don't turn white).
+				chunk := ansi.Cut(line.msg, i, end)
 
 				if i == 0 {
-					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(fmt.Sprintf("%d", lineNumber))+lipgloss.NewStyle().MarginLeft(1).Render(string(chunk)))
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(fmt.Sprintf("%d", lineNumber))+lipgloss.NewStyle().MarginLeft(1).Render(chunk))
 				} else {
-					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(" ")+lipgloss.NewStyle().MarginLeft(1).Render(string(chunk)))
+					lines = append(lines, m.Styles.LineNumber.Width(width).MaxWidth(width).Render(" ")+lipgloss.NewStyle().MarginLeft(1).Render(chunk))
 				}
 			}
 

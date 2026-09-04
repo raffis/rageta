@@ -1,39 +1,34 @@
 package processor
 
 import (
-	"maps"
-	"os"
-	"path"
+	"context"
+	"fmt"
+	"strings"
 
+	"github.com/moby/buildkit/client/llb"
+	"github.com/raffis/rageta/internal/secrets"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type secretWriter interface {
-	AddSecrets(secrets ...[]byte)
-}
-
-func WithSecretVars(osEnv, defaultSecret map[string]string, secretWriter secretWriter) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		secrets := secretMap(spec.Secrets, osEnv, defaultSecret)
-		for _, v := range secrets {
-			secretWriter.AddSecrets([]byte(v))
+func WithSecretVars(osEnv map[string]string, store secrets.Interface) ProcessorBuilder {
+	return func(spec *v1beta1.Task) Bootstraper {
+		secrets := secretMap(spec.Secrets, osEnv)
+		for k, v := range secrets {
+			store.AddSecret(context.Background(), k, []byte(v))
 		}
 
 		return &SecretVars{
-			secret:       secrets,
-			secretWriter: secretWriter,
+			store: store,
 		}
 	}
 }
 
 type SecretVars struct {
-	secret       map[string]string
-	secretWriter secretWriter
+	store secrets.Interface
 }
 
 type SecretVarsContext struct {
-	Secrets    map[string]string
-	OutputPath string
+	Secrets map[string]string
 }
 
 func newSecretVarsContext() SecretVarsContext {
@@ -43,47 +38,25 @@ func newSecretVarsContext() SecretVarsContext {
 }
 
 func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
-		originSecrets := make(map[string]string, len(ctx.SecretVars.Secrets))
-		maps.Copy(originSecrets, ctx.SecretVars.Secrets)
+	return func(ctx TaskContext) (TaskContext, error) {
+		ctx.SecretVars.Secrets = newSecretVarsContext().Secrets
 
-		maps.Copy(ctx.SecretVars.Secrets, s.secret)
-		secretTmp, err := os.CreateTemp(path.Join(ctx.ContextDir, ctx.UniqueID()), "secret")
-		if err != nil {
-			return ctx, err
+		for k, v := range s.store.Clone(ctx) {
+			if strings.HasPrefix(k, ContextSecretPrefix) {
+				continue
+			}
+			ctx.SecretVars.Secrets[k] = string(v)
 		}
 
-		var nextErr error
-		defer func() {
-			_ = secretTmp.Close()
-			_ = os.Remove(secretTmp.Name())
-		}()
-
-		ctx.SecretVars.OutputPath = secretTmp.Name()
-		ctx, nextErr = next(ctx)
-		if syncErr := secretTmp.Sync(); syncErr != nil {
-			nextErr = syncErr
+		for k, _ := range ctx.SecretVars.Secrets {
+			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
 		}
 
-		secrets, err := parseVars(secretTmp)
-		if err != nil {
-			return ctx, err
-		}
-
-		for _, v := range secrets {
-			s.secretWriter.AddSecrets([]byte(v))
-		}
-
-		maps.Copy(originSecrets, secrets)
-		ctx.SecretVars.Secrets = originSecrets
-		ctx.SecretVars.OutputPath = ""
-
-		return ctx, nextErr
-
+		return next(ctx)
 	}, nil
 }
 
-func secretMap(envs []v1beta1.SecretVar, osEnv, defaultEnv map[string]string) map[string]string {
+func secretMap(envs []v1beta1.SecretVar, osEnv map[string]string) map[string]string {
 	env := make(map[string]string)
 	for _, e := range envs {
 		if e.Value == nil {
@@ -97,6 +70,5 @@ func secretMap(envs []v1beta1.SecretVar, osEnv, defaultEnv map[string]string) ma
 		env[e.Name] = *e.Value
 	}
 
-	maps.Copy(env, defaultEnv)
 	return env
 }

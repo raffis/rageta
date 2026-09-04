@@ -7,7 +7,7 @@ import (
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-func WithDebug(logger logr.Logger, debug bool, spec *v1beta1.Step, processors ...Bootstraper) []Bootstraper {
+func WithDebug(logger logr.Logger, debug bool, spec *v1beta1.Task, processors ...Bootstraper) []Bootstraper {
 	if !debug {
 		return processors
 	}
@@ -26,7 +26,7 @@ func WithDebug(logger logr.Logger, debug bool, spec *v1beta1.Step, processors ..
 }
 
 type Debug struct {
-	spec    *v1beta1.Step
+	spec    *v1beta1.Task
 	logger  logr.Logger
 	wrapped Bootstraper
 }
@@ -39,9 +39,16 @@ func (s *Debug) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		return next, err
 	}
 
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
+
+		logger = logr.FromContextOrDiscard(ctx)
+		ctxLogger, err := logr.FromContext(ctx)
+		if err == nil {
+			logger = ctxLogger
+		}
+
 		logger.V(6).Info("pre processor", "context", ctx)
-		ctx, err := wrappedNext(ctx)
+		ctx, err = wrappedNext(ctx)
 		logger.V(6).Info("post processor", "context", ctx, "err", err)
 
 		return ctx, err

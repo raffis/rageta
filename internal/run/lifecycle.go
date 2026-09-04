@@ -12,7 +12,7 @@ type LifecycleOptions struct {
 	Timeout time.Duration
 }
 
-func (s LifecycleOptions) Build() Step {
+func (s LifecycleOptions) Build() Task {
 	return &Lifecycle{
 		opts: s,
 	}
@@ -20,6 +20,10 @@ func (s LifecycleOptions) Build() Step {
 
 type Lifecycle struct {
 	opts LifecycleOptions
+}
+
+func (s *Lifecycle) Label() string {
+	return "Setting up lifecycle handling"
 }
 
 func (s *Lifecycle) Run(rc *RunContext, next Next) error {
@@ -33,6 +37,7 @@ func (s *Lifecycle) Run(rc *RunContext, next Next) error {
 	}
 
 	defer cancel()
+	rc.Cancel = cancel
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)

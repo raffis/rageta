@@ -8,33 +8,56 @@ import (
 )
 
 type PipelineBuilder interface {
-	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx StepContext) (Executable, error)
+	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx TaskContext) (Executable, error)
 }
 
-type Executable func() (StepContext, map[string]v1beta1.ParamValue, error)
+type Executable func() (TaskContext, map[string]v1beta1.ParamValue, error)
 
 type Pipeline interface {
-	Step(name string) (Step, error)
+	Task(name string) (Task, error)
+	TaskDependencies(name string) []string
+	ChildTasks(name string) []Task
+	AwaitMatrixChildren(name string) []Task
 	Entrypoint(name string) (Next, error)
-	EntrypointName() (string, error)
 	Name() string
 	ID() string
 }
 
-type Next func(ctx StepContext) (StepContext, error)
+type Next func(ctx TaskContext) (TaskContext, error)
 
 type Bootstraper interface {
 	Bootstrap(pipeline Pipeline, next Next) (Next, error)
 }
 
-type Step interface {
-	Processors() []Bootstraper
+type Task interface {
+	Claim(TaskContext) (TaskClaim, bool)
+	Ready(TaskContext) bool
 	Entrypoint() (Next, error)
+	Name() string
+}
+
+type TaskClaim interface {
+	Wait() (TaskContext, error)
+	Release(TaskContext, error)
 }
 
 type Teardown func(ctx context.Context, timeout time.Duration) error
 
 type result struct {
-	ctx StepContext
+	ctx TaskContext
 	err error
+}
+
+type ProcessorBuilder func(spec *v1beta1.Task) Bootstraper
+
+func Builder(spec *v1beta1.Task, builders ...ProcessorBuilder) []Bootstraper {
+	var result []Bootstraper
+	for _, builder := range builders {
+		processor := builder(spec)
+		if processor != nil {
+			result = append(result, processor)
+		}
+	}
+
+	return result
 }

@@ -14,13 +14,13 @@ import (
 func TestTimeoutBuilder(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name: "timeout duration zero returns nil",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Timeout: metav1.Duration{Duration: 0},
 				},
 			},
@@ -28,8 +28,8 @@ func TestTimeoutBuilder(t *testing.T) {
 		},
 		{
 			name: "timeout duration set returns Timeout struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Timeout: metav1.Duration{Duration: 5 * time.Second},
 				},
 			},
@@ -37,7 +37,7 @@ func TestTimeoutBuilder(t *testing.T) {
 		},
 		{
 			name:      "timeout not set returns nil",
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: true,
 		},
 	}
@@ -92,7 +92,7 @@ func TestTimeoutBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			nextCalled := false
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				if tt.nextDelay > 0 {
 					time.Sleep(tt.nextDelay)
 				}
@@ -105,7 +105,7 @@ func TestTimeoutBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			ctx := StepContext{Context: context.Background()}
+			ctx := TaskContext{Context: context.Background()}
 			resultCtx, resultErr := nextFunc(ctx)
 
 			if tt.expectError {

@@ -1,0 +1,25 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: serve-and-request-file
+
+inputs:
+- name: file
+  description: file which should be served and requested
+  default: index.html
+
+defaultTask: http-server
+
+tasks:
+- name: http-server
+  image: busybox:1
+  service:
+    args: [httpd, -f, -v, -p, "8080", -h, "."]
+
+- name: http-client
+  dependsOn:
+  - name: http-server
+  image: curlimages/curl:8.9.1
+  steps:
+  - script: curl --fail http://http-server:8080/$(context.inputs.file)

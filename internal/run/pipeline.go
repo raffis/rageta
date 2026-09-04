@@ -3,26 +3,24 @@ package run
 import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
-	"github.com/spf13/pflag"
 )
 
 type PipelineOptions struct {
-	SkipDone          bool
-	SkipContainerLogs bool
-	MaxConcurrent     int
-	SkipSteps         []string
+	Interactive bool
 }
 
-func (s PipelineOptions) Build() Step {
+func NewPipelineOptions() PipelineOptions {
+	return PipelineOptions{}
+}
+
+func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
+	flags.BoolVarP(&s.Interactive, "interactive", "i", s.Interactive, "Exec a shell in failed tasks. The task is exported and executed as a container with its entire state and the current tty is attached directly to a /bin/ash shell within the failed task.")
+}
+
+func (s PipelineOptions) Build() Task {
 	return &Pipeline{opts: s}
-}
-
-func (s *PipelineOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.BoolVar(&s.SkipDone, "skip-done", s.SkipDone, "Skip already done steps")
-	flags.BoolVar(&s.SkipContainerLogs, "skip-container-logs", s.SkipContainerLogs, "Do not store container output streams within the context directory")
-	flags.IntVar(&s.MaxConcurrent, "max-concurrent", s.MaxConcurrent, "Max concurrent container steps")
-	flags.StringSliceVar(&s.SkipSteps, "skip-steps", s.SkipSteps, "Skip steps")
 }
 
 type Pipeline struct {
@@ -33,59 +31,60 @@ type PipelineContext struct {
 	Builder processor.PipelineBuilder
 }
 
+func (s *Pipeline) Label() string {
+	return "Preparing pipeline"
+}
+
 func (s *Pipeline) Run(rc *RunContext, next Next) error {
 	var builder processor.PipelineBuilder
 	builder = pipeline.NewBuilder(
-		pipeline.WithStepBuilder(s.stepPipeline(rc, &builder)),
+		pipeline.WithTaskBuilder(s.stepPipeline(rc, &builder)),
 		pipeline.WithLogger(rc.Logging.Logger),
-		pipeline.WithTmpDir(rc.ContextDir.Path),
 	)
 
 	rc.Pipeline.Builder = builder
 	return next(rc)
 }
 
-func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuilder) pipeline.StepBuilder {
-	var pool chan struct{}
-
-	if s.opts.MaxConcurrent > 0 {
-		pool = make(chan struct{}, s.opts.MaxConcurrent)
-	}
-
-	return func(spec v1beta1.Step) []processor.Bootstraper {
+func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuilder) pipeline.TaskBuilder {
+	return func(spec v1beta1.Task) []processor.Bootstraper {
 		processors := processor.Builder(&spec,
 			processor.WithRecover(),
 			processor.WithReport(rc.Report.Factory),
 			processor.WithRetry(),
 			processor.WithResult(),
-			processor.WithTmpDir(),
-			processor.WithInputVars(rc.CEL.Env),
-			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
-			processor.WithSecretVars(osEnvMap(), rc.Secrets.Secrets, rc.Secrets.Store),
-			processor.WithOutputVars(),
-			processor.WithTags(rc.Tags.Tags),
+			processor.WithImage(rc.Buildkit.GatewayClient),
+			processor.WithBusybox(),
+			processor.WithShim(),
+			processor.WithWorkdir(),
+			processor.WithStyle(),
+			processor.WithAncestors(),
+			processor.WithDisplay(rc.Display.Factory),
+			processor.WithStats(),
 			processor.WithMatrix(),
-			processor.WithOutput(rc.Output.Factory, rc.Output.InternalSteps, rc.Output.Expand),
-			processor.WithEvents(rc.Events.Enabled, rc.Events.WaitUpdateInterval, rc.Events.Dev),
+			processor.WithDependsOn(),
+			processor.WithTargets(),
 			processor.WithOtelTrace(rc.Logging.Logger, rc.Otel.Tracer),
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
-			processor.WithSkipBlacklist(s.opts.SkipSteps),
-			processor.WithGarbageCollector(!rc.Teardown.Enabled, rc.ContainerRuntime.Driver, rc.Teardown.Teardown),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
-			processor.WithSkipDone(s.opts.SkipDone),
-			processor.WithIf(rc.CEL.Env),
-			processor.WithTemplate(rc.Template.Container),
-			processor.WithNeeds(),
-			processor.WithStdioRedirect(false),
-			processor.WithMaxConcurrent(pool),
-			processor.WithContainerLogs(!s.opts.SkipContainerLogs, rc.Secrets.Store),
-			processor.WithRun(rc.ImagePolicy.PullPolicy, rc.ContainerRuntime.Driver, rc.Output.Factory, rc.Teardown.Teardown),
+			processor.WithWhen(rc.CEL.Env),
+			processor.WithInteractive(s.opts.Interactive, rc.Buildkit.GatewayClient),
+			processor.WithExports(rc.Buildkit.GatewayClient),
+			processor.WithInputFrom(),
+			processor.WithInputVars(rc.CEL.Env),
+			processor.WithLabels(rc.Labels.Labels),
+			processor.WithEnvFrom(),
+			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
+			processor.WithSecretVars(osEnvMap(), rc.Secrets.Store),
+			processor.WithSources(),
+			processor.WithServiceBinding(),
+			processor.WithService(rc.Buildkit.GatewayClient, rc.Teardown.Teardown),
+			processor.WithVolumes(),
+			processor.WithSteps(rc.Secrets.Store, rc.Buildkit.NoCache),
+			processor.WithBuild(rc.Buildkit.GatewayClient, rc.Buildkit.VertexRouter, rc.Buildkit.GWCacheImports, rc.Buildkit.NoCache, &rc.Buildkit.BuiltRefs),
 			processor.WithInherit(*pipeline, rc.Provider.Provider),
-			processor.WithAnd(),
-			processor.WithConcurrent(),
-			processor.WithPipe(false),
 		)
 
 		return processor.WithDebug(rc.Logging.Logger, rc.Logging.Debug, &spec, processors...)
