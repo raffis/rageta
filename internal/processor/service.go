@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"slices"
 	"sync"
@@ -118,8 +117,8 @@ func (s *Service) start(ctx TaskContext, command, args []string) (TaskContext, e
 	proc, err := ctr.Start(ctx, gwclient.StartRequest{
 		Args:   cmd,
 		Cwd:    ctx.Workdir.Path,
-		Stdout: nopWriteCloser{ctx.Display.Stdout},
-		Stderr: nopWriteCloser{ctx.Display.Demuxer},
+		Stdout: xio.NopWriteCloser{Writer: ctx.Display.Stdout},
+		Stderr: xio.NopWriteCloser{Writer: ctx.Display.Demuxer},
 	})
 	if err != nil {
 		_ = ctr.Release(ctx)
@@ -179,12 +178,6 @@ func (s *Service) awaitDone(timeout time.Duration) bool {
 		return false
 	}
 }
-
-type nopWriteCloser struct {
-	io.Writer
-}
-
-func (nopWriteCloser) Close() error { return nil }
 
 type serviceError struct {
 	exitCode int

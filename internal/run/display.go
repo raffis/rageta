@@ -196,5 +196,5 @@ func (d *debugShellExec) SetStdout(w io.Writer) { d.stdout = w }
 func (d *debugShellExec) SetStderr(w io.Writer) { d.stderr = w }
 
 func (d *debugShellExec) Run() error {
-	return RunDebugShell(context.Background(), d.rc, d.stepCtx, d.stdin, d.stdout, d.stderr)
+	return processor.RunDebugShell(context.Background(), d.rc.Buildkit.GatewayClient, d.stepCtx, d.stdin, d.stdout, d.stderr)
 }

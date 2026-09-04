@@ -3,16 +3,28 @@ package run
 import (
 	"github.com/raffis/rageta/internal/pipeline"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type PipelineOptions struct{}
+type PipelineOptions struct {
+	Interactive bool
+}
+
+func NewPipelineOptions() PipelineOptions {
+	return PipelineOptions{}
+}
+
+func (s *PipelineOptions) BindFlags(flags flagset.Interface) {
+	flags.BoolVarP(&s.Interactive, "interactive", "i", s.Interactive, "Exec a shell in failed tasks. The task is exported and executed as a container with its entire state and the current tty is attached directly to a /bin/ash shell within the failed task.")
+}
 
 func (s PipelineOptions) Build() Task {
-	return &Pipeline{}
+	return &Pipeline{opts: s}
 }
 
 type Pipeline struct {
+	opts PipelineOptions
 }
 
 type PipelineContext struct {
@@ -43,6 +55,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithResult(),
 			processor.WithImage(rc.Buildkit.GatewayClient),
 			processor.WithBusybox(),
+			processor.WithShim(),
 			processor.WithWorkdir(),
 			processor.WithStyle(),
 			processor.WithAncestors(),
@@ -50,12 +63,14 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithStats(),
 			processor.WithMatrix(),
 			processor.WithDependsOn(),
+			processor.WithTargets(),
 			processor.WithOtelTrace(rc.Logging.Logger, rc.Otel.Tracer),
 			processor.WithLogger(rc.Logging.Logger, rc.Logging.Builder, rc.Logging.Detached),
 			processor.WithOtelMetrics(rc.Otel.Meter),
 			processor.WithAllowFailure(),
 			processor.WithTimeout(),
 			processor.WithWhen(rc.CEL.Env),
+			processor.WithInteractive(s.opts.Interactive, rc.Buildkit.GatewayClient),
 			processor.WithExports(rc.Buildkit.GatewayClient),
 			processor.WithInputFrom(),
 			processor.WithInputVars(rc.CEL.Env),

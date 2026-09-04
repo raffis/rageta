@@ -67,6 +67,12 @@ func (d *uiDisplay) Events() io.Writer {
 	return d.events
 }
 
+func (d *uiDisplay) Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error {
+	done := make(chan error, 1)
+	d.sender.Send(tui.InterruptMsg{Run: f, Done: done})
+	return <-done
+}
+
 func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
 	if err := d.step.Flush(); err != nil {
 		return fmt.Errorf("error flushing stdout: %w", err)
@@ -85,7 +91,7 @@ func (d *uiDisplay) Close(ctx processor.TaskContext, err error) error {
 	case errors.Is(err, processor.ErrConditionFalse):
 		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusSkipped, Context: taskCtx})
 	default:
-		fmt.Fprintf(d.events, "Task %q failed: %q\n", ctx.UniqueName(), err.Error())
+		fmt.Fprintf(d.events, "Task %q failed: %s\n", ctx.UniqueName(), err.Error())
 		d.sender.Send(tui.TaskMsg{Name: d.uniqueName, Status: tui.TaskStatusFailed, Context: taskCtx})
 	}
 

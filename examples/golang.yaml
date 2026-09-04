@@ -9,7 +9,7 @@ inputs:
   description: Image name used for docker-build/build
   default: ghcr.io/rageta/rageta
 
-defaultTask: all
+defaultTask: default
 
 templates:
 - name: golang
@@ -31,10 +31,15 @@ templates:
   workingDir: /workspace
 
 tasks:
-- name: all
+- name: default
+  targets:
+  - name: tidy
+  - name: vet
+  - name: fmt
+  - name: golangci-lint
+  - name: test
+  - name: build
 - name: tidy
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   exports:
@@ -44,8 +49,6 @@ tasks:
   - script: go mod tidy -compat=1.20
 
 - name: fmt
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   exports:
@@ -54,8 +57,6 @@ tasks:
     - script: go fmt ./...
 
 - name: vet
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   steps:
@@ -67,8 +68,6 @@ tasks:
   - mountPath: /root/.cache/golangci-lint
     cache: 
       name: golangci-lint
-  dependsOn: 
-  - name: all
   sources:
   - path: .
   workingDir: /workspace
@@ -76,16 +75,12 @@ tasks:
   - script: golangci-lint run --timeout=3m
 
 - name: test
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   steps:
   - script: go test -coverprofile coverage.out -v ./...
 
 - name: build
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   #exports:

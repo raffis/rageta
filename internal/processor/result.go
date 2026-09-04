@@ -76,7 +76,7 @@ type taskError struct {
 }
 
 func (e *taskError) Error() string {
-	return fmt.Sprintf("step %s failed: %s", e.taskName, e.parent.Error())
+	return fmt.Sprintf("task %s failed: %s", e.taskName, e.parent.Error())
 }
 
 func (e *taskError) Unwrap() error {

@@ -22,19 +22,25 @@ type TaskContext struct {
 	StartedAt       time.Time
 	EndedAt         time.Time
 	Tasks           map[string]*TaskContext `json:"-"`
-	Labels          LabelsContext
-	Display         DisplayContext
-	Style           StyleContext
-	EnvVars         EnvVarsContext
-	SecretVars      SecretVarsContext
-	InputVars       InputVarsContext
-	Matrix          MatrixContext
-	Build           BuildContext
-	Workdir         WorkdirContext
-	Service         ServiceContext
-	Stats           StatsContext
-	Ancestors       AncestorsContext
-	mu              *sync.Mutex
+	// TaskGroups holds every matrix-instance context for a task that ran as
+	// a matrix, keyed by the task's plain name. Tasks[name] only ever keeps
+	// the last instance to finish, which loses the other combinations; a
+	// consumer that needs to fan out over all of them (e.g. sources.go
+	// copying from every matrix instance) reads TaskGroups instead.
+	TaskGroups map[string][]*TaskContext `json:"-"`
+	Labels     LabelsContext
+	Display    DisplayContext
+	Style      StyleContext
+	EnvVars    EnvVarsContext
+	SecretVars SecretVarsContext
+	InputVars  InputVarsContext
+	Matrix     MatrixContext
+	Build      BuildContext
+	Workdir    WorkdirContext
+	Service    ServiceContext
+	Stats      StatsContext
+	Ancestors  AncestorsContext
+	mu         *sync.Mutex
 }
 
 func (c TaskContext) UniqueID() string {
@@ -74,6 +80,7 @@ func NewContext() TaskContext {
 		Matrix:     newMatrixContext(),
 		Stats:      newStatsContext(),
 		Tasks:      make(map[string]*TaskContext),
+		TaskGroups: make(map[string][]*TaskContext),
 		mu:         &sync.Mutex{},
 	}
 }
@@ -94,6 +101,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Display.WriteStats = c.Display.WriteStats
 	copy.Display.WritePullProgress = c.Display.WritePullProgress
 	copy.Tasks = maps.Clone(c.Tasks)
+	copy.TaskGroups = maps.Clone(c.TaskGroups)
 	copy.Labels.labels = append(copy.Labels.labels, c.Labels.labels...)
 	copy.InputVars.Inputs = maps.Clone(c.InputVars.Inputs)
 	copy.EnvVars.Envs = maps.Clone(c.EnvVars.Envs)
@@ -128,6 +136,12 @@ func (t TaskContext) Merge(c TaskContext) TaskContext {
 	mergeAdditive(t.InputVars.Inputs, c.InputVars.Inputs)
 	maps.Copy(t.Tasks, c.Tasks)
 
+	for name, instances := range c.TaskGroups {
+		if _, exists := t.TaskGroups[name]; !exists {
+			t.TaskGroups[name] = instances
+		}
+	}
+
 	return t
 }
 
@@ -159,7 +173,6 @@ func (t TaskContext) ToV1Beta1() *v1beta1.Context {
 
 	for k, v := range t.Tasks {
 		vars.Tasks[k] = &v1beta1.TaskResult{
-			Outputs:   make(map[string]v1beta1.ParamValue),
 			StartedAt: metav1.Time{Time: v.StartedAt},
 			EndedAt:   metav1.Time{Time: v.EndedAt},
 		}
@@ -167,8 +180,6 @@ func (t TaskContext) ToV1Beta1() *v1beta1.Context {
 		if v.Error != nil {
 			vars.Tasks[k].Error = v.Error.Error()
 		}
-
-		//	maps.Copy(vars.Tasks[k].Outputs, v.OutputVars.OutputVars)
 	}
 
 	return vars

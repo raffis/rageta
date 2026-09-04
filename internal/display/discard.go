@@ -2,6 +2,7 @@ package display
 
 import (
 	"io"
+	"os"
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/stats"
@@ -25,6 +26,10 @@ func (d *discardDisplay) Stderr() io.Writer {
 
 func (d *discardDisplay) Events() io.Writer {
 	return io.Discard
+}
+
+func (d *discardDisplay) Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error {
+	return f(os.Stdin, os.Stdout, os.Stderr)
 }
 
 func (d *discardDisplay) Close(_ processor.TaskContext, _ error) error {

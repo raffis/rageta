@@ -40,6 +40,7 @@ func run(args []string) int {
 
 	fDetectIP := flag.Bool("ip", false, "Detect non loopback IP")
 	fStats := flag.Bool("stats", false, "Write stats to stderr")
+	fExitCodePath := flag.String("exitcodefile", "", "Return 0 and write real code to the given path")
 	fStatsInterval := flag.Duration("stats-interval", time.Second*1, "Stats interval")
 	flag.Parse()
 
@@ -121,15 +122,26 @@ func run(args []string) int {
 	waitErr := cmd.Wait()
 	cleanup()
 
+	f, _ := os.OpenFile(*fExitCodePath, os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+
 	var exitErr *exec.ExitError
 	if errors.As(waitErr, &exitErr) {
-		return exitErr.ExitCode()
+		if fExitCodePath == nil || *fExitCodePath == "" {
+			return exitErr.ExitCode()
+		}
+
+		fmt.Fprintf(f, "%d", exitErr.ExitCode())
+		return 0
 	}
+
 	if waitErr != nil {
+		fmt.Fprintf(f, "%d", 1)
 		fmt.Fprintln(os.Stderr, waitErr)
 		return 1
 	}
 
+	fmt.Fprintf(f, "%d", 0)
 	return 0
 }
 

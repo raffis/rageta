@@ -12,6 +12,14 @@ type Display interface {
 	Stdout() io.Writer
 	Stderr() io.Writer
 	Events() io.Writer
+	// Interrupt suspends normal task output to run f interactively against a
+	// terminal. It hands f the stdin/stdout/stderr to use rather than
+	// letting f capture os.Stdin/os.Stdout/os.Stderr itself, because in UI
+	// mode bubbletea owns the real terminal and must hand off its input
+	// reader through tea.Exec's SetStdin — grabbing os.Stdin directly races
+	// bubbletea's own (best-effort, see tty.go's waitForReadLoop) attempt to
+	// stop reading it first.
+	Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error
 	Close(ctx TaskContext, err error) error
 	WriteStats(sample *stats.Sample) error
 	WritePullProgress(current, total int64) error
@@ -44,8 +52,9 @@ type DisplayContext struct {
 	Stderr            io.Writer
 	Demuxer           *xio.Demuxer
 	Events            io.Writer
-	WriteStats        func(sample *stats.Sample) error `json:"-"`
-	WritePullProgress func(current, total int64) error `json:"-"`
+	Interrupt         func(f func(stdin io.Reader, stdout, stderr io.Writer) error) error `json:"-"`
+	WriteStats        func(sample *stats.Sample) error                                    `json:"-"`
+	WritePullProgress func(current, total int64) error                                    `json:"-"`
 }
 
 func (s *display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
@@ -55,6 +64,7 @@ func (s *display) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 		ctx.Display.WriteStats = d.WriteStats
 		ctx.Display.WritePullProgress = d.WritePullProgress
 		ctx.Display.Events = d.Events()
+		ctx.Display.Interrupt = d.Interrupt
 
 		if ctx.Display.Stdout != io.Discard {
 			ctx.Display.Stdout = d.Stdout()

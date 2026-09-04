@@ -212,6 +212,9 @@ func (s *Buildkit) ensureBuildkitd(rc *RunContext) error {
 
 	containerConfig := &dockercontainer.Config{
 		Image: buildkitdImage,
+		Env: []string{
+			"BUILDKIT_STEP_LOG_MAX_SIZE=-1",
+		},
 	}
 
 	if rc.Otel.Endpoint != "" {

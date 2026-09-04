@@ -29,13 +29,9 @@ func WithSteps(store secrets.Interface, noCache bool) ProcessorBuilder {
 }
 
 const (
-	defaultShell   = "/bin/ash"
-	contextPath    = "/rageta/context.json"
-	ashHistoryPath = "/rageta/ash_history"
-	// ContextSecretPrefix marks secrets holding a task's serialized context.json rather than a user
-	// secret. These live in the same store as user secrets so buildkit can resolve them by ID, but
-	// must never be echoed back into a task's own SecretVars (see SecretVars.Bootstrap) - otherwise
-	// each task's context.json would embed every prior task's context.json, growing without bound.
+	defaultShell        = "/bin/ash"
+	contextPath         = "/rageta/context.json"
+	ashHistoryPath      = "/rageta/ash_history"
 	ContextSecretPrefix = "rageta-context-"
 )
 
@@ -86,25 +82,18 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				interpreter = strings.TrimSpace(strings.TrimPrefix(lines[0], "#!"))
 			}
 
-			scriptEntrypointPath := fmt.Sprintf("/rageta/script-entrypoint-%d.sh", k)
-			scriptPath := fmt.Sprintf("/rageta/script-%d.sh", k)
 			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
 
-			ctx.Build.State = ctx.Build.State.File(
-				llb.Mkfile(scriptPath, 0755, []byte(script)),
-			)
-
-			// We need the script to always exit 0 in order to get the filesystem state even in case of an error
-			ctx.Build.State = ctx.Build.State.File(
-				llb.Mkfile(scriptEntrypointPath, 0755, []byte(fmt.Sprintf("/bin/ash -e -x  %s; echo $? > %s", scriptPath, exitCodePath))),
-			)
-
-			history = append(history, scriptPath)
+			history = append(history, script)
 			stepRunOpts := append(append([]llb.RunOption{}, baseRunOpts...), llb.Args([]string{
 				shimPath,
 				"-stats",
+				fmt.Sprintf("-exitcodefile=%s", exitCodePath),
 				interpreter,
-				scriptEntrypointPath,
+				"-e",
+				"-x",
+				"-c",
+				script,
 			}))
 
 			ctx.Build.State = ctx.Build.State.Run(stepRunOpts...).Root()

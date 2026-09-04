@@ -1,8 +1,7 @@
-package run
+package processor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,118 +13,48 @@ import (
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/term"
-	"github.com/raffis/rageta/internal/processor"
-	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/utils"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/xio"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
-type TaskInteractive string
+func WithInteractive(enabled bool, gwClient gwclient.Client) ProcessorBuilder {
+	return func(spec *v1beta1.Task) Bootstraper {
+		if !enabled {
+			return nil
+		}
 
-var (
-	TaskInteractiveNever       TaskInteractive = "Never"
-	TaskInteractiveAsk         TaskInteractive = "Ask"
-	TaskInteractiveAskIfFailed TaskInteractive = "AskIfFailed"
-	TaskInteractiveIfFailed    TaskInteractive = "IfFailed"
-	TaskInteractiveAlways      TaskInteractive = "Always"
-)
-
-func (s TaskInteractive) String() string {
-	return string(s)
-}
-
-func NewInteractiveOptions() InteractiveOptions {
-	return InteractiveOptions{
-		Interactive: string(TaskInteractiveNever),
-	}
-}
-
-type InteractiveOptions struct {
-	Interactive string
-}
-
-func (s *InteractiveOptions) BindFlags(flags flagset.Interface) {
-	flags.StringVarP(&s.Interactive, "interactive", "i", s.Interactive, "Exec a shell in failed tasks. The task is exported and executed as a container with its entire state and the current tty is attached directly to a /bin/ash shell within the failed task.")
-	if fs, ok := flags.(interface{ Lookup(string) *pflag.Flag }); ok {
-		if f := fs.Lookup("interactive"); f != nil {
-			f.NoOptDefVal = string(TaskInteractiveIfFailed)
+		return &Interactive{
+			gwClient: gwClient,
 		}
 	}
-}
-
-func (s InteractiveOptions) Build() Task {
-	return &Interactive{opts: s}
 }
 
 type Interactive struct {
-	opts InteractiveOptions
+	gwClient gwclient.Client
 }
 
-func (s *Interactive) Label() string {
-	return "Setting up interactive mode"
-}
-
-func (s *Interactive) Run(rc *RunContext, next Next) error {
-	err := next(rc)
-	return s.walkError(rc, err)
-}
-
-func (s *Interactive) walkError(rc *RunContext, err error) error {
-	unwrappedErr := err
-	for unwrappedErr != nil {
-		if uw, ok := unwrappedErr.(interface{ Unwrap() []error }); ok {
-			for _, unwrappedErr := range uw.Unwrap() {
-				return s.walkError(rc, unwrappedErr)
-			}
-
-			return err
+func (s *Interactive) Bootstrap(_ Pipeline, next Next) (Next, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
+		ctx, err := next(ctx)
+		if err == nil {
+			return ctx, nil
 		}
 
-		unwrappedErr = errors.Unwrap(unwrappedErr)
-	}
+		terminalErr := ctx.Display.Interrupt(func(stdin io.Reader, stdout, stderr io.Writer) error {
+			return RunDebugShell(ctx, s.gwClient, ctx, stdin, stdout, stderr)
+		})
 
-	if err := s.openInteractive(rc, err); err != nil {
-		return err
-	}
+		if terminalErr != nil {
+			return ctx, terminalErr
+		}
 
-	return err
+		return ctx, err
+	}, nil
 }
 
-func (s *Interactive) openInteractive(rc *RunContext, err error) error {
-	var innerTaskErr processor.TaskError
-	if !AsInner(err, &innerTaskErr) {
-		return err
-	}
-
-	var exitCodeErr processor.ExitCode
-	if !AsInner(err, &exitCodeErr) {
-		return err
-	}
-
-	switch {
-	case s.opts.Interactive == TaskInteractiveNever.String():
-		return nil
-	case s.opts.Interactive == TaskInteractiveIfFailed.String():
-
-	case s.opts.Interactive == TaskInteractiveAsk.String():
-		return nil
-	case s.opts.Interactive == TaskInteractiveAskIfFailed.String():
-		return nil
-	}
-
-	ctx := context.Background()
-	return RunDebugShell(ctx, rc, innerTaskErr.Context(), os.Stdin, os.Stdout, os.Stderr)
-}
-
-// RunDebugShell drops an interactive shell into the failed step's root
-// filesystem using BuildKit's own gateway container (gwclient.NewContainer)
-// rather than exporting an image and running it through a separate
-// container runtime. This keeps the step's volume/cache mounts (which only
-// exist as BuildKit Run-op mounts, not as part of the exported rootfs)
-// available inside the debug shell.
-func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskContext, stdin io.Reader, stdout, stderr io.Writer) error {
+func RunDebugShell(ctx context.Context, gwClient gwclient.Client, stepCtx TaskContext, stdin io.Reader, stdout, stderr io.Writer) error {
 	stepCtx = stepCtx.DeepCopy()
-	gwClient := rc.Buildkit.GatewayClient
 
 	// A task with exports: has Build.State shrunk down to just the exported
 	// paths (see Exports.Bootstrap), for cross-task artifact sharing. For
@@ -231,8 +160,8 @@ func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskCo
 		Cwd:    stepCtx.Workdir.Path,
 		Tty:    true,
 		Stdin:  stdinRC,
-		Stdout: nopWriteCloser{stdout},
-		Stderr: nopWriteCloser{stderr},
+		Stdout: xio.NopWriteCloser{Writer: stdout},
+		Stderr: xio.NopWriteCloser{Writer: stderr},
 	})
 	if err != nil {
 		return fmt.Errorf("start debug shell: %w", err)
@@ -269,9 +198,3 @@ func RunDebugShell(ctx context.Context, rc *RunContext, stepCtx processor.TaskCo
 
 	return proc.Wait()
 }
-
-type nopWriteCloser struct {
-	io.Writer
-}
-
-func (nopWriteCloser) Close() error { return nil }

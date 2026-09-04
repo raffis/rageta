@@ -17,10 +17,6 @@ type pipelineTask struct {
 	mu         sync.Mutex
 }
 
-func (p *pipelineTask) Processors() []processor.Bootstraper {
-	return p.processors
-}
-
 func (p *pipelineTask) Name() string {
 	return p.name
 }

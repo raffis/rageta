@@ -26,6 +26,16 @@ type ancestorsContext struct{}
 
 func (s *ancestors) Bootstrap(pipelineCtx Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
+		// Always recompute this task's ancestor refs from scratch rather than
+		// appending onto whatever ctx.Ancestors.Refs already carried in. A
+		// DeepCopy (e.g. Targets/Inherit/Matrix spawning a child's starting
+		// ctx from the launching task's own ctx) copies the launcher's own
+		// Ancestors.Refs forward; appending onto that here would leave a
+		// nested task's ancestors polluted with entries from further up the
+		// chain instead of just its own direct dependencies/launcher, which
+		// can make the tree UI place it under the wrong (or no) ancestor.
+		ctx.Ancestors.Refs = nil
+
 		deps := pipelineCtx.TaskDependencies(s.taskName)
 		for _, dep := range deps {
 			uniqueDep := dep

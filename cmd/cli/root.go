@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/go-logr/logr"
 	"github.com/raffis/rageta/internal/setup/logsetup"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -92,6 +93,20 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	logger, zapConfig, err = rootArgs.logOptions.Build()
 	if err != nil {
 		return err
+	}
+
+	// BuildKit's own client-side logging (bklog) writes through the global
+	// logrus logger and is silent by default. RAGETA_BUILDKIT_DEBUG routes
+	// it to a file instead of stdout/stderr so it doesn't corrupt whichever
+	// display renderer (in particular the TUI) currently owns the terminal.
+	// Diagnostic-only: not meant to stay wired to a flag long-term.
+	if path := os.Getenv("RAGETA_BUILDKIT_DEBUG"); path != "" {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open RAGETA_BUILDKIT_DEBUG log file: %w", err)
+		}
+		logrus.SetOutput(f)
+		logrus.SetLevel(logrus.DebugLevel)
 	}
 
 	if rootArgs.noColor {

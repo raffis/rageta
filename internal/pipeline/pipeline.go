@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -106,7 +107,7 @@ func (p *pipeline) withTask(name string, dependsOn []dependsOnRef, processors []
 
 func (p *pipeline) Entrypoint(name string) (processor.Next, error) {
 	if name == "" && p.defaultTask == "" {
-		return nil, errors.New("task target expected")
+		return p.entrypointAll()
 	}
 
 	if name == "" {
@@ -120,4 +121,60 @@ func (p *pipeline) Entrypoint(name string) (processor.Next, error) {
 	}
 
 	return nil, errors.New("task target no found")
+}
+
+// entrypointAll runs every root task (a task with no dependsOn) concurrently.
+// It's used when a pipeline has neither an explicit (-t) nor a default task
+// target, so running the pipeline simply executes all of its tasks; each
+// root task's own dependents are then launched as usual by DependsOn as the
+// root completes.
+func (p *pipeline) entrypointAll() (processor.Next, error) {
+	var roots []*pipelineTask
+	for _, task := range p.tasks {
+		if len(task.dependsOn) == 0 {
+			roots = append(roots, task)
+		}
+	}
+
+	return func(ctx processor.TaskContext) (processor.TaskContext, error) {
+		type result struct {
+			ctx processor.TaskContext
+			err error
+		}
+
+		results := make(chan result)
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		for _, task := range roots {
+			next, err := task.Entrypoint()
+			if err != nil {
+				return ctx, err
+			}
+
+			copyCtx := ctx.DeepCopy()
+			copyCtx.Context = cancelCtx
+
+			go func(next processor.Next, ctx processor.TaskContext) {
+				taskCtx, err := next(ctx)
+				results <- result{taskCtx, err}
+			}(next, copyCtx)
+		}
+
+		var errs []error
+		for range roots {
+			res := <-results
+			ctx = ctx.Merge(res.ctx)
+
+			switch {
+			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
+			case res.err != nil && processor.AbortOnError(res.err):
+				errs = append(errs, res.err)
+			default:
+			}
+		}
+
+		return ctx, errors.Join(errs...)
+	}, nil
 }

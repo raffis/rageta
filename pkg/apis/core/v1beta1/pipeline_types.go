@@ -78,6 +78,7 @@ type TaskDependency struct {
 type Source struct {
 	From *string `json:"from,omitempty"`
 	Path string  `json:"path,omitempty"`
+	To   string  `json:"to,omitempty"`
 }
 
 type Label struct {
@@ -137,9 +138,10 @@ type Task struct {
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
 	TaskOptions `json:",inline"`
-	Steps       *[]Step      `json:"steps,omitempty"`
-	Service     *ServiceTask `json:"service,omitempty"`
-	Inherit     *InheritTask `json:"inherit,omitempty"`
+	Steps       *[]Step           `json:"steps,omitempty"`
+	Targets     *[]LocalReference `json:"targets,omitempty"`
+	Service     *ServiceTask      `json:"service,omitempty"`
+	Inherit     *InheritTask      `json:"inherit,omitempty"`
 }
 
 type Step struct {

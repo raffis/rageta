@@ -32,7 +32,6 @@ type Bootstraper interface {
 type Task interface {
 	Claim(TaskContext) (TaskClaim, bool)
 	Ready(TaskContext) bool
-	Processors() []Bootstraper
 	Entrypoint() (Next, error)
 	Name() string
 }

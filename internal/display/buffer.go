@@ -3,6 +3,7 @@ package display
 import (
 	"bytes"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"text/template"
@@ -57,6 +58,16 @@ func (d *bufferDisplay) Stderr() io.Writer {
 
 func (d *bufferDisplay) Events() io.Writer {
 	return d.buf
+}
+
+// Interrupt takes the same lock Close uses to flush a task's buffer to dev,
+// so a task's buffered output can't land on the terminal while the shell
+// f runs is using it.
+func (d *bufferDisplay) Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return f(os.Stdin, os.Stdout, os.Stderr)
 }
 
 func (d *bufferDisplay) Close(_ processor.TaskContext, err error) error {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/raffis/rageta/internal/processor"
@@ -14,9 +15,13 @@ import (
 )
 
 func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
+	gate := &xio.MutexWriter{}
+	stdout, stderr = gate.WriterPair(stdout, stderr)
+
 	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
 		prefix := fmt.Appendf(nil, "%s ", ctx.Style.Style.Render(ctx.UniqueName()))
 		d := &prefixDisplay{
+			gate:           gate,
 			stdout:         xio.NewLineWriter(xio.NewPrefixWriter(stdout, prefix)),
 			eventsInterval: time.Second * 5,
 		}
@@ -26,7 +31,12 @@ func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
 			d.stderr = xio.NewLineWriter(xio.NewPrefixWriter(stderr, prefix))
 		}
 
-		d.events = xio.NewLineWriter(xio.NewPrefixWriter(xio.NewLipglossWriter(d.stderr, styles.Highlight), []byte("➤ ")))
+		d.events = xio.NewLineWriter(
+			xio.NewPrefixWriter(
+				xio.NewLipglossWriter(d.stderr, styles.Highlight), []byte("➤ "),
+			),
+		)
+
 		d.startPolling(ctx)
 
 		return d
@@ -34,6 +44,7 @@ func Prefix(stdout, stderr io.Writer) processor.DisplayFactory {
 }
 
 type prefixDisplay struct {
+	gate           *xio.MutexWriter
 	stdout, stderr *xio.LineWriter
 	events         io.Writer
 	eventsInterval time.Duration
@@ -46,10 +57,18 @@ func (d *prefixDisplay) Stdout() io.Writer {
 
 func (d *prefixDisplay) Stderr() io.Writer {
 	return d.stderr
+
 }
 
 func (d *prefixDisplay) Events() io.Writer {
 	return d.events
+}
+
+func (d *prefixDisplay) Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error {
+	d.gate.Lock()
+	defer d.gate.Unlock()
+
+	return f(os.Stdin, os.Stdout, os.Stderr)
 }
 
 func (d *prefixDisplay) startPolling(ctx processor.TaskContext) error {
@@ -95,7 +114,7 @@ func (d *prefixDisplay) Close(ctx processor.TaskContext, err error) error {
 	case errors.Is(err, processor.ErrConditionFalse):
 		_, _ = fmt.Fprintf(d.events, "Task %q condition check did not pass [%s]\n", ctx.UniqueName(), duration)
 	default:
-		_, _ = fmt.Fprintf(d.events, "Task %q failed: %q [%s]\n", ctx.UniqueName(), err.Error(), duration)
+		_, _ = fmt.Fprintf(d.events, "Task %q failed: %s [%s]\n", ctx.UniqueName(), err.Error(), duration)
 	}
 
 	if err := d.stdout.Flush(); err != nil {

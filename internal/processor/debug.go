@@ -40,8 +40,15 @@ func (s *Debug) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	}
 
 	return func(ctx TaskContext) (TaskContext, error) {
+
+		logger = logr.FromContextOrDiscard(ctx)
+		ctxLogger, err := logr.FromContext(ctx)
+		if err == nil {
+			logger = ctxLogger
+		}
+
 		logger.V(6).Info("pre processor", "context", ctx)
-		ctx, err := wrappedNext(ctx)
+		ctx, err = wrappedNext(ctx)
 		logger.V(6).Info("post processor", "context", ctx, "err", err)
 
 		return ctx, err

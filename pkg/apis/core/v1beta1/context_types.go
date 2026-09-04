@@ -8,10 +8,9 @@ import (
 )
 
 type TaskResult struct {
-	Outputs   map[string]ParamValue `cel:"outputs"`
-	Error     string                `cel:"error"`
-	StartedAt metav1.Time           `cel:"startedAt"`
-	EndedAt   metav1.Time           `cel:"endedAt"`
+	Error     string      `cel:"error"`
+	StartedAt metav1.Time `cel:"startedAt"`
+	EndedAt   metav1.Time `cel:"endedAt"`
 }
 
 type Context struct {
@@ -67,18 +66,6 @@ func (v *Context) Index() map[string]string {
 		vars[fmt.Sprintf("context.steps.%s.error", k)] = v.Error
 		vars[fmt.Sprintf("context.steps.%s.startedAt", k)] = fmt.Sprintf("%d", v.StartedAt.Unix())
 		vars[fmt.Sprintf("context.steps.%s.endedAt", k)] = fmt.Sprintf("%d", v.EndedAt.Unix())
-		for outputName, v := range v.Outputs {
-			switch v.Type {
-			case ParamTypeString:
-				vars[fmt.Sprintf("context.steps.%s.outputs.%s", k, outputName)] = v.StringVal
-			case ParamTypeArray:
-				b, _ := json.Marshal(v.ArrayVal)
-				vars[fmt.Sprintf("context.steps.%s.outputs.%s", k, outputName)] = string(b)
-			case ParamTypeObject:
-				b, _ := json.Marshal(v.ObjectVal)
-				vars[fmt.Sprintf("context.steps.%s.outputs.%s", k, outputName)] = string(b)
-			}
-		}
 	}
 
 	return vars

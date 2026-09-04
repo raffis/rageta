@@ -87,6 +87,30 @@ type DebugShellDoneMsg struct {
 	Err  error
 }
 
+type InterruptMsg struct {
+	Run  func(stdin io.Reader, stdout, stderr io.Writer) error
+	Done chan<- error
+}
+
+// interruptExec adapts an InterruptMsg's Run to tea.ExecCommand, capturing
+// the stdin/stdout/stderr tea.Exec assigns via Set* rather than the caller
+// grabbing os.Stdin/os.Stdout/os.Stderr itself. releaseTerminal's own
+// cancellation of bubbletea's stdin reader is best-effort (see tty.go's
+// waitForReadLoop, which gives up waiting after 500ms even if that reader
+// hasn't actually stopped) — reading os.Stdin directly instead of the reader
+// handed to us here risks a real second reader racing bubbletea's for the
+// same fd.
+type interruptExec struct {
+	run            func(stdin io.Reader, stdout, stderr io.Writer) error
+	stdin          io.Reader
+	stdout, stderr io.Writer
+}
+
+func (e *interruptExec) Run() error            { return e.run(e.stdin, e.stdout, e.stderr) }
+func (e *interruptExec) SetStdin(r io.Reader)  { e.stdin = r }
+func (e *interruptExec) SetStdout(w io.Writer) { e.stdout = w }
+func (e *interruptExec) SetStderr(w io.Writer) { e.stderr = w }
+
 type UI struct {
 	list         list.Model
 	loader       spinner.Model
@@ -600,6 +624,8 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logger.Error(msg.Err, "debug shell exited with an error", "task", msg.Name)
 			m.writeDebugShellError(msg.Name, msg.Err)
 		}
+	case InterruptMsg:
+		cmds = append(cmds, m.interrupt(msg))
 	}
 
 	m.updateLastSelected()
@@ -818,6 +844,16 @@ func (m *UI) openDebugShell() tea.Cmd {
 
 	return tea.Exec(execCmd, func(err error) tea.Msg {
 		return DebugShellDoneMsg{Name: task.Name, Err: err}
+	})
+}
+
+func (m *UI) interrupt(msg InterruptMsg) tea.Cmd {
+	return tea.Exec(&interruptExec{run: msg.Run}, func(err error) tea.Msg {
+		msg.Done <- err
+		if err != nil {
+			m.logger.Error(err, "debug shell exited with an error")
+		}
+		return nil
 	})
 }
 

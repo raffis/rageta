@@ -3,6 +3,7 @@ package checklist
 import (
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -126,10 +127,12 @@ func (m ttyModel) View() tea.View {
 }
 
 type ttyDisplay struct {
-	out     io.Writer
-	program *tea.Program
-	done    chan struct{}
-	lastErr error
+	out      io.Writer
+	program  *tea.Program
+	done     chan struct{}
+	lastErr  error
+	closeErr error
+	closed   sync.Once
 }
 
 func newTTY(out io.Writer) *ttyDisplay {
@@ -162,11 +165,13 @@ func (d *ttyDisplay) Step(label string, fn func() error) error {
 }
 
 func (d *ttyDisplay) Close() error {
-	if d.lastErr == nil {
-		d.program.Send(clearMsg{})
-	}
-	d.program.Quit()
-	<-d.done
+	d.closed.Do(func() {
+		if d.lastErr == nil {
+			d.program.Send(clearMsg{})
+		}
+		d.program.Quit()
+		<-d.done
+	})
 
-	return nil
+	return d.closeErr
 }

@@ -143,6 +143,15 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	WAIT:
 		for res := range results {
 			done++
+
+			if child, ok := res.ctx.Tasks[s.taskName]; ok {
+				ctx.TaskGroups[s.taskName] = append(ctx.TaskGroups[s.taskName], child)
+			}
+
+			for name, instances := range res.ctx.TaskGroups {
+				ctx.TaskGroups[name] = append(ctx.TaskGroups[name], instances...)
+			}
+
 			maps.Copy(ctx.Tasks, res.ctx.Tasks)
 
 			if !res.ctx.Build.Cached {
@@ -190,7 +199,15 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, errors.Join(errs...)
 		}
 
+		// Every instance is done and merged into ctx; release the matrix
+		// task's own claim now rather than after AwaitMatrixChildren below
+		// has also been launched and awaited, for the same reason DependsOn
+		// does (see selfReleaseKey in depends_on.go): a waiter only needs
+		// this task's own result, not its dependents'.
+		releaseSelf(ctx, ctx, nil)
+
 		var children []Task
+		var depErrs []error
 		for _, task := range pipeline.AwaitMatrixChildren(s.taskName) {
 			if _, started := ctx.Tasks[task.Name()]; started {
 				continue
@@ -202,12 +219,17 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				continue
 			}
 
-			mergeDependencyResults(pipeline, ctx, task.Name())
+			var depErr error
+			ctx, depErr = ensureDependencies(pipeline, ctx, task.Name())
+			if depErr != nil {
+				depErrs = append(depErrs, depErr)
+			}
 
 			children = append(children, task)
 		}
 
-		return launchTasks(ctx, children)
+		childCtx, childErr := launchTasks(ctx, children)
+		return childCtx, errors.Join(append(depErrs, childErr)...)
 	}, nil
 }
 

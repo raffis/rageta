@@ -3,6 +3,7 @@ package display
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/stats"
@@ -11,8 +12,12 @@ import (
 )
 
 func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
+	gate := &xio.MutexWriter{}
+	stdout, stderr = gate.WriterPair(stdout, stderr)
+
 	return func(ctx processor.TaskContext, taskName, short string) processor.Display {
 		d := &passthroughDisplay{
+			gate:   gate,
 			stdout: xio.NewLineWriter(stdout),
 		}
 		if stdout == stderr {
@@ -28,6 +33,7 @@ func Passthrough(stdout, stderr io.Writer) processor.DisplayFactory {
 }
 
 type passthroughDisplay struct {
+	gate                   *xio.MutexWriter
 	stdout, stderr, events *xio.LineWriter
 }
 
@@ -41,6 +47,13 @@ func (d *passthroughDisplay) Stderr() io.Writer {
 
 func (d *passthroughDisplay) Events() io.Writer {
 	return io.Discard
+}
+
+func (d *passthroughDisplay) Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error {
+	d.gate.Lock()
+	defer d.gate.Unlock()
+
+	return f(os.Stdin, os.Stdout, os.Stderr)
 }
 
 func (d *passthroughDisplay) Close(_ processor.TaskContext, _ error) error {
