@@ -35,9 +35,9 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		for i := range sources {
 			sources[i] = *s.sources[i].DeepCopy()
 			subst = append(subst, &sources[i].Path, &sources[i].To)
-			if sources[i].From != nil {
-				subst = append(subst, sources[i].From)
-			}
+			//if sources[i].From != nil {
+			//	subst = append(subst, sources[i].From)
+			//}
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -55,18 +55,18 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			if source.From == nil {
-				var contextSrc llb.State
+				//var contextSrc llb.State
 				var copyFrom string
-				if strings.ContainsAny(srcPath, "*?[") {
+				/*if strings.ContainsAny(srcPath, "*?[") {
 					contextSrc = llb.Local("context", llb.IncludePatterns([]string{srcPath}))
 					copyFrom = globBaseDir(srcPath)
 				} else {
 					contextSrc = llb.Local("context")
 					copyFrom = srcPath
-				}
-
+				}*/
+				copyFrom = srcPath
 				ctx.Build.State = ctx.Build.State.File(
-					llb.Copy(contextSrc, copyFrom, copyTo, &llb.CopyInfo{
+					llb.Copy(ctx.Build.ContextState, copyFrom, copyTo, &llb.CopyInfo{
 						CreateDestPath:      true,
 						CopyDirContentsOnly: true,
 					}),

@@ -20,10 +20,16 @@ templates:
   - mountPath: /root/.cache/go-build
     cache:
       name: go-build
+  dependsOn:
+  - name: go-version
   sources:
   - path: .
+  inputFrom:
+  - from: go-version
+    file: env
   image: golang:1.25-alpine
   workingDir: /workspace
+  
 - name: docker
   sources:
   - path: .
@@ -31,6 +37,9 @@ templates:
   workingDir: /workspace
 
 tasks:
+- name: go-version
+  steps:
+  - script: sed -En 's/^go[[:space:]]+([[:digit:].]+)$/GO_VERSION=\1/p' go.mod > envs
 - name: default
   targets:
   - name: tidy

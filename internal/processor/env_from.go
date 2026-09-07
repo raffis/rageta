@@ -38,11 +38,7 @@ func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		subst := []any{}
 
 		for i, item := range s.items {
-			if item.File == nil {
-				continue
-			}
-
-			files[i] = *item.File
+			files[i] = item.Path
 			subst = append(subst, &files[i])
 		}
 

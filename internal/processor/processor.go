@@ -11,7 +11,7 @@ type PipelineBuilder interface {
 	Build(pipeline v1beta1.Pipeline, entrypoint string, inputs map[string]v1beta1.ParamValue, stepCtx TaskContext) (Executable, error)
 }
 
-type Executable func() (TaskContext, map[string]v1beta1.ParamValue, error)
+type Executable func() (TaskContext, error)
 
 type Pipeline interface {
 	Task(name string) (Task, error)

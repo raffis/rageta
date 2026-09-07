@@ -17,19 +17,13 @@ templates:
   - path: .
   image: golang:1.25-alpine
   workingDir: /workspace
-
-defaultTask: all
-
 tasks:
-- name: all
 - name: go
-  dependsOn: 
-  - name: all
   inherit:
     pipeline: ./examples/golang.yaml
+  sources:
+  - path: .
 - name: generate
-  dependsOn: 
-  - name: all
   templates:
   - name: golang
   exports:

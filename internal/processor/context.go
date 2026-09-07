@@ -21,26 +21,21 @@ type TaskContext struct {
 	Error           error
 	StartedAt       time.Time
 	EndedAt         time.Time
-	Tasks           map[string]*TaskContext `json:"-"`
-	// TaskGroups holds every matrix-instance context for a task that ran as
-	// a matrix, keyed by the task's plain name. Tasks[name] only ever keeps
-	// the last instance to finish, which loses the other combinations; a
-	// consumer that needs to fan out over all of them (e.g. sources.go
-	// copying from every matrix instance) reads TaskGroups instead.
-	TaskGroups map[string][]*TaskContext `json:"-"`
-	Labels     LabelsContext
-	Display    DisplayContext
-	Style      StyleContext
-	EnvVars    EnvVarsContext
-	SecretVars SecretVarsContext
-	InputVars  InputVarsContext
-	Matrix     MatrixContext
-	Build      BuildContext
-	Workdir    WorkdirContext
-	Service    ServiceContext
-	Stats      StatsContext
-	Ancestors  AncestorsContext
-	mu         *sync.Mutex
+	Tasks           map[string]*TaskContext   `json:"-"`
+	TaskGroups      map[string][]*TaskContext `json:"-"`
+	Labels          LabelsContext
+	Display         DisplayContext
+	Style           StyleContext
+	EnvVars         EnvVarsContext
+	SecretVars      SecretVarsContext
+	InputVars       InputVarsContext
+	Matrix          MatrixContext
+	Build           BuildContext
+	Workdir         WorkdirContext
+	Service         ServiceContext
+	Stats           StatsContext
+	Ancestors       AncestorsContext
+	mu              *sync.Mutex
 }
 
 func (c TaskContext) UniqueID() string {
@@ -109,6 +104,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
 	copy.Build.RunOpts = append(copy.Build.RunOpts, c.Build.RunOpts...)
 	copy.Build.Mounts = append(copy.Build.Mounts, c.Build.Mounts...)
+	copy.Build.ExtraHosts = append(copy.Build.ExtraHosts, c.Build.ExtraHosts...)
 	copy.Build.State = c.Build.State
 	copy.Build.ContextState = c.Build.ContextState
 	copy.Build.Ref = c.Build.Ref

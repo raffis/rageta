@@ -14,6 +14,8 @@ defaultTask: http-server
 tasks:
 - name: http-server
   image: busybox:1
+  sources:
+  - path: $(context.inputs.file)
   service:
     args: [httpd, -f, -v, -p, "8080", -h, "."]
 

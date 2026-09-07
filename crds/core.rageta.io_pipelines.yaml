@@ -122,7 +122,9 @@ spec:
                 envFrom:
                   items:
                     properties:
-                      file:
+                      from:
+                        type: string
+                      path:
                         type: string
                     type: object
                   type: array
@@ -162,6 +164,8 @@ spec:
                   items:
                     properties:
                       file:
+                        type: string
+                      from:
                         type: string
                     type: object
                   type: array
@@ -428,7 +432,9 @@ spec:
                 envFrom:
                   items:
                     properties:
-                      file:
+                      from:
+                        type: string
+                      path:
                         type: string
                     type: object
                   type: array
@@ -468,6 +474,8 @@ spec:
                   items:
                     properties:
                       file:
+                        type: string
+                      from:
                         type: string
                     type: object
                   type: array

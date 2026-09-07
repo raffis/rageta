@@ -9,11 +9,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/moby/buildkit/client/llb"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/term"
-	"github.com/raffis/rageta/internal/utils"
 	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
@@ -87,7 +85,7 @@ func RunDebugShell(ctx context.Context, gwClient gwclient.Client, stepCtx TaskCo
 		switch {
 		case mount.HostPath != nil:
 			if contextRef == nil {
-				contextDef, err := llb.Local("context").Marshal(ctx)
+				contextDef, err := stepCtx.Build.ContextState.Marshal(ctx)
 				if err != nil {
 					return err
 				}
@@ -133,21 +131,24 @@ func RunDebugShell(ctx context.Context, gwClient gwclient.Client, stepCtx TaskCo
 		}
 	}
 
-	ctr, err := gwClient.NewContainer(ctx, gwclient.NewContainerRequest{Mounts: mounts})
+	ctr, err := gwClient.NewContainer(ctx, gwclient.NewContainerRequest{
+		Mounts:     mounts,
+		ExtraHosts: stepCtx.Build.ExtraHosts,
+	})
 	if err != nil {
 		return fmt.Errorf("create debug container: %w", err)
 	}
 	defer ctr.Release(ctx)
 
-	/*for name, service := range stepCtx.Services.Status {
-		envName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-		stepCtx.EnvVars.Envs[fmt.Sprintf("SERVICE_%s", envName)] = service.ContainerIP
-	}*/
+	envList, err := buildState.Env(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve debug env: %w", err)
+	}
 
-	stepCtx.EnvVars.Envs["PS1"] = fmt.Sprintf("%s$ ", stepCtx.Style.Style.Render(stepCtx.UniqueName()))
-	stepCtx.EnvVars.Envs["HISTFILE"] = "/rageta/ash_history"
+	envList = envList.AddOrReplace("PS1", fmt.Sprintf("%s$ ", stepCtx.Style.Style.Render(stepCtx.UniqueName())))
+	envList = envList.AddOrReplace("HISTFILE", "/rageta/ash_history")
 
-	env := utils.EnvSlice(stepCtx.EnvVars.Envs)
+	env := envList.ToArray()
 
 	stdinRC, ok := stdin.(io.ReadCloser)
 	if !ok {

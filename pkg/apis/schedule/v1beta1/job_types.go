@@ -23,9 +23,23 @@ import (
 type Job struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   JobSpec   `json:"spec,omitempty"`
+	Status JobStatus `json:"status,omitempty"`
 }
 
 type JobSpec struct {
+	Pipeline            PipelineSource `json:"pipeline"`
+	RunnerClaimTemplate RunnerClaim    `json:"runnerClaimTemplate"`
+}
+
+type PipelineSource struct {
+	Ref *PipelineRef `json:"ref"`
+	URL *string      `json:"url"`
+}
+
+type PipelineRef struct {
+	Name string `json:"name"`
 }
 
 type JobStatus struct {
@@ -39,5 +53,5 @@ type JobList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Job{}, &JobList{})
+	objectTypes = append(objectTypes, &Job{}, &JobList{})
 }

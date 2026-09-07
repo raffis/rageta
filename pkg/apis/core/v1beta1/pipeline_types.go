@@ -98,11 +98,13 @@ type EnvVar struct {
 }
 
 type InputFrom struct {
-	File *string `json:"file,omitempty"`
+	From *string `json:"from,omitempty"`
+	Path string  `json:"file,omitempty"`
 }
 
 type EnvFrom struct {
-	File *string `json:"file,omitempty"`
+	From *string `json:"from,omitempty"`
+	Path string  `json:"path,omitempty"`
 }
 
 type Condition struct {

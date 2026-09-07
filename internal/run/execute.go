@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/sethvargo/go-retry"
@@ -51,6 +52,7 @@ func (s *Execute) Label() string {
 func (s *Execute) Run(rc *RunContext, next Next) error {
 	stepContext := processor.NewContext()
 	stepContext.Context = rc.Context
+	stepContext.Build.ContextState = llb.Local("context")
 
 	pipelineCmd, err := rc.Pipeline.Builder.Build(rc.Provider.Pipeline, s.opts.Entrypoint, rc.Inputs.Args, stepContext)
 	if err != nil {
@@ -78,7 +80,7 @@ func (s *Execute) retryRun(rc *RunContext, pipelineCmd processor.Executable) err
 
 	return retry.Do(rc.Context, b, func(ctx context.Context) error {
 		var err error
-		rc.Execute.ResultContext, _, err = pipelineCmd()
+		rc.Execute.ResultContext, err = pipelineCmd()
 
 		if err != nil {
 			return retry.RetryableError(err)

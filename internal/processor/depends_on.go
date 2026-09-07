@@ -185,8 +185,7 @@ func launchTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
 		}
 
 		copyCtx := ctx.DeepCopy()
-		//copyCtx.Build.State = llb.Scratch()
-
+		copyCtx.Build.State = llb.Scratch()
 		copyCtx.Context = cancelCtx
 
 		var releaseOnce sync.Once

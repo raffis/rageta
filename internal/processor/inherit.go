@@ -46,8 +46,11 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to resolve pipeline: %w", err)
 		}
 
-		inheritCtx := ctx.DeepCopy().WithNamespace(s.taskName)
+		inheritCtx := NewContext().WithNamespace(s.taskName)
+		inheritCtx.Context = ctx.Context
+		inheritCtx.Build.ContextState = ctx.Build.State
 		inheritCtx.Context = context.WithValue(inheritCtx, ancestorsContext{}, ctx.UniqueName())
+		inheritCtx.Labels.labels = append(inheritCtx.Labels.labels, ctx.Labels.labels...)
 		inheritCtx.Labels.Add(Label{
 			Key:   "pipeline",
 			Value: pipe.Name,
@@ -58,7 +61,7 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to build pipeline: %w", err)
 		}
 
-		outputCtx, _, err := cmd()
+		outputCtx, err := cmd()
 
 		if err != nil {
 			return ctx, fmt.Errorf("failed to execute pipeline: %w", err)

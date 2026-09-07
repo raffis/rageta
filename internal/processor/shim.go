@@ -11,10 +11,6 @@ import (
 
 func WithShim() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Image == "" {
-			return nil
-		}
-
 		return &Shim{}
 	}
 }

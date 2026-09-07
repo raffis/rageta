@@ -5,69 +5,112 @@ import (
 
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 )
 
-func WithInputFrom() ProcessorBuilder {
+func WithInputFrom(gwClient gwclient.Client) ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.InputFrom == nil {
 			return nil
 		}
 
 		return &InputFrom{
-			items: spec.InputFrom,
+			gwClient: gwClient,
+			inputs:   spec.InputFrom,
 		}
 	}
 }
 
 type InputFrom struct {
-	items []v1beta1.InputFrom
+	gwClient gwclient.Client
+	inputs   []v1beta1.InputFrom
 }
 
-// Bootstrap reads dotenv-style files produced by this task's own build and
-// merges their contents into ctx.InputVars.Inputs once the build has
-// finished. It wraps WithInputVars so the values it adds survive that
-// processor's post-run revert of ctx.InputVars.Inputs.
 func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		files := make([]string, len(s.items))
+		inputs := make([]v1beta1.InputFrom, len(s.inputs))
 		subst := []any{}
 
-		for i, item := range s.items {
-			if item.File == nil {
-				continue
-			}
-
-			files[i] = *item.File
-			subst = append(subst, &files[i])
+		for i := range inputs {
+			inputs[i] = *s.inputs[i].DeepCopy()
+			subst = append(subst, &inputs[i].Path)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
 			return ctx, err
 		}
 
-		ctx, err := next(ctx)
-		if err != nil {
-			return ctx, err
-		}
+		var contextRef gwclient.Reference
 
-		for _, file := range files {
-			if file == "" {
-				continue
-			}
+		for _, input := range inputs {
+			if input.From == nil {
+				if contextRef == nil {
+					contextDef, err := ctx.Build.ContextState.Marshal(ctx)
+					if err != nil {
+						return ctx, fmt.Errorf("marshal context failed: %w", err)
+					}
 
-			vars, err := readVars(ctx, ctx.Build.Ref, file)
-			if err != nil {
-				return ctx, fmt.Errorf("inputFrom %q: %w", file, err)
-			}
+					contextRes, err := s.gwClient.Solve(ctx, gwclient.SolveRequest{Definition: contextDef.ToPB()})
+					if err != nil {
+						return ctx, fmt.Errorf("solve context failed: %w", err)
+					}
 
-			for k, v := range vars {
-				ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
-					Type:      v1beta1.ParamTypeString,
-					StringVal: v,
+					contextRef = contextRes.Ref
+				}
+
+				vars, err := readVars(ctx, contextRef, input.Path)
+				if err != nil {
+					return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
+				}
+
+				for k, v := range vars {
+					ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
+						Type:      v1beta1.ParamTypeString,
+						StringVal: v,
+					}
+				}
+			} else {
+				taskName := *input.From
+
+				if instances, ok := ctx.TaskGroups[taskName]; ok {
+					for _, stepCtx := range instances {
+						vars, err := readVars(ctx, stepCtx.Build.Ref, input.Path)
+						if err != nil {
+							return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
+						}
+
+						for k, v := range vars {
+							ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
+								Type:      v1beta1.ParamTypeString,
+								StringVal: v,
+							}
+						}
+
+					}
+
+					break
+				}
+
+				stepCtx, ok := ctx.Tasks[taskName]
+				if !ok {
+					return ctx, fmt.Errorf("source step %q dependency not found", taskName)
+				}
+
+				vars, err := readVars(ctx, stepCtx.Build.Ref, input.Path)
+				if err != nil {
+					return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
+				}
+
+				for k, v := range vars {
+					ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
+						Type:      v1beta1.ParamTypeString,
+						StringVal: v,
+					}
 				}
 			}
 		}
 
-		return ctx, nil
+		return next(ctx)
 	}, nil
 }

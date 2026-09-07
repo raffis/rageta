@@ -96,16 +96,13 @@ func (e *builder) Build(pipeline v1beta1.Pipeline, entrypointName string, inputs
 		return nil, err
 	}
 
-	return func() (processor.TaskContext, map[string]v1beta1.ParamValue, error) {
+	return func() (processor.TaskContext, error) {
 		stepCtx.Tasks = make(map[string]*processor.TaskContext)
 		stepCtx.InputVars.Inputs = mappedInputs
-		inheritedState := stepCtx.Build.State
-		stepCtx.Build.ContextState = &inheritedState
-		outputs := make(map[string]v1beta1.ParamValue)
 
 		stepCtx, pipelineErr := entrypoint(stepCtx)
 		e.logger.V(1).Info("pipeline finished", "context", stepCtx.ToV1Beta1())
-		return stepCtx, outputs, pipelineErr
+		return stepCtx, pipelineErr
 	}, nil
 }
 

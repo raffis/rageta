@@ -86,7 +86,6 @@ func (s *Volumes) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			default:
 				return ctx, ErrUnknownVolumeType
 			}
-
 		}
 
 		ctx.Build.Mounts = append(ctx.Build.Mounts, mounts...)

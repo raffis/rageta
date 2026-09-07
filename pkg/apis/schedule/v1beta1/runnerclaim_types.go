@@ -15,29 +15,38 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
-type Runner struct {
+type RunnerClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   RunnerClaimSpec   `json:"spec,omitempty"`
+	Status RunnerClaimStatus `json:"status,omitempty"`
 }
 
-type RunnerSpec struct {
+type RunnerClaimSpec struct {
+	RunnerPoolSelector metav1.LabelSelector        `json:"runnerPoolSelector,omitempty"`
+	RunnerName         string                      `json:"runnerName,omitempty"`
+	Resources          corev1.ResourceRequirements `json:"resources,omitempty"`
+	AffinityKey        string                      `json:"affinityKey,omitempty"`
+	Timeout            metav1.Duration             `json:"timeout,omitempty"`
 }
 
-type RunnerStatus struct {
+type RunnerClaimStatus struct {
 }
 
 // +kubebuilder:object:root=true
-type RunnerList struct {
+type RunnerClaimList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []Runner `json:"items"`
+	Items           []RunnerClaim `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Runner{}, &RunnerList{})
+	objectTypes = append(objectTypes, &RunnerClaim{}, &RunnerClaimList{})
 }

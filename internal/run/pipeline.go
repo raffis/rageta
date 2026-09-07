@@ -72,7 +72,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithWhen(rc.CEL.Env),
 			processor.WithInteractive(s.opts.Interactive, rc.Buildkit.GatewayClient),
 			processor.WithExports(rc.Buildkit.GatewayClient),
-			processor.WithInputFrom(),
+			processor.WithInputFrom(rc.Buildkit.GatewayClient),
 			processor.WithInputVars(rc.CEL.Env),
 			processor.WithLabels(rc.Labels.Labels),
 			processor.WithEnvFrom(),

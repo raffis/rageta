@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/moby/buildkit/solver/pb"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -33,6 +34,7 @@ func (s *ServiceBinding) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 
 			ctx.Build.State = ctx.Build.State.AddExtraHost(ref.Name, depCtx.Service.NetIP)
+			ctx.Build.ExtraHosts = append(ctx.Build.ExtraHosts, &pb.HostIP{Host: ref.Name, IP: depCtx.Service.NetIP.String()})
 			envName := strings.ToUpper(strings.Replace(ref.Name, "-", "_", -1))
 			ctx.Build.State = ctx.Build.State.AddEnv(fmt.Sprintf("SERVICE_%s", envName), depCtx.Service.NetIP.String())
 		}

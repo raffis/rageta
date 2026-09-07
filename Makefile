@@ -41,6 +41,7 @@ code-gen:
 	./hack/code-gen.sh
 
 build:
+	#CGO_ENABLED=0 go build -C cmd/controller/ -o ../../controller
 	CGO_ENABLED=0 go build -C cmd/shim/ -o ../../internal/processor/shimbin/shim
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
 	docker build . -t ghcr.io/rageta/rageta:latest
@@ -55,7 +56,7 @@ install:
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/...; ./internal/processor/..."
 
 CONTROLLER_GEN = $(GOBIN)/controller-gen
 .PHONY: controller-gen
