@@ -39,6 +39,32 @@ func releaseSelf(ctx TaskContext, t TaskContext, err error) {
 	}
 }
 
+// selectedKey marks a task context as *selected*: the task was asked for
+// explicitly — as the pipeline entrypoint, as a target of a task that ran, or
+// as a dependent pushed downstream from another selected task — as opposed to
+// merely being pulled in to satisfy someone else's dependsOn.
+//
+// Only a selected task pushes its own dependents (ChildTasks /
+// AwaitMatrixChildren). Without that restriction a dependsOn edge is
+// effectively bidirectional: a task pulled in implicitly would launch every
+// task in the pipeline that happens to depend on it, dragging in tasks the
+// entrypoint never asked for. Pushing from a selected task is still wanted —
+// "run this target and everything downstream of it" — and a pushed dependent
+// is itself selected, so the whole downstream closure of a target runs.
+type selectedKey struct{}
+
+// Selected marks ctx as belonging to an explicitly selected task, so that the
+// task's dependents are launched once it finishes.
+func Selected(ctx TaskContext) TaskContext {
+	ctx.Context = context.WithValue(ctx.Context, selectedKey{}, true)
+	return ctx
+}
+
+func isSelected(ctx TaskContext) bool {
+	selected, _ := ctx.Value(selectedKey{}).(bool)
+	return selected
+}
+
 func WithDependsOn() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
 		return &DependsOn{
@@ -86,6 +112,13 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		// launch below. See selfReleaseKey.
 		releaseSelf(ctx, ctx, err)
 
+		// Only a task that was selected pushes its dependents; a task that
+		// merely got pulled in as somebody's dependency must not drag the
+		// rest of its dependents into the run. See selectedKey.
+		if !isSelected(ctx) {
+			return ctx, err
+		}
+
 		var children []Task
 		var siblingDepErrs []error
 
@@ -109,7 +142,7 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			children = append(children, task)
 		}
 
-		childCtx, childErr := launchTasks(ctx, children)
+		childCtx, childErr := launchTasks(ctx, children, true)
 		childErr = errors.Join(append(siblingDepErrs, childErr)...)
 
 		if err != nil {
@@ -144,12 +177,25 @@ func ensureDependencies(pipeline Pipeline, ctx TaskContext, taskName string) (Ta
 		deps = append(deps, dep)
 	}
 
-	return launchTasks(ctx, deps)
+	// Dependencies are pulled in, not selected: they run because someone
+	// needs their result, so they must not push their own dependents.
+	return launchTasks(ctx, deps, false)
+}
+
+// LaunchRoots claims and runs the pipeline's root tasks, each of them
+// selected so that it pushes its dependents downstream as it completes.
+// Going through the claim machinery (rather than starting the roots
+// directly) matters: a task that depends on a root must wait for the running
+// root instead of claiming it for itself and running a second copy of it.
+func LaunchRoots(ctx TaskContext, tasks []Task) (TaskContext, error) {
+	return launchTasks(ctx, tasks, true)
 }
 
 // launchTasks claims and runs tasks against ctx, waiting for all of them to
-// finish before returning the merged context.
-func launchTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
+// finish before returning the merged context. selected records whether the
+// launched tasks are themselves selected, i.e. whether they should in turn
+// push their own dependents; see selectedKey.
+func launchTasks(ctx TaskContext, tasks []Task, selected bool) (TaskContext, error) {
 	if len(tasks) == 0 {
 		return ctx, nil
 	}
@@ -187,6 +233,10 @@ func launchTasks(ctx TaskContext, tasks []Task) (TaskContext, error) {
 		copyCtx := ctx.DeepCopy()
 		copyCtx.Build.State = llb.Scratch()
 		copyCtx.Context = cancelCtx
+
+		// Set explicitly rather than inherited: ctx may itself belong to a
+		// selected task, and its dependencies must not inherit that.
+		copyCtx.Context = context.WithValue(copyCtx.Context, selectedKey{}, selected)
 
 		var releaseOnce sync.Once
 		release := func(t TaskContext, err error) {

@@ -28,6 +28,16 @@ tasks:
   - name: sample-matrix
   steps:
   - script: echo "I also know the matrix context, $(context.matrix.key)"
+  - script: echo "I also know the matrix context, $(context.matrix.key)" > index.html
+
+- name: serve-and-request-file
+  dependsOn:
+  - name: matrix-task
+  inherit:
+    pipeline: ./examples/serve-and-request-file.yaml
+  sources:
+  - from: matrix-task
+    path: index.html
 
 - name: wait-for-matrix-tasks
   image: busybox

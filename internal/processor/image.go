@@ -35,11 +35,11 @@ type Image struct {
 func (s *Image) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		image := s.image
+
 		if err := substitute.Substitute(ctx.ToV1Beta1(), &image); err != nil {
 			return ctx, err
 		}
 
-		//ctx.Build.State = llb.Image(image, llb.ResolveModePreferLocal)
 		ctx.Build.State = llb.Merge([]llb.State{ctx.Build.State, llb.Image(image, llb.ResolveModePreferLocal)})
 
 		normalizedRef := image

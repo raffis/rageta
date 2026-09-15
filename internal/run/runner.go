@@ -58,24 +58,25 @@ func (r *Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout
 }
 
 type Options struct {
-	EnvOptions       EnvsOptions
-	SecretOptions    SecretsOptions
-	DisplayOptions   DisplayOptions
-	ReportOptions    ReportOptions
-	TeardownOptions  TeardownOptions
-	BuildkitOptions  BuildkitOptions
-	LifecycleOptions LifecycleOptions
-	OtelOptions      OtelOptions
-	LoggingOptions   LoggingOptions
-	ProviderOptions  ProviderOptions
-	ExecuteOptions   ExecuteOptions
-	CELOptions       CELOptions
-	PipelineOptions  PipelineOptions
-	InputsOptions    InputsOptions
-	LabelsOptions    LabelsOptions
-	SummaryOptions   SummaryOptions
-	ExitCodeOptions  ExitCodeOptions
-	ExportOptions    ExportOptions
+	EnvOptions           EnvsOptions
+	SecretOptions        SecretsOptions
+	DisplayOptions       DisplayOptions
+	ReportOptions        ReportOptions
+	TeardownOptions      TeardownOptions
+	BuildkitOptions      BuildkitOptions
+	BuildkitClaimOptions BuildkitClaimOptions
+	LifecycleOptions     LifecycleOptions
+	OtelOptions          OtelOptions
+	LoggingOptions       LoggingOptions
+	ProviderOptions      ProviderOptions
+	ExecuteOptions       ExecuteOptions
+	CELOptions           CELOptions
+	PipelineOptions      PipelineOptions
+	InputsOptions        InputsOptions
+	LabelsOptions        LabelsOptions
+	SummaryOptions       SummaryOptions
+	ExitCodeOptions      ExitCodeOptions
+	ExportOptions        ExportOptions
 }
 
 func (s *Options) BindFlags(flags flagset.Interface) {
@@ -84,6 +85,7 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 	s.ReportOptions.BindFlags(flags)
 	s.TeardownOptions.BindFlags(flags)
 	s.BuildkitOptions.BindFlags(flags)
+	s.BuildkitClaimOptions.BindFlags(flags)
 	s.OtelOptions.BindFlags(flags)
 	s.LoggingOptions.BindFlags(flags)
 	s.ProviderOptions.BindFlags(flags)
@@ -101,16 +103,19 @@ func (s *Options) BindFlags(flags flagset.Interface) {
 
 func DefaultOptions() Options {
 	return Options{
-		DisplayOptions:  NewDisplayOptions(),
-		LoggingOptions:  NewLoggingOptions(),
-		ProviderOptions: NewProviderOptions(),
-		ReportOptions:   NewReportOptions(),
-		BuildkitOptions: NewBuildkitOptions(),
-		PipelineOptions: NewPipelineOptions(),
+		DisplayOptions:       NewDisplayOptions(),
+		LoggingOptions:       NewLoggingOptions(),
+		ProviderOptions:      NewProviderOptions(),
+		ReportOptions:        NewReportOptions(),
+		BuildkitOptions:      NewBuildkitOptions(),
+		BuildkitClaimOptions: NewBuildkitClaimOptions(),
+		PipelineOptions:      NewPipelineOptions(),
 	}
 }
 
 func (o Options) Build() *Runner {
+	o.BuildkitClaimOptions.Buildkit = &o.BuildkitOptions.BuildkitOptions
+
 	return Builder(
 		o.ExitCodeOptions.Build(),
 		o.TeardownOptions.Build(),
@@ -122,6 +127,7 @@ func (o Options) Build() *Runner {
 		o.CELOptions.Build(),
 		o.LabelsOptions.Build(),
 		o.LifecycleOptions.Build(),
+		o.BuildkitClaimOptions.Build(),
 		o.BuildkitOptions.Build(),
 		o.SummaryOptions.Build(),
 		o.ProviderOptions.Build(),

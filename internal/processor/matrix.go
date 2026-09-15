@@ -89,8 +89,17 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		//If a matrix combination needs to be processed the step needs to start from beginning in order to through all step
-		//processors
-		next, err := pipeline.Entrypoint(s.taskName)
+		//processors.
+		//Deliberately the task's own entrypoint rather than pipeline.Entrypoint,
+		//which marks its context as selected (see selectedKey in depends_on.go):
+		//an instance re-enters a chain that is already running, so it must keep
+		//whatever selection the matrix task itself has instead of gaining one.
+		task, err := pipeline.Task(s.taskName)
+		if err != nil {
+			return ctx, err
+		}
+
+		next, err := task.Entrypoint()
 		if err != nil {
 			return ctx, err
 		}
@@ -206,6 +215,12 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		// this task's own result, not its dependents'.
 		releaseSelf(ctx, ctx, nil)
 
+		// Same restriction as DependsOn: only a selected task pushes its
+		// dependents. See selectedKey in depends_on.go.
+		if !isSelected(ctx) {
+			return ctx, nil
+		}
+
 		var children []Task
 		var depErrs []error
 		for _, task := range pipeline.AwaitMatrixChildren(s.taskName) {
@@ -228,7 +243,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			children = append(children, task)
 		}
 
-		childCtx, childErr := launchTasks(ctx, children)
+		childCtx, childErr := launchTasks(ctx, children, true)
 		return childCtx, errors.Join(append(depErrs, childErr)...)
 	}, nil
 }

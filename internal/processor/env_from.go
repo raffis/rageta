@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 
 	"github.com/joho/godotenv"
-	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
@@ -29,39 +27,11 @@ type EnvFrom struct {
 	items []v1beta1.EnvFrom
 }
 
-// Bootstrap reads dotenv-style files produced by this task's own build and
-// merges their contents into ctx.EnvVars.Envs once the build has finished,
-// so dependent/sibling tasks pick them up via TaskContext.Merge.
 func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		files := make([]string, len(s.items))
-		subst := []any{}
-
-		for i, item := range s.items {
-			files[i] = item.Path
-			subst = append(subst, &files[i])
-		}
-
-		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
-			return ctx, err
-		}
-
 		ctx, err := next(ctx)
 		if err != nil {
 			return ctx, err
-		}
-
-		for _, file := range files {
-			if file == "" {
-				continue
-			}
-
-			vars, err := readVars(ctx, ctx.Build.Ref, file)
-			if err != nil {
-				return ctx, fmt.Errorf("envFrom %q: %w", file, err)
-			}
-
-			maps.Copy(ctx.EnvVars.Envs, vars)
 		}
 
 		return ctx, nil

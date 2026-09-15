@@ -3,8 +3,9 @@ package processor
 import (
 	"context"
 	"errors"
-	"maps"
+	"sync"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -40,19 +41,47 @@ func (s *Targets) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				return ctx, err
 			}
 
+			copyCtx := ctx.DeepCopy().WithNamespace(s.taskName)
+			copyCtx.Context = cancelCtx
+			copyCtx.Build.State = llb.Scratch()
+			copyCtx.Context = context.WithValue(cancelCtx, ancestorsContext{}, ctx.UniqueName())
+
+			// An explicitly listed target is selected: its dependents run too.
+			copyCtx = Selected(copyCtx)
+
+			claim, owner := task.Claim(copyCtx)
+			if !owner {
+				go func(claim TaskClaim) {
+					t, err := claim.Wait()
+
+					waitCtx := t.DeepCopy()
+					waitCtx.Build.State = llb.Scratch()
+					waitCtx.Context = cancelCtx
+
+					results <- result{waitCtx, err}
+				}(claim)
+				continue
+			}
+
 			next, err := task.Entrypoint()
 			if err != nil {
+				claim.Release(copyCtx, err)
 				return ctx, err
 			}
 
-			copyCtx := ctx.DeepCopy().WithNamespace(s.taskName)
-			copyCtx.Context = cancelCtx
-			copyCtx.Context = context.WithValue(cancelCtx, ancestorsContext{}, ctx.UniqueName())
+			var releaseOnce sync.Once
+			release := func(t TaskContext, err error) {
+				releaseOnce.Do(func() {
+					claim.Release(t, err)
+				})
+			}
+			copyCtx.Context = context.WithValue(copyCtx.Context, selfReleaseKey{}, release)
 
-			go func() {
-				copyCtx, err := next(copyCtx)
-				results <- result{copyCtx, err}
-			}()
+			go func(claim TaskClaim) {
+				t, err := next(copyCtx)
+				release(t, err)
+				results <- result{t, err}
+			}(claim)
 		}
 
 		var (
@@ -71,7 +100,7 @@ func (s *Targets) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				ctx.TaskGroups[name] = append(ctx.TaskGroups[name], instances...)
 			}*/
 
-			maps.Copy(ctx.Tasks, res.ctx.Tasks)
+			ctx.Merge(res.ctx)
 
 			if !res.ctx.Build.Cached {
 				allCached = false

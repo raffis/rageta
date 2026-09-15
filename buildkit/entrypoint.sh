@@ -37,6 +37,7 @@ fi
  
 echo "[entrypoint] containerd is up (pid ${CONTAINERD_PID}), socket ready at ${SOCK}"
 buildkitd \
+  --config=/etc/buildkit/buildkitd.toml \
   --containerd-worker=true \
   --oci-worker=false \
   --containerd-worker-addr="${SOCK}" \

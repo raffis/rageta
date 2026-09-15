@@ -46,7 +46,16 @@ func (s *Inherit) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			return ctx, fmt.Errorf("failed to resolve pipeline: %w", err)
 		}
 
-		inheritCtx := NewContext().WithNamespace(s.taskName)
+		// Start from a fresh context (an inherited pipeline gets its own
+		// task/vars scope) but keep the caller's namespace before adding
+		// this task's own segment: the namespace is what makes a task's
+		// UniqueName unique per matrix combination (see Result). Dropping
+		// it here gave every combination's inherited run identical unique
+		// names, so the UI — which keys its rows by that name — folded all
+		// of them into a single row.
+		inheritCtx := NewContext()
+		inheritCtx.namespace = ctx.namespace
+		inheritCtx = inheritCtx.WithNamespace(s.taskName)
 		inheritCtx.Context = ctx.Context
 		inheritCtx.Build.ContextState = ctx.Build.State
 		inheritCtx.Context = context.WithValue(inheritCtx, ancestorsContext{}, ctx.UniqueName())

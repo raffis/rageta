@@ -26,8 +26,8 @@ templates:
   - path: .
   inputFrom:
   - from: go-version
-    file: env
-  image: golang:1.25-alpine
+    file: /rageta/work/.env
+  image: golang:$(context.inputs.GO_VERSION)
   workingDir: /workspace
   
 - name: docker
@@ -38,8 +38,10 @@ templates:
 
 tasks:
 - name: go-version
+  sources:
+  - path: go.mod
   steps:
-  - script: sed -En 's/^go[[:space:]]+([[:digit:].]+)$/GO_VERSION=\1/p' go.mod > envs
+  - script: sed -En 's/^go[[:space:]]+([[:digit:].]+)$/GO_VERSION=\1/p' go.mod > .env
 - name: default
   targets:
   - name: tidy
@@ -55,7 +57,7 @@ tasks:
   - path: ./go.mod
   - path: ./go.sum
   steps:
-  - script: go mod tidy -compat=1.20
+  - script: go mod tidy
 
 - name: fmt
   templates:

@@ -1,8 +1,6 @@
 package run
 
 import (
-	"os"
-
 	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
@@ -30,10 +28,10 @@ func (s *ExitCode) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 	if err != nil {
 		if s.opts.AllowFailure {
-			os.Exit(0)
+			return nil
 		}
 
-		os.Exit(1)
+		return err
 	}
 
 	return nil

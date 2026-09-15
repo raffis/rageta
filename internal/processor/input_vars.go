@@ -88,7 +88,7 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		ctx, err := next(ctx)
-		ctx.InputVars.Inputs = originInputs
+		//ctx.InputVars.Inputs = originInputs
 		return ctx, err
 	}, nil
 }

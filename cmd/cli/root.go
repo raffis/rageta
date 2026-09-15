@@ -37,6 +37,8 @@ var rootCmd = &cobra.Command{
 	Use:               "rageta",
 	Short:             "Cloud native pipeline engine",
 	PersistentPreRunE: runRoot,
+	SilenceUsage:      true,
+	SilenceErrors:     true,
 }
 
 func newRootFlags() rootFlags {

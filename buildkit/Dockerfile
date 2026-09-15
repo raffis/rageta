@@ -34,6 +34,7 @@ RUN curl -fsSL https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VE
 # --- config files ---
 COPY config.toml /etc/containerd/config.toml
 COPY net.conflist /etc/cni/net.d/10-mynet.conflist
+COPY buildkitd.toml /etc/buildkit/buildkitd.toml
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
  
