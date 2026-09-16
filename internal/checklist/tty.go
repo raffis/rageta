@@ -12,13 +12,11 @@ import (
 	"github.com/raffis/rageta/internal/tui"
 )
 
-// activePanelColor, okStyle and failedStyle mirror internal/tui/styles.go so
-// the checklist spinner and status symbols look the same as the pipeline
-// TUI's.
+// activePanelColor and okStyle mirror internal/tui/styles.go so the checklist
+// spinner and status symbols look the same as the pipeline TUI's.
 var (
 	activePanelColor = lipgloss.Color("#7D56F4")
 	okStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#008000"))
-	failedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#D22B2B"))
 )
 
 type stepStatus int
@@ -26,13 +24,11 @@ type stepStatus int
 const (
 	stepRunning stepStatus = iota
 	stepOK
-	stepFailed
 )
 
 type checklistStep struct {
 	label    string
 	status   stepStatus
-	err      error
 	started  time.Time
 	finished time.Time
 }
@@ -56,10 +52,10 @@ type addStepMsg struct {
 	label string
 }
 
-// stepDoneMsg finalizes the current step.
-type stepDoneMsg struct {
-	err error
-}
+// stepDoneMsg marks the current step as completed successfully. A failing
+// step never reaches the model: the display shuts down instead, so the caller
+// owns the terminal for its error report.
+type stepDoneMsg struct{}
 
 // clearMsg resets the model to an empty view, so the renderer erases every
 // line it previously drew.
@@ -89,12 +85,7 @@ func (m ttyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.step = checklistStep{label: msg.label, status: stepRunning, started: time.Now()}
 		return m, nil
 	case stepDoneMsg:
-		if msg.err != nil {
-			m.step.status = stepFailed
-			m.step.err = msg.err
-		} else {
-			m.step.status = stepOK
-		}
+		m.step.status = stepOK
 		m.step.finished = time.Now()
 		return m, nil
 	case clearMsg:
@@ -119,20 +110,20 @@ func (m ttyModel) View() tea.View {
 	switch m.step.status {
 	case stepOK:
 		return tea.NewView(fmt.Sprintf("%s %s", okStyle.Render("✔ "+m.step.label), duration))
-	case stepFailed:
-		return tea.NewView(fmt.Sprintf("%s %s", failedStyle.Render(fmt.Sprintf("✗ %s: %s", m.step.label, m.step.err)), duration))
 	default:
 		return tea.NewView(fmt.Sprintf("%s %s %s", m.spinner.View(), m.step.label, duration))
 	}
 }
 
 type ttyDisplay struct {
-	out      io.Writer
-	program  *tea.Program
-	done     chan struct{}
-	lastErr  error
-	closeErr error
-	closed   sync.Once
+	out       io.Writer
+	program   *tea.Program
+	done      chan struct{}
+	closeErr  error
+	closeOnce sync.Once
+
+	mu     sync.Mutex
+	closed bool
 }
 
 func newTTY(out io.Writer) *ttyDisplay {
@@ -157,18 +148,48 @@ func newTTY(out io.Writer) *ttyDisplay {
 }
 
 func (d *ttyDisplay) Step(label string, fn func() error) error {
-	d.program.Send(addStepMsg{label: label})
+	if !d.send(addStepMsg{label: label}) {
+		return fn()
+	}
+
 	err := fn()
-	d.lastErr = err
-	d.program.Send(stepDoneMsg{err: err})
-	return err
+
+	// The caller reports the error itself, and it writes to the very terminal
+	// this program is painting. Tear the program down before handing the error
+	// back so the report cannot interleave with a spinner frame, and so the
+	// line this display drew is erased instead of being left behind.
+	if err != nil {
+		_ = d.Close()
+		return err
+	}
+
+	d.send(stepDoneMsg{})
+	return nil
+}
+
+// send delivers msg and reports whether this display is still rendering.
+// Holding the lock across the send keeps Close from quitting the program
+// between the check and the delivery.
+func (d *ttyDisplay) send(msg tea.Msg) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return false
+	}
+
+	d.program.Send(msg)
+	return true
 }
 
 func (d *ttyDisplay) Close() error {
-	d.closed.Do(func() {
-		if d.lastErr == nil {
-			d.program.Send(clearMsg{})
-		}
+	d.mu.Lock()
+	d.closed = true
+	d.mu.Unlock()
+
+	d.closeOnce.Do(func() {
+		// An empty view as the last state makes bubbletea's final render erase
+		// every line it drew, leaving the terminal as it found it.
+		d.program.Send(clearMsg{})
 		d.program.Quit()
 		<-d.done
 	})

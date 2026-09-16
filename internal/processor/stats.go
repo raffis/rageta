@@ -1,6 +1,9 @@
 package processor
 
 import (
+	"sync"
+	"time"
+
 	"github.com/raffis/rageta/internal/stats"
 	"github.com/raffis/rageta/internal/xio"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
@@ -29,9 +32,38 @@ func (s *Stats) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		var (
 			last  stats.Sample
 			count int
+			mu    sync.Mutex
 		)
 
+		setZero := func() {
+			mu.Lock()
+			defer mu.Unlock()
+			last = stats.Sample{}
+			ctx.Display.WriteStats(&last)
+			count = 0
+		}
+
+		// If for any reason the stream is interrupted or no stats are received after 4 seconds
+		// the stats need to be reset
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		defer setZero()
+
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					setZero()
+				case <-ctx.Context.Done():
+					return
+				}
+			}
+		}()
+
 		ctx.Display.Demuxer.WithSink(xio.StreamStats, xio.WriterFunc(func(payload []byte) (int, error) {
+			mu.Lock()
+			defer mu.Unlock()
+
 			var sample stats.Sample
 			if err := sample.Unmarshal(payload); err != nil {
 				return 0, err
@@ -58,11 +90,14 @@ func (s *Stats) Bootstrap(_ Pipeline, next Next) (Next, error) {
 				ctx.Display.WriteStats(&rateSample)
 				last = stats.Sample{}
 				count = 0
+				ticker.Reset(4 * time.Second)
+
 			}
 
 			return len(payload), nil
 		}))
 
 		return next(ctx)
+
 	}, nil
 }

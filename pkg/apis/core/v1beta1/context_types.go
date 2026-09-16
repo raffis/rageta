@@ -15,27 +15,13 @@ type TaskResult struct {
 
 type Context struct {
 	Inputs  map[string]ParamValue  `cel:"inputs"`
-	Envs    map[string]string      `cel:"envs"`
 	Secrets map[string]string      `cel:"secrets"`
 	Tasks   map[string]*TaskResult `cel:"steps"`
 	Matrix  map[string]string      `cel:"matrix"`
-	Secret  string                 `cel:"secret"`
-	Env     string                 `cel:"env"`
-	Os      string                 `cel:"os"`
-	Arch    string                 `cel:"arch"`
-	Uid     string                 `cel:"uid"`
-	Guid    string                 `cel:"guid"`
 }
 
 func (v *Context) Index() map[string]string {
-	vars := map[string]string{
-		"context.os":     v.Os,
-		"context.arch":   v.Arch,
-		"context.uid":    v.Uid,
-		"context.guid":   v.Guid,
-		"context.env":    v.Env,
-		"context.secret": v.Secret,
-	}
+	vars := map[string]string{}
 
 	for k, v := range v.Inputs {
 		switch v.Type {
@@ -52,10 +38,6 @@ func (v *Context) Index() map[string]string {
 
 	for k, v := range v.Secrets {
 		vars[fmt.Sprintf("context.secrets.%s", k)] = v
-	}
-
-	for k, v := range v.Envs {
-		vars[fmt.Sprintf("context.envs.%s", k)] = v
 	}
 
 	for k, v := range v.Matrix {

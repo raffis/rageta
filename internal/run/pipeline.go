@@ -62,7 +62,7 @@ func (s *Pipeline) stepPipeline(rc *RunContext, pipeline *processor.PipelineBuil
 			processor.WithBusybox(),
 			processor.WithShim(),
 			processor.WithWorkdir(),
-			processor.WithEnvFrom(),
+			processor.WithEnvFrom(rc.Buildkit.GatewayClient),
 			processor.WithEnvVars(osEnvMap(), rc.Envs.Envs),
 			processor.WithStyle(),
 			processor.WithStats(),

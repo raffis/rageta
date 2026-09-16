@@ -25,7 +25,7 @@ var (
 	stepCachedStyle       lipgloss.Style
 	stepFailedStyle       lipgloss.Style
 	stepWaitingStyle      lipgloss.Style
-	stepWarningStyle      lipgloss.Style
+	stepSkippedStyle      lipgloss.Style
 	stepRunningStyle      lipgloss.Style
 	pipelineCachedStyle   lipgloss.Style
 	pipelineOkStyle       lipgloss.Style
@@ -73,7 +73,7 @@ func init() {
 	stepCachedStyle = newStyle().Foreground(lipgloss.Color("#00AACC"))
 	stepFailedStyle = newStyle().Foreground(lipgloss.Color("#D22B2B"))
 	stepWaitingStyle = newStyle().Foreground(lipgloss.Color("#FFC0CB"))
-	stepWarningStyle = newStyle().Foreground(lipgloss.Color("#FFC300"))
+	stepSkippedStyle = newStyle().Foreground(lipgloss.Color("#ffc880"))
 	stepRunningStyle = newStyle().Foreground(lipgloss.Color("#0000FF"))
 
 	lineNumberInactiveStyle = newStyle().

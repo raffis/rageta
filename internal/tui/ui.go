@@ -722,7 +722,7 @@ func (m *UI) writeDebugShellError(name string, err error) {
 // task's viewport, e.g. explaining why an 'i' press was a no-op, so the key
 // never appears to silently do nothing.
 func (m *UI) writeDebugShellInfo(name, msg string) {
-	m.writeTaskNotice(name, stepWarningStyle.Render(msg))
+	m.writeTaskNotice(name, stepSkippedStyle.Render(msg))
 }
 
 // writeTaskNotice appends a rendered, already-styled line to the given

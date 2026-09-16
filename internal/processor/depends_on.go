@@ -81,24 +81,12 @@ type DependsOn struct {
 
 func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		// Run this task's own dependencies first. When the task is reached
-		// via another task's downstream launch (below) its dependencies were
-		// already ensured by the launching task, so this is a no-op there
-		// (they're already in ctx.Tasks). But when the task is invoked
-		// directly, e.g. as the CLI entrypoint (-t), nothing upstream has
-		// run its dependencies yet, so it must do so itself here.
-		ctx, depErr := ensureDependencies(pipeline, ctx, s.taskName)
-
-		ctx, err := next(ctx)
-
-		if depErr != nil {
-			if err != nil {
-				err = errors.Join(err, depErr)
-			} else {
-				err = depErr
-			}
+		ctx, err := ensureDependencies(pipeline, ctx, s.taskName)
+		if err != nil && AbortOnError(err) {
+			return ctx, err
 		}
 
+		ctx, err = next(ctx)
 		if err != nil && AbortOnError(err) {
 			return ctx, err
 		}
@@ -106,10 +94,6 @@ func (s *DependsOn) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		ctx.Tasks[s.taskName] = &ctx
 
 		// The task's own work is done and recorded; release its claim now
-		// so anything waiting on it (a sibling that depends on it directly,
-		// e.g. a dependent of this task's own dependency) can proceed
-		// without waiting on the children this task is about to eagerly
-		// launch below. See selfReleaseKey.
 		releaseSelf(ctx, ctx, err)
 
 		// Only a task that was selected pushes its dependents; a task that

@@ -1,6 +1,9 @@
 package processor
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/raffis/rageta/internal/substitute"
@@ -59,34 +62,17 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					contextRef = contextRes.Ref
 				}
 
-				vars, err := readVars(ctx, contextRef, input.Path)
-				if err != nil {
-					return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
-				}
-
-				for k, v := range vars {
-					ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
-						Type:      v1beta1.ParamTypeString,
-						StringVal: v,
-					}
+				if err := s.applyInputs(&ctx, contextRef, input.Path); err != nil {
+					return ctx, err
 				}
 			} else {
 				taskName := *input.From
 
 				if instances, ok := ctx.TaskGroups[taskName]; ok {
 					for _, stepCtx := range instances {
-						vars, err := readVars(ctx, stepCtx.Build.Ref, input.Path)
-						if err != nil {
-							return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
+						if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Path); err != nil {
+							return ctx, err
 						}
-
-						for k, v := range vars {
-							ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
-								Type:      v1beta1.ParamTypeString,
-								StringVal: v,
-							}
-						}
-
 					}
 
 					break
@@ -97,20 +83,47 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					return ctx, fmt.Errorf("source step %q dependency not found", taskName)
 				}
 
-				vars, err := readVars(ctx, stepCtx.Build.Ref, input.Path)
-				if err != nil {
-					return ctx, fmt.Errorf("failed to read input vars from %q: %w", input.Path, err)
-				}
-
-				for k, v := range vars {
-					ctx.InputVars.Inputs[k] = v1beta1.ParamValue{
-						Type:      v1beta1.ParamTypeString,
-						StringVal: v,
-					}
+				if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Path); err != nil {
+					return ctx, err
 				}
 			}
 		}
 
 		return next(ctx)
 	}, nil
+}
+
+func (s *InputFrom) applyInputs(ctx *TaskContext, ref gwclient.Reference, srcPath string) error {
+	b, err := readFile(ctx, ref, srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to read input vars from %q: %w", srcPath, err)
+	}
+
+	vars := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(b, &vars); err != nil {
+		return fmt.Errorf("failed to parse input vars from file: %w", err)
+	}
+
+	for k, v := range vars {
+		var param v1beta1.ParamValue
+		if err := param.UnmarshalJSON(v); err != nil {
+			return fmt.Errorf("failed to parse input var %q: %w", k, err)
+		}
+		ctx.InputVars.Inputs[k] = param
+	}
+
+	return nil
+}
+
+func readFile(ctx context.Context, ref gwclient.Reference, srcPath string) ([]byte, error) {
+	stat, err := ref.StatFile(ctx, gwclient.StatRequest{Path: srcPath})
+	if err != nil {
+		return nil, err
+	}
+
+	if stat.IsDir() {
+		return nil, errors.New("must be a file")
+	}
+
+	return ref.ReadFile(ctx, gwclient.ReadRequest{Filename: srcPath})
 }

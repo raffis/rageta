@@ -55,6 +55,13 @@ type TaskOptions struct {
 	Retry        *Retry           `json:"retry,omitempty"`
 	Labels       []Label          `json:"labels,omitempty"`
 	Image        string           `json:"image,omitempty"`
+	Secrets      []SecretVar      `json:"secrets,omitempty"`
+	Env          []EnvVar         `json:"env,omitempty"`
+	InputFrom    []InputFrom      `json:"inputFrom,omitempty"`
+	EnvFrom      []EnvFrom        `json:"envFrom,omitempty"`
+	Copy         []Copy           `json:"copy,omitempty"`
+	VolumeMounts []VolumeMount    `json:"volumeMounts,omitempty"`
+	WorkingDir   string           `json:"workingDir,omitempty"`
 }
 
 type Export struct {
@@ -69,7 +76,7 @@ type TaskDependency struct {
 type Copy struct {
 	From  *string `json:"from,omitempty"`
 	Chmod *uint32 `json:"chmod,omitempty"`
-	Path  string  `json:"path"`
+	Path  string  `json:"path,omitempty"`
 	To    string  `json:"to,omitempty"`
 }
 
@@ -117,7 +124,7 @@ type IncludeParam struct {
 }
 
 type MatrixLabel struct {
-	Value    string `json:"value"`
+	Value    string `json:"value,omitempty"`
 	HEXColor string `json:"hexColor,omitempty"`
 }
 
@@ -139,14 +146,7 @@ type Task struct {
 }
 
 type Step struct {
-	Script       *string       `json:"script,omitempty"`
-	Secrets      []SecretVar   `json:"secrets,omitempty"`
-	Env          []EnvVar      `json:"env,omitempty"`
-	InputFrom    []InputFrom   `json:"inputFrom,omitempty"`
-	EnvFrom      []EnvFrom     `json:"envFrom,omitempty"`
-	Copy         []Copy        `json:"copy,omitempty"`
-	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
-	WorkingDir   *string       `json:"workingDir,omitempty"`
+	Script *string `json:"script,omitempty"`
 }
 
 type LocalReference struct {

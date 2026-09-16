@@ -13,7 +13,7 @@ templates:
   - mountPath: /root/.cache/go-build
     cache:
       name: go-build
-  sources:
+  copy:
   - path: .
   image: golang:1.25-alpine
   workingDir: /workspace
@@ -21,7 +21,7 @@ tasks:
 - name: go
   inherit:
     pipeline: ./examples/golang.yaml
-  sources:
+  copy:
   - path: .
 - name: generate
   templates:

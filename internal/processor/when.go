@@ -13,7 +13,7 @@ func WithWhen(celEnv *cel.Env) ProcessorBuilder {
 			return nil
 		}
 
-		return &If{
+		return &When{
 			celEnv:     celEnv,
 			conditions: spec.When,
 		}
@@ -26,12 +26,12 @@ var ErrConditionFalse = &pipelineError{
 	abortOnError: false,
 }
 
-type If struct {
+type When struct {
 	celEnv     *cel.Env
 	conditions []v1beta1.Condition
 }
 
-func (s *If) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *When) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	expr := make([]cel.Program, len(s.conditions))
 
 	for i, condition := range s.conditions {

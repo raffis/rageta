@@ -100,14 +100,29 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
+                copy:
+                  items:
+                    properties:
+                      chmod:
+                        format: int32
+                        type: integer
+                      from:
+                        type: string
+                      path:
+                        type: string
+                      to:
+                        type: string
+                    type: object
+                  type: array
                 dependsOn:
                   items:
-                    minProperties: 1
                     properties:
                       awaitMatrix:
                         type: boolean
                       name:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 env:
@@ -117,6 +132,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 envFrom:
@@ -126,6 +143,8 @@ spec:
                         type: string
                       path:
                         type: string
+                    required:
+                    - path
                     type: object
                   type: array
                 exports:
@@ -135,8 +154,6 @@ spec:
                         type: string
                     type: object
                   type: array
-                expose:
-                  type: boolean
                 image:
                   type: string
                 inherit:
@@ -167,6 +184,8 @@ spec:
                         type: string
                       from:
                         type: string
+                    required:
+                    - file
                     type: object
                   type: array
                 inputs:
@@ -232,6 +251,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 long:
@@ -266,6 +287,8 @@ spec:
                               - value
                               type: object
                             type: array
+                        required:
+                        - name
                         type: object
                       type: array
                     maxConcurrent:
@@ -284,6 +307,8 @@ spec:
                         - value
                         type: object
                       type: array
+                  required:
+                  - params
                   type: object
                 name:
                   type: string
@@ -303,6 +328,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 service:
@@ -328,17 +355,6 @@ spec:
                   type: object
                 short:
                   type: string
-                sources:
-                  items:
-                    properties:
-                      from:
-                        type: string
-                      path:
-                        type: string
-                      to:
-                        type: string
-                    type: object
-                  type: array
                 steps:
                   items:
                     properties:
@@ -378,6 +394,8 @@ spec:
                             - private
                             - locked
                             type: string
+                        required:
+                        - name
                         type: object
                       hostPath:
                         properties:
@@ -385,6 +403,8 @@ spec:
                             description: Path is the source path relative to the build
                               context. May contain substitution expressions.
                             type: string
+                        required:
+                        - path
                         type: object
                       mountPath:
                         type: string
@@ -392,6 +412,8 @@ spec:
                         type: boolean
                       tmpfs:
                         type: object
+                    required:
+                    - mountPath
                     type: object
                   type: array
                 when:
@@ -403,6 +425,8 @@ spec:
                   type: array
                 workingDir:
                   type: string
+              required:
+              - name
               type: object
             type: array
           templates:
@@ -410,14 +434,29 @@ spec:
               properties:
                 allowFailure:
                   type: boolean
+                copy:
+                  items:
+                    properties:
+                      chmod:
+                        format: int32
+                        type: integer
+                      from:
+                        type: string
+                      path:
+                        type: string
+                      to:
+                        type: string
+                    type: object
+                  type: array
                 dependsOn:
                   items:
-                    minProperties: 1
                     properties:
                       awaitMatrix:
                         type: boolean
                       name:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 env:
@@ -427,6 +466,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 envFrom:
@@ -436,6 +477,8 @@ spec:
                         type: string
                       path:
                         type: string
+                    required:
+                    - path
                     type: object
                   type: array
                 exports:
@@ -445,8 +488,6 @@ spec:
                         type: string
                     type: object
                   type: array
-                expose:
-                  type: boolean
                 image:
                   type: string
                 inherit:
@@ -477,6 +518,8 @@ spec:
                         type: string
                       from:
                         type: string
+                    required:
+                    - file
                     type: object
                   type: array
                 inputs:
@@ -542,6 +585,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 long:
@@ -576,6 +621,8 @@ spec:
                               - value
                               type: object
                             type: array
+                        required:
+                        - name
                         type: object
                       type: array
                     maxConcurrent:
@@ -594,6 +641,8 @@ spec:
                         - value
                         type: object
                       type: array
+                  required:
+                  - params
                   type: object
                 name:
                   type: string
@@ -613,6 +662,8 @@ spec:
                         type: string
                       value:
                         type: string
+                    required:
+                    - name
                     type: object
                   type: array
                 service:
@@ -638,17 +689,6 @@ spec:
                   type: object
                 short:
                   type: string
-                sources:
-                  items:
-                    properties:
-                      from:
-                        type: string
-                      path:
-                        type: string
-                      to:
-                        type: string
-                    type: object
-                  type: array
                 steps:
                   items:
                     properties:
@@ -688,6 +728,8 @@ spec:
                             - private
                             - locked
                             type: string
+                        required:
+                        - name
                         type: object
                       hostPath:
                         properties:
@@ -695,6 +737,8 @@ spec:
                             description: Path is the source path relative to the build
                               context. May contain substitution expressions.
                             type: string
+                        required:
+                        - path
                         type: object
                       mountPath:
                         type: string
@@ -702,6 +746,8 @@ spec:
                         type: boolean
                       tmpfs:
                         type: object
+                    required:
+                    - mountPath
                     type: object
                   type: array
                 when:
@@ -713,6 +759,8 @@ spec:
                   type: array
                 workingDir:
                   type: string
+              required:
+              - name
               type: object
             type: array
         type: object

@@ -39,12 +39,7 @@ const (
 // columns right to left (DiskWWidth first) when the list isn't wide enough
 // to show all of them at their minimum width.
 const (
-	MinCPUWidth      = 5
-	MinMemWidth      = 6
-	MinNetWidth      = 9
-	MinDiskWidth     = 9
-	// MMmSS.SSs (e.g. "15m30.46s") is 9 characters, the common case once a
-	// task has run for at least a minute.
+	MinStatsWidth    = 9
 	MinDurationWidth = 9
 
 	// RightMargin is left unconsumed at the right edge of the row (see
@@ -96,7 +91,7 @@ func computeColumnLayout(listWidth int) columnLayout {
 	labelsWidth := int(float64(avail) * LabelsColumnPercent / 100)
 	durationWidth := max(int(float64(avail)*DurationColumnPercent/100), MinDurationWidth)
 
-	statMins := [...]int{MinCPUWidth, MinMemWidth, MinNetWidth, MinNetWidth, MinDiskWidth, MinDiskWidth}
+	statMins := [...]int{MinStatsWidth, MinStatsWidth, MinStatsWidth, MinStatsWidth, MinStatsWidth, MinStatsWidth}
 
 	remaining := avail - nameWidth - labelsWidth - durationWidth
 
@@ -131,12 +126,12 @@ func computeColumnLayout(listWidth int) columnLayout {
 	return columnLayout{
 		nameWidth:     nameWidth,
 		labelsWidth:   labelsWidth,
-		cpuWidth:      MinCPUWidth,
-		memWidth:      MinMemWidth,
-		netRxWidth:    MinNetWidth,
-		netTxWidth:    MinNetWidth,
-		diskRWidth:    MinDiskWidth,
-		diskWWidth:    MinDiskWidth,
+		cpuWidth:      MinStatsWidth,
+		memWidth:      MinStatsWidth,
+		netRxWidth:    MinStatsWidth,
+		netTxWidth:    MinStatsWidth,
+		diskRWidth:    MinStatsWidth,
+		diskWWidth:    MinStatsWidth,
 		durationWidth: durationWidth,
 		showCPU:       visible >= 1,
 		showMem:       visible >= 2,
@@ -545,49 +540,49 @@ var stepStatusStrings = []string{
 }
 
 // String returns the string representation of the step status
-func (e TaskStatus) String() string {
-	if int(e) >= len(stepStatusStrings) {
+func (s TaskStatus) String() string {
+	if int(ShortListThreshold) >= len(stepStatusStrings) {
 		return "unknown"
 	}
-	return stepStatusStrings[e]
+	return stepStatusStrings[s]
 }
 
 // Symbol returns the status's bare glyph, uncolored.
-func (e TaskStatus) Symbol() string {
-	switch e {
+func (s TaskStatus) Symbol() string {
+	switch s {
 	case TaskStatusRunning:
 		return "◴"
 	case TaskStatusDone:
-		return "✔"
+		return "☑"
 	case TaskStatusFailed:
-		return "✕"
+		return "⊘"
 	case TaskStatusWaiting:
 		return "◎"
 	case TaskStatusCached:
-		return "◈"
+		return "⛁"
 	case TaskStatusSkipped:
-		return "⚠"
+		return "↷"
 	default:
 		return "?"
 	}
 }
 
 // Render returns the styled visual representation of the step status.
-func (e TaskStatus) Render() string {
-	switch e {
+func (s TaskStatus) Render() string {
+	switch s {
 	case TaskStatusRunning:
-		return stepRunningStyle.Render(e.Symbol())
+		return stepRunningStyle.Render(s.Symbol())
 	case TaskStatusDone:
-		return stepOkStyle.Render(e.Symbol())
+		return stepOkStyle.Render(s.Symbol())
 	case TaskStatusFailed:
-		return stepFailedStyle.Render(e.Symbol())
+		return stepFailedStyle.Render(s.Symbol())
 	case TaskStatusWaiting:
-		return stepWaitingStyle.Render(e.Symbol())
+		return stepWaitingStyle.Render(s.Symbol())
 	case TaskStatusCached:
-		return stepCachedStyle.Render(e.Symbol())
+		return stepCachedStyle.Render(s.Symbol())
 	case TaskStatusSkipped:
-		return stepWarningStyle.Render(e.Symbol())
+		return stepSkippedStyle.Render(s.Symbol())
 	default:
-		return stepWaitingStyle.Render(e.Symbol())
+		return stepWaitingStyle.Render(s.Symbol())
 	}
 }

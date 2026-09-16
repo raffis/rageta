@@ -28,7 +28,7 @@ type Volumes struct {
 
 var ErrUnknownVolumeType = errors.New("unknown volume type")
 
-func (s *Volumes) Bootstrap(_ Pipeline, next Next) (Next, error) {
+func (s *Volumes) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		mounts := make([]v1beta1.VolumeMount, len(s.volumeMounts))
 		subst := []any{}

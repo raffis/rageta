@@ -1,0 +1,19 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: test
+
+tasks:
+- name: exit-error
+  steps:
+  - script: echo "This task will always exit with a non-zero exit code"
+  - script: exit 1
+
+- name: create-file
+  steps:
+  - script: |
+      while true; do
+        echo 1
+        sleep 1
+      done

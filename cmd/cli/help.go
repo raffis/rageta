@@ -184,9 +184,6 @@ func formatPipelineHelpSections(command v1beta1.Pipeline, full bool) []string {
 
 	var targetBlocks []string
 	for _, step := range command.Tasks {
-		if step.Hide {
-			continue
-		}
 		block := styles.HelpTargetName.Render(step.Name) + " " + styles.HelpTargetShort.Render(step.Short)
 		if step.Long != "" {
 			block += "\n" + styles.HelpTargetLong.Render(step.Long)

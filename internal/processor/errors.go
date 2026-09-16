@@ -9,9 +9,9 @@ func AbortOnError(err error) bool {
 		return false
 	}
 
-	var abortPipeline IsAbortableError
-	if errors.As(err, &abortPipeline) {
-		return abortPipeline.AbortOnError()
+	var abortable IsAbortableError
+	if errors.As(err, &abortable) {
+		return abortable.AbortOnError()
 	}
 
 	return true

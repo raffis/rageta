@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -158,13 +156,8 @@ func (t TaskContext) ToV1Beta1() *v1beta1.Context {
 	vars := &v1beta1.Context{
 		Tasks:   make(map[string]*v1beta1.TaskResult),
 		Matrix:  maps.Clone(t.Matrix.Params),
-		Envs:    maps.Clone(t.EnvVars.Envs),
 		Secrets: maps.Clone(t.SecretVars.Secrets),
 		Inputs:  maps.Clone(t.InputVars.Inputs),
-		Os:      runtime.GOOS,
-		Arch:    runtime.GOARCH,
-		Uid:     fmt.Sprintf("%d", os.Getuid()),
-		Guid:    fmt.Sprintf("%d", os.Getgid()),
 	}
 
 	for k, v := range t.Tasks {

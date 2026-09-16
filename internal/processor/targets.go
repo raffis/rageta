@@ -17,7 +17,7 @@ func WithTargets() ProcessorBuilder {
 
 		return &Targets{
 			taskName: spec.Name,
-			refs:     *spec.Targets,
+			refs:     spec.Targets,
 		}
 	}
 }

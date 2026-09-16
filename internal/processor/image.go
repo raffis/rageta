@@ -2,7 +2,6 @@ package processor
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/distribution/reference"
@@ -35,6 +34,11 @@ type Image struct {
 func (s *Image) Bootstrap(_ Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		image := s.image
+
+		if base, ok := ctx.Tasks[s.image]; ok {
+			ctx.Build.State = base.Build.State
+			return next(ctx)
+		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), &image); err != nil {
 			return ctx, err
@@ -86,7 +90,7 @@ type imageError struct {
 }
 
 func (e *imageError) Error() string {
-	return fmt.Sprintf("image: %s", e.parent.Error())
+	return e.parent.Error()
 }
 
 func (e *imageError) Unwrap() error {

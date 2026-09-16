@@ -22,7 +22,7 @@ templates:
       name: go-build
   dependsOn:
   - name: go-version
-  sources:
+  copy:
   - path: .
   inputFrom:
   - from: go-version
@@ -31,14 +31,14 @@ templates:
   workingDir: /workspace
   
 - name: docker
-  sources:
+  copy:
   - path: .
   image: docker:27-cli
   workingDir: /workspace
 
 tasks:
 - name: go-version
-  sources:
+  copy:
   - path: go.mod
   steps:
   - script: sed -En 's/^go[[:space:]]+([[:digit:].]+)$/GO_VERSION=\1/p' go.mod > .env
@@ -79,7 +79,7 @@ tasks:
   - mountPath: /root/.cache/golangci-lint
     cache: 
       name: golangci-lint
-  sources:
+  copy:
   - path: .
   workingDir: /workspace
   steps:
@@ -107,7 +107,7 @@ tasks:
   - name: build
   templates:
   - name: docker
-  sources:
+  copy:
   - from: build
     path: ./rageta
   steps:
