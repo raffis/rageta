@@ -1,0 +1,94 @@
+package processor
+
+import (
+	"fmt"
+	"maps"
+
+	"github.com/google/cel-go/cel"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+)
+
+func WithInputVars(celEnv *cel.Env) ProcessorBuilder {
+	return func(spec *v1beta1.Task) Bootstraper {
+		if len(spec.Inputs) == 0 {
+			return nil
+		}
+
+		return &InputVars{
+			celEnv: celEnv,
+			inputs: spec.Inputs,
+		}
+	}
+}
+
+type InputVars struct {
+	celEnv *cel.Env
+	inputs []v1beta1.InputParam
+}
+
+type InputVarsContext struct {
+	Inputs map[string]v1beta1.ParamValue
+}
+
+func newInputVarsContext() InputVarsContext {
+	return InputVarsContext{
+		Inputs: make(map[string]v1beta1.ParamValue),
+	}
+}
+
+func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
+		expr := make(map[string]cel.Program)
+
+		for _, input := range s.inputs {
+			if input.CelExpression != nil {
+				ast, issues := s.celEnv.Compile(*input.CelExpression)
+				if issues != nil && issues.Err() != nil {
+					return ctx, fmt.Errorf("input expression compilation `%s` failed: %w", *input.CelExpression, issues.Err())
+				}
+
+				prg, err := s.celEnv.Program(ast)
+				if err != nil {
+					return ctx, fmt.Errorf("input expression ast `%s` failed: %w", *input.CelExpression, err)
+				}
+
+				expr[input.Name] = prg
+			}
+		}
+
+		originInputs := make(map[string]v1beta1.ParamValue, len(ctx.InputVars.Inputs))
+		maps.Copy(originInputs, ctx.InputVars.Inputs)
+
+		vars := ctx.ToV1Beta1()
+		for _, input := range s.inputs {
+			switch {
+			case input.CelExpression != nil:
+				value, _, err := expr[input.Name].ContextEval(ctx, map[string]any{
+					"context": vars,
+				})
+				if err != nil {
+					return ctx, fmt.Errorf("input expression evaluation `%s` failed: %w", *input.CelExpression, err)
+				}
+
+				switch v := value.Value().(type) {
+				case string:
+					ctx.InputVars.Inputs[input.Name] = v1beta1.ParamValue{
+						StringVal: v,
+						Type:      v1beta1.ParamTypeString,
+					}
+				}
+
+			case input.Default != nil:
+				if _, ok := ctx.InputVars.Inputs[input.Name]; !ok {
+					ctx.InputVars.Inputs[input.Name] = *input.Default
+				}
+			default:
+				return ctx, fmt.Errorf("invalid input param given `%s`", input.Name)
+			}
+		}
+
+		ctx, err := next(ctx)
+		//ctx.InputVars.Inputs = originInputs
+		return ctx, err
+	}, nil
+}

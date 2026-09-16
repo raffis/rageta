@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/docker/cli/cli/config"
@@ -15,6 +16,8 @@ import (
 	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/spf13/pflag"
 	"github.com/tonistiigi/fsutil"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type BuildkitOptions struct {
@@ -126,15 +129,28 @@ func (s *Buildkit) Run(rc *RunContext, next Next) error {
 		}
 	}()
 
+	var nextErr error
 	_, err = c.Build(rc, buildOpt, "", func(ctx context.Context, gwc gwclient.Client) (*gwclient.Result, error) {
 		rc.Buildkit.GatewayClient = gwc
-		err := next(rc)
+		nextErr = next(rc)
 		res := gwclient.NewResult()
 		if len(rc.Buildkit.BuiltRefs) > 0 {
 			res.SetRef(rc.Buildkit.BuiltRefs[len(rc.Buildkit.BuiltRefs)-1])
 		}
-		return res, err
+		return res, nextErr
 	}, ch)
 
+	// The run context may get canceled while the solve is being torn down, for
+	// instance if the user quits the terminal ui after the pipeline already
+	// finished. In that case buildkit reports a cancelation which must not
+	// shadow the successful run.
+	if nextErr == nil && rc.Context.Err() != nil && isCanceled(err) {
+		return nil
+	}
+
 	return err
+}
+
+func isCanceled(err error) bool {
+	return err != nil && (errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled)
 }

@@ -32,9 +32,9 @@ tasks:
   - script: controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=crds
   - script: controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
 - name: code-gen
-  sources:
-  - path: .
   exports:
   - path: .
   steps:
+  - copy:
+    - path: .
   - script: ./hack/code-gen.sh

@@ -12,13 +12,6 @@ type Display interface {
 	Stdout() io.Writer
 	Stderr() io.Writer
 	Events() io.Writer
-	// Interrupt suspends normal task output to run f interactively against a
-	// terminal. It hands f the stdin/stdout/stderr to use rather than
-	// letting f capture os.Stdin/os.Stdout/os.Stderr itself, because in UI
-	// mode bubbletea owns the real terminal and must hand off its input
-	// reader through tea.Exec's SetStdin — grabbing os.Stdin directly races
-	// bubbletea's own (best-effort, see tty.go's waitForReadLoop) attempt to
-	// stop reading it first.
 	Interrupt(f func(stdin io.Reader, stdout, stderr io.Writer) error) error
 	Close(ctx TaskContext, err error) error
 	WriteStats(sample *stats.Sample) error

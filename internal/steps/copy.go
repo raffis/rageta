@@ -2,6 +2,7 @@ package processor
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,32 +13,30 @@ import (
 	"github.com/moby/buildkit/client/llb"
 )
 
-func WithSources() ProcessorBuilder {
+func WithCopy() ProcessorBuilder {
 	return func(spec *v1beta1.Task) Bootstraper {
-		if spec.Sources == nil {
+		if spec.Copy == nil {
 			return nil
 		}
-		return &Sources{
-			sources: spec.Sources,
+
+		return &Copy{
+			sources: spec.Copy,
 		}
 	}
 }
 
-type Sources struct {
-	sources []v1beta1.Source
+type Copy struct {
+	sources []v1beta1.Copy
 }
 
-func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
+func (s *Copy) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
-		sources := make([]v1beta1.Source, len(s.sources))
+		sources := make([]v1beta1.Copy, len(s.sources))
 		subst := []any{}
 
 		for i := range sources {
 			sources[i] = *s.sources[i].DeepCopy()
 			subst = append(subst, &sources[i].Path, &sources[i].To)
-			//if sources[i].From != nil {
-			//	subst = append(subst, sources[i].From)
-			//}
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -54,6 +53,17 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				copyTo = "."
 			}
 
+			copyInfo := &llb.CopyInfo{
+				CreateDestPath:      true,
+				CopyDirContentsOnly: true,
+			}
+
+			if source.Chmod != nil {
+				copyInfo.Mode = &llb.ChmodOpt{
+					Mode: os.FileMode(*source.Chmod),
+				}
+			}
+
 			if source.From == nil {
 				//var contextSrc llb.State
 				var copyFrom string
@@ -66,10 +76,7 @@ func (s *Sources) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}*/
 				copyFrom = srcPath
 				ctx.Build.State = ctx.Build.State.File(
-					llb.Copy(ctx.Build.ContextState, copyFrom, copyTo, &llb.CopyInfo{
-						CreateDestPath:      true,
-						CopyDirContentsOnly: true,
-					}),
+					llb.Copy(ctx.Build.ContextState, copyFrom, copyTo, copyInfo),
 					llb.WithCustomNamef("copy CONTEXT:%s → %s", srcPath, copyTo),
 				)
 			} else {

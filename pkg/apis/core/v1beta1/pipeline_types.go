@@ -46,7 +46,6 @@ func (p Pipeline) SetDefaults() {
 type TaskOptions struct {
 	Templates    []LocalReference `json:"templates,omitempty"`
 	When         []Condition      `json:"when,omitempty"`
-	Hide         bool             `json:"expose,omitempty"`
 	Exports      []Export         `json:"exports,omitempty"`
 	Inputs       []InputParam     `json:"inputs,omitempty"`
 	Timeout      metav1.Duration  `json:"timeout,omitempty"`
@@ -54,57 +53,50 @@ type TaskOptions struct {
 	Matrix       *Matrix          `json:"matrix,omitempty"`
 	DependsOn    []TaskDependency `json:"dependsOn,omitempty"`
 	Retry        *Retry           `json:"retry,omitempty"`
-	Secrets      []SecretVar      `json:"secrets,omitempty"`
-	Env          []EnvVar         `json:"env,omitempty"`
-	InputFrom    []InputFrom      `json:"inputFrom,omitempty"`
-	EnvFrom      []EnvFrom        `json:"envFrom,omitempty"`
 	Labels       []Label          `json:"labels,omitempty"`
-	Sources      []Source         `json:"sources,omitempty"`
-	VolumeMounts []VolumeMount    `json:"volumeMounts,omitempty"`
 	Image        string           `json:"image,omitempty"`
-	WorkingDir   string           `json:"workingDir,omitempty"`
 }
 
 type Export struct {
 	Path *string `json:"path,omitempty"`
 }
 
-// +kubebuilder:validation:MinProperties=1
 type TaskDependency struct {
-	Name        string `json:"name,omitempty"`
+	Name        string `json:"name"`
 	AwaitMatrix bool   `json:"awaitMatrix,omitempty"`
 }
 
-type Source struct {
-	From *string `json:"from,omitempty"`
-	Path string  `json:"path,omitempty"`
-	To   string  `json:"to,omitempty"`
+type Copy struct {
+	From  *string `json:"from,omitempty"`
+	Chmod *uint32 `json:"chmod,omitempty"`
+	Path  string  `json:"path"`
+	To    string  `json:"to,omitempty"`
 }
 
 type Label struct {
-	Name     string `json:"name,omitempty"`
+	Name     string `json:"name"`
 	Value    string `json:"value,omitempty"`
 	HEXColor string `json:"hexColor,omitempty"`
 }
 
 type SecretVar struct {
-	Name  string  `json:"name,omitempty"`
+	Name  string  `json:"name"`
 	Value *string `json:"value,omitempty"`
 }
 
 type EnvVar struct {
-	Name  string  `json:"name,omitempty"`
+	Name  string  `json:"name"`
 	Value *string `json:"value,omitempty"`
 }
 
 type InputFrom struct {
 	From *string `json:"from,omitempty"`
-	Path string  `json:"file,omitempty"`
+	Path string  `json:"file"`
 }
 
 type EnvFrom struct {
 	From *string `json:"from,omitempty"`
-	Path string  `json:"path,omitempty"`
+	Path string  `json:"path"`
 }
 
 type Condition struct {
@@ -112,20 +104,20 @@ type Condition struct {
 }
 
 type Matrix struct {
-	Params        []Param        `json:"params,omitempty"`
+	Params        []Param        `json:"params"`
 	Include       []IncludeParam `json:"include,omitempty"`
 	FailFast      bool           `json:"failFast,omitempty"`
 	MaxConcurrent int            `json:"maxConcurrent,omitempty"`
 }
 
 type IncludeParam struct {
-	Name   string      `json:"name,omitempty"`
+	Name   string      `json:"name"`
 	Params []Param     `json:"params,omitempty"`
 	Label  MatrixLabel `json:"label,omitempty"`
 }
 
 type MatrixLabel struct {
-	Value    string `json:"value,omitempty"`
+	Value    string `json:"value"`
 	HEXColor string `json:"hexColor,omitempty"`
 }
 
@@ -136,18 +128,25 @@ type Retry struct {
 }
 
 type Task struct {
-	Name        string `json:"name,omitempty"`
+	Name        string `json:"name"`
 	Short       string `json:"short,omitempty"`
 	Long        string `json:"long,omitempty"`
 	TaskOptions `json:",inline"`
-	Steps       *[]Step           `json:"steps,omitempty"`
-	Targets     *[]LocalReference `json:"targets,omitempty"`
-	Service     *ServiceTask      `json:"service,omitempty"`
-	Inherit     *InheritTask      `json:"inherit,omitempty"`
+	Steps       []Step           `json:"steps,omitempty"`
+	Targets     []LocalReference `json:"targets,omitempty"`
+	Service     *ServiceTask     `json:"service,omitempty"`
+	Inherit     *InheritTask     `json:"inherit,omitempty"`
 }
 
 type Step struct {
-	Script string `json:"script,omitempty"`
+	Script       *string       `json:"script,omitempty"`
+	Secrets      []SecretVar   `json:"secrets,omitempty"`
+	Env          []EnvVar      `json:"env,omitempty"`
+	InputFrom    []InputFrom   `json:"inputFrom,omitempty"`
+	EnvFrom      []EnvFrom     `json:"envFrom,omitempty"`
+	Copy         []Copy        `json:"copy,omitempty"`
+	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
+	WorkingDir   *string       `json:"workingDir,omitempty"`
 }
 
 type LocalReference struct {
@@ -155,7 +154,7 @@ type LocalReference struct {
 }
 
 type VolumeMount struct {
-	MountPath string          `json:"mountPath,omitempty"`
+	MountPath string          `json:"mountPath"`
 	ReadOnly  bool            `json:"readOnly,omitempty"`
 	HostPath  *HostPathVolume `json:"hostPath,omitempty"`
 	Cache     *CacheVolume    `json:"cache,omitempty"`
@@ -164,7 +163,7 @@ type VolumeMount struct {
 
 type HostPathVolume struct {
 	// Path is the source path relative to the build context. May contain substitution expressions.
-	Path string `json:"path,omitempty"`
+	Path string `json:"path"`
 }
 
 type TmpFSVolume struct {
@@ -172,7 +171,7 @@ type TmpFSVolume struct {
 
 type CacheVolume struct {
 	// Name is the cache namespace. May contain substitution expressions.
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 	// Sharing controls concurrent access
 	// +optional
 	// +kubebuilder:validation:Enum=shared;private;locked

@@ -131,7 +131,7 @@ func init() {
 		BorderForeground(inactivePanelColor).
 		Border(lipgloss.NormalBorder(), false, false, true, true)
 
-	listPaginatorStyle = newStyle().Padding(1, 0, 2, 2)
+	listPaginatorStyle = newStyle().Padding(1, 0, 1, 2)
 
 	scrollPercentageStyle = newStyle().
 		Foreground(lipgloss.Color("#CCCCCC")).

@@ -28,7 +28,7 @@ const (
 
 const (
 	ListWidthPercentage     = 35.0
-	ListHeightPercentage    = 40.0
+	ListHeightPercentage    = 44.0
 	LayoutAreaHeight        = 4
 	LayoutAreaHeightNarrow  = 7
 	FilterInputHeightOffset = 1
