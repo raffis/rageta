@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "rageta: attach to dlv (:2345)",
+            "type": "go",
+            "request": "attach",
+            "mode": "remote",
+            "host": "127.0.0.1",
+            "port": 2345,
+            "cwd": "${workspaceFolder}"
+        } 
+    ]
+}
