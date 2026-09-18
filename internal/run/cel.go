@@ -11,7 +11,7 @@ import (
 
 type CELOptions struct{}
 
-func (s CELOptions) Build() Step {
+func (s CELOptions) Build() Task {
 	return &CEL{opts: s}
 }
 
@@ -23,6 +23,10 @@ type CELContext struct {
 	Env *cel.Env
 }
 
+func (s *CEL) Label() string {
+	return "Preparing expression evaluator"
+}
+
 func (s *CEL) Run(rc *RunContext, next Next) error {
 	celEnv, err := cel.NewEnv(
 		ext.Strings(),
@@ -32,10 +36,9 @@ func (s *CEL) Run(rc *RunContext, next Next) error {
 		ext.Sets(),
 		ext.NativeTypes(ext.ParseStructTags(true),
 			reflect.TypeOf(&v1beta1.Context{}),
-			reflect.TypeOf(&v1beta1.StepResult{}),
+			reflect.TypeOf(&v1beta1.TaskResult{}),
 			reflect.TypeOf(&v1beta1.ParamValue{}),
-			reflect.TypeOf(&v1beta1.Output{}),
-			reflect.TypeOf(&v1beta1.ContainerStatus{}),
+			//reflect.TypeOf(&v1beta1.Output{}),
 		),
 		cel.Variable("context", cel.ObjectType("v1beta1.Context")),
 	)

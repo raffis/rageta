@@ -1,0 +1,15 @@
+
+version = 2
+ 
+[grpc]
+  address = "/run/containerd/containerd.sock"
+ 
+[plugins."io.containerd.grpc.v1.cri".cni]
+  bin_dir = "/opt/cni/bin"
+  conf_dir = "/etc/cni/net.d"
+ 
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "overlayfs"
+ 
+[debug]
+  level = "info"

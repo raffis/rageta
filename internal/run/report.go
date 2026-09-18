@@ -8,7 +8,7 @@ import (
 
 	"github.com/raffis/rageta/internal/processor"
 	"github.com/raffis/rageta/internal/report"
-	"github.com/spf13/pflag"
+	"github.com/raffis/rageta/internal/setup/flagset"
 )
 
 type ReportType string
@@ -28,12 +28,12 @@ type ReportOptions struct {
 	ReportOutput string
 }
 
-func (s *ReportOptions) BindFlags(flags *pflag.FlagSet) {
+func (s *ReportOptions) BindFlags(flags flagset.Interface) {
 	flags.StringVarP(&s.ReportType, "report", "r", s.ReportType, "Report summary of steps at the end of execution. One of [table, json, markdown].")
 	flags.StringVarP(&s.ReportOutput, "report-output", "", s.ReportOutput, "Destination for the report output.")
 }
 
-func (s ReportOptions) Build() Step {
+func (s ReportOptions) Build() Task {
 	return &Report{opts: s}
 }
 
@@ -51,6 +51,10 @@ type ReportContext struct {
 	Factory reportFinalizer
 }
 
+func (s *Report) Label() string {
+	return "Preparing report"
+}
+
 func (s *Report) Run(rc *RunContext, next Next) error {
 	if s.opts.ReportType == "" {
 		return next(rc)
@@ -60,7 +64,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 	var reportDev io.Writer
 
 	if reportOutput == "/dev/stdout" || reportOutput == "" {
-		reportDev = rc.Output.Stdout
+		reportDev = rc.Display.Stdout
 	} else {
 		output, err := os.OpenFile(reportOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0640)
 		if err != nil {
@@ -70,7 +74,7 @@ func (s *Report) Run(rc *RunContext, next Next) error {
 		defer func() {
 			_ = output.Close()
 		}()
-		reportDev = rc.Secrets.Store.Writer(output)
+		reportDev = rc.Secrets.Store.Pipe(rc, output, []byte("***"))
 	}
 
 	reportFactory, err := s.buildReportFactory(reportDev)

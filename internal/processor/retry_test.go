@@ -15,18 +15,18 @@ import (
 func TestRetryBuilder(t *testing.T) {
 	tests := []struct {
 		name      string
-		spec      *v1beta1.Step
+		spec      *v1beta1.Task
 		expectNil bool
 	}{
 		{
 			name:      "retry nil returns nil",
-			spec:      &v1beta1.Step{},
+			spec:      &v1beta1.Task{},
 			expectNil: true,
 		},
 		{
 			name: "retry with exponential backoff returns Retry struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Retry: &v1beta1.Retry{
 						Exponential: metav1.Duration{Duration: 1 * time.Second},
 						MaxRetries:  3,
@@ -37,8 +37,8 @@ func TestRetryBuilder(t *testing.T) {
 		},
 		{
 			name: "retry with constant backoff returns Retry struct",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Retry: &v1beta1.Retry{
 						Constant:   metav1.Duration{Duration: 2 * time.Second},
 						MaxRetries: 5,
@@ -49,8 +49,8 @@ func TestRetryBuilder(t *testing.T) {
 		},
 		{
 			name: "retry with both exponential and constant uses exponential",
-			spec: &v1beta1.Step{
-				StepOptions: v1beta1.StepOptions{
+			spec: &v1beta1.Task{
+				TaskOptions: v1beta1.TaskOptions{
 					Retry: &v1beta1.Retry{
 						Exponential: metav1.Duration{Duration: 1 * time.Second},
 						Constant:    metav1.Duration{Duration: 2 * time.Second},
@@ -142,7 +142,7 @@ func TestRetryBootstrap(t *testing.T) {
 			pipeline := &mockPipeline{}
 			callCount := 0
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				callCount++
 				// Simulate success after first failure for some tests
 				if tt.name == "error from next function, succeeds on retry" && callCount > 1 {
@@ -155,7 +155,7 @@ func TestRetryBootstrap(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			ctx := StepContext{Context: context.Background()}
+			ctx := TaskContext{Context: context.Background()}
 			resultCtx, resultErr := nextFunc(ctx)
 
 			assert.Equal(t, tt.expectedCalls, callCount)
@@ -208,7 +208,7 @@ func TestRetryBackoffStrategies(t *testing.T) {
 			pipeline := &mockPipeline{}
 			callCount := 0
 
-			next := func(ctx StepContext) (StepContext, error) {
+			next := func(ctx TaskContext) (TaskContext, error) {
 				callCount++
 				return ctx, errors.New("test error")
 			}
@@ -217,7 +217,7 @@ func TestRetryBackoffStrategies(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, nextFunc)
 
-			ctx := StepContext{Context: context.Background()}
+			ctx := TaskContext{Context: context.Background()}
 			start := time.Now()
 			_, resultErr := nextFunc(ctx)
 			duration := time.Since(start)

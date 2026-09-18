@@ -3,8 +3,9 @@ package run
 import (
 	"context"
 
-	"github.com/raffis/rageta/internal/logbridge"
-	"github.com/raffis/rageta/internal/otelsetup"
+	"github.com/raffis/rageta/internal/setup/flagset"
+	"github.com/raffis/rageta/internal/setup/logbridge"
+	"github.com/raffis/rageta/internal/setup/otelsetup"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/metric"
@@ -20,13 +21,13 @@ type OtelOptions struct {
 	ZapConfig zap.Config
 }
 
-func (s *OtelOptions) BindFlags(flags *pflag.FlagSet) {
-	otelFlags := pflag.NewFlagSet("otel", pflag.ExitOnError)
+func (s *OtelOptions) BindFlags(flags flagset.Interface) {
+	otelFlags := pflag.NewFlagSet("OpenTelemetry", pflag.ExitOnError)
 	s.OtelOpts.BindFlags(otelFlags)
 	flags.AddFlagSet(otelFlags)
 }
 
-func (s OtelOptions) Build() Step {
+func (s OtelOptions) Build() Task {
 	return &Otel{opts: s}
 }
 
@@ -35,13 +36,19 @@ type Otel struct {
 }
 
 type OtelContext struct {
-	Tracer trace.Tracer
-	Meter  metric.Meter
-	Logger log.Logger
+	Endpoint string
+	Tracer   trace.Tracer
+	Meter    metric.Meter
+	Logger   log.Logger
+}
+
+func (s *Otel) Label() string {
+	return "Setting up OpenTelemetry"
 }
 
 func (s *Otel) Run(rc *RunContext, next Next) error {
 	ctx := context.Background()
+	rc.Otel.Endpoint = s.opts.OtelOpts.Endpoint
 
 	traceProvider, err := s.opts.OtelOpts.BuildTraceProvider(ctx)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/raffis/rageta/internal/pipeline"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 	"github.com/spf13/pflag"
 )
@@ -16,12 +17,12 @@ type InputsOptions struct {
 	Args []string
 }
 
-func (s InputsOptions) Build() Step {
+func (s InputsOptions) Build() Task {
 	return &Inputs{opts: s}
 }
 
-func (s *InputsOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.StringArrayVarP(&s.Args, "input", "i", s.Args, "Pass inputs to the pipeline.")
+func (s *InputsOptions) BindFlags(flags flagset.Interface) {
+	flags.StringArrayVarP(&s.Args, "set", "s", s.Args, "Pass inputs to the pipeline.")
 }
 
 type Inputs struct {
@@ -30,6 +31,10 @@ type Inputs struct {
 
 type InputsContext struct {
 	Args map[string]v1beta1.ParamValue
+}
+
+func (s *Inputs) Label() string {
+	return "Resolving inputs"
 }
 
 func (s *Inputs) Run(rc *RunContext, next Next) error {

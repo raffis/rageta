@@ -1,0 +1,53 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: sample-matrix
+
+tasks:
+- name: generate-dynamic-matrix
+  steps:
+  - script: |
+      echo '{"arch": ["amd64", "arm64"], "os": ["linux", "windows"]}' > matrix.json
+
+- name: sample-matrix
+  image: ubuntu
+  dependsOn:
+  - name: generate-dynamic-matrix
+  inputFrom:
+  - from: generate-dynamic-matrix
+    src: /rageta/work/matrix.json
+  matrix:
+    params:
+    - name: arch
+      value: $(context.inputsJSON.arch)
+    - name: os
+      value: $(context.inputsJSON.os)
+  steps:
+  - script: | 
+      echo "arch: $CONTEXT_MATRIX__arch"
+  - script: |
+      echo "os: $CONTEXT_MATRIX__os"
+
+- name: matrix-task
+  dependsOn:
+  - name: sample-matrix
+  steps:
+  - script: echo "I also know the matrix context, $CONTEXT_MATRIX__arch"
+  - script: echo "$CONTEXT_MATRIX__arch, $CONTEXT_MATRIX__os" > index.html
+
+- name: serve-and-request-file
+  dependsOn:
+  - name: matrix-task
+  inherit:
+    pipeline: ./examples/serve-and-request-file.yaml
+  copy:
+  - from: matrix-task
+    src: index.html
+
+- name: wait-for-matrix-tasks
+  dependsOn:
+  - name: sample-matrix
+    awaitMatrix: true
+  steps:
+  - script: echo "all matrix tasks executed"

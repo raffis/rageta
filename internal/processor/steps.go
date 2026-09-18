@@ -1,0 +1,147 @@
+package processor
+
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/moby/buildkit/client/llb"
+	gwclient "github.com/moby/buildkit/frontend/gateway/client"
+	"github.com/raffis/rageta/internal/secrets"
+	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
+)
+
+func WithSteps(store secrets.Interface, noCache bool) ProcessorBuilder {
+	return func(spec *v1beta1.Task) Bootstraper {
+		if spec.Steps == nil {
+			return nil
+		}
+
+		return &Steps{
+			steps:    spec.Steps,
+			taskName: spec.Name,
+			store:    store,
+			noCache:  noCache,
+		}
+	}
+}
+
+const (
+	defaultShell        = "/bin/ash"
+	contextPath         = "/rageta/context.json"
+	ashHistoryPath      = "/rageta/ash_history"
+	ContextSecretPrefix = "rageta-context-"
+)
+
+type Steps struct {
+	steps    []v1beta1.Step
+	taskName string
+	store    secrets.Interface
+	noCache  bool
+}
+
+func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
+		ctx.Build.State = ctx.Build.State.File(
+			llb.Mkdir("/rageta", 0755),
+		)
+
+		contextJSON, err := json.MarshalIndent(ctx.ToV1Beta1(), "", "  ")
+		if err != nil {
+			return ctx, err
+		}
+
+		secretID := ContextSecretPrefix + s.taskName
+		s.store.AddSecret(ctx, secretID, contextJSON)
+		contextSecretOpt := llb.AddSecret(contextPath, llb.SecretID(secretID))
+		ctx.Build.AddSecret(contextPath, secretID)
+
+		baseRunOpts := append([]llb.RunOption{contextSecretOpt}, ctx.Build.RunOpts...)
+		if s.noCache {
+			baseRunOpts = append(baseRunOpts, llb.IgnoreCache)
+		}
+
+		var history []string
+
+		for k, step := range s.steps {
+			script := *step.Script
+			script = strings.TrimSpace(script)
+
+			interpreter := defaultShell
+			if strings.HasPrefix(script, "#!") {
+				lines := strings.SplitN(script, "\n", 2)
+				interpreter = strings.TrimSpace(strings.TrimPrefix(lines[0], "#!"))
+			}
+
+			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
+			stepPath := fmt.Sprintf("/rageta/step-%d.ash", k)
+
+			ctx.Build.State = ctx.Build.State.File(
+				llb.Mkfile(stepPath, 0644, []byte(script)),
+			)
+
+			history = append(history, fmt.Sprintf("/bin/ash %s", stepPath))
+			stepRunOpts := append(append([]llb.RunOption{}, baseRunOpts...), llb.Args([]string{
+				shimPath,
+				"-stats",
+				fmt.Sprintf("-exitcodefile=%s", exitCodePath),
+				interpreter,
+				"-e",
+				"-x",
+				"-c",
+				script,
+			}))
+
+			ctx.Build.State = ctx.Build.State.Run(stepRunOpts...).Root()
+		}
+
+		ctx, err = next(ctx)
+		if err != nil {
+			return ctx, err
+		}
+
+		ctx.Build.State = ctx.Build.State.File(
+			llb.Mkfile(ashHistoryPath, 0755, []byte(strings.Join(history, "\n"))),
+		)
+
+		for k := range s.steps {
+			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
+			data, err := ctx.Build.Ref.ReadFile(ctx, gwclient.ReadRequest{Filename: exitCodePath})
+			if err != nil {
+				return ctx, err
+			}
+
+			code, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				return ctx, fmt.Errorf("invalid exit code %q from step #%d: %w", string(data), k, err)
+			}
+
+			if code != 0 {
+				return ctx, &scriptError{
+					exitCode: code,
+					parent:   fmt.Errorf("step #%d exited with code %d", k, code),
+				}
+			}
+		}
+
+		return ctx, nil
+	}, nil
+}
+
+type scriptError struct {
+	exitCode int
+	parent   error
+}
+
+func (e *scriptError) Error() string {
+	return fmt.Sprintf("script failed: %s", e.parent.Error())
+}
+
+func (e *scriptError) Unwrap() error {
+	return e.parent
+}
+
+func (e *scriptError) ExitCode() int {
+	return e.exitCode
+}

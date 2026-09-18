@@ -1,0 +1,31 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: always-fails
+
+tasks:
+- name: exit-error
+  steps:
+  - script: echo "This task will always exit with a non-zero exit code"
+  - script: echo "Hello from stderr" > /dev/stderr
+  - script: exit 1
+
+- name: never-run
+  dependsOn:
+  - name: exit-error
+  steps:
+  - script: echo "This task will never run"
+
+- name: exit-error-but-ignore
+  allowFailure: true
+  steps:
+  - script: echo "This task will force exit code 0 even though it fails"
+  - script: echo "Hello from stderr" > /dev/stderr
+  - script: exit 1
+
+- name: run-after-error
+  dependsOn:
+  - name: exit-error-but-ignore
+  steps:
+  - script: echo "This task is executed after exit-error-but-ignore"

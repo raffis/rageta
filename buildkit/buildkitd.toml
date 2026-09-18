@@ -1,0 +1,22 @@
+[worker.containerd]
+  [[worker.containerd.gcpolicy]]
+    filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
+    keepDuration = "96h"
+    maxUsedSpace = "20GB"
+
+  [[worker.containerd.gcpolicy]]
+    keepDuration = "1440h"
+    reservedSpace = "10GB"
+    minFreeSpace = "5GB"
+    maxUsedSpace = "100GB"
+
+  [[worker.containerd.gcpolicy]]
+    reservedSpace = "10GB"
+    minFreeSpace = "5GB"
+    maxUsedSpace = "100GB"
+
+  [[worker.containerd.gcpolicy]]
+    all = true
+    reservedSpace = "10GB"
+    minFreeSpace = "5GB"
+    maxUsedSpace = "100GB"

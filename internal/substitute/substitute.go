@@ -1,6 +1,7 @@
 package substitute
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -104,7 +105,7 @@ func substParam(param *v1beta1.Param, vars map[string]string) (*v1beta1.ParamVal
 
 func parseExpression(previous string, vars map[string]string) (string, error) {
 	var (
-		parseError  error
+		parseErr    []error
 		substituted string
 	)
 
@@ -113,9 +114,10 @@ func parseExpression(previous string, vars map[string]string) (string, error) {
 			parts := substituteExpression.FindStringSubmatch(m)
 			if len(parts) != 3 {
 				err := fmt.Errorf("invalid expression wrapper `%s` -- %#v", m, parts)
-				if parseError == nil {
-					parseError = err
+				if err == nil {
+					parseErr = append(parseErr, err)
 				}
+
 				return m
 			}
 
@@ -126,6 +128,7 @@ func parseExpression(previous string, vars map[string]string) (string, error) {
 			if v, ok := vars[parts[2]]; ok {
 				return v
 			} else {
+				parseErr = append(parseErr, fmt.Errorf("undefined variable: %q", parts[2]))
 				return parts[0]
 			}
 		})
@@ -137,5 +140,5 @@ func parseExpression(previous string, vars map[string]string) (string, error) {
 		previous = substituted
 	}
 
-	return substituted, parseError
+	return substituted, errors.Join(parseErr...)
 }

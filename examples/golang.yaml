@@ -1,0 +1,122 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: golang
+
+inputs:
+- name: image
+  description: Image name used for docker-build/build
+  default: ghcr.io/rageta/rageta
+
+defaultTask: default
+
+templates:
+- name: golang
+  volumeMounts:
+  - mountPath: /go/pkg/mod
+    cache:
+      name: go-mod
+  - mountPath: /root/.cache/go-build
+    cache:
+      name: go-build
+  dependsOn:
+  - name: go-version
+  copy:
+  - src: .
+  inputFrom:
+  - from: go-version
+    src: /rageta/work/input.json
+  image: golang:$(context.inputs.version)
+  workingDir: /workspace
+  
+- name: docker
+  copy:
+  - src: .
+  image: docker:27-cli
+  workingDir: /workspace
+
+tasks:
+- name: go-version
+  copy:
+  - src: go.mod
+  steps:
+  - script: |
+      version=$(sed -En 's/^go[[:space:]]+([[:digit:].]+)$/\1/p' go.mod)
+      echo '{"version": "'$version'"}' > /rageta/work/input.json
+- name: default
+  targets:
+  - name: tidy
+  - name: vet
+  - name: fmt
+  - name: golangci-lint
+  - name: test
+  - name: build
+- name: tidy
+  templates:
+  - name: golang
+  exports:
+  - src: ./go.mod
+  - src: ./go.sum
+  steps:
+  - script: go mod tidy
+
+- name: fmt
+  templates:
+  - name: golang
+  exports:
+  - src: .
+  steps:
+    - script: go fmt ./...
+
+- name: vet
+  templates:
+  - name: golang
+  steps:
+  - script: go vet ./...
+
+- name: golangci-lint
+  image: golangci/golangci-lint:v2.12.2
+  volumeMounts:
+  - mountPath: /root/.cache/golangci-lint
+    cache: 
+      name: golangci-lint
+  copy:
+  - src: .
+  workingDir: /workspace
+  steps:
+  - script: golangci-lint run --timeout=3m
+
+- name: test
+  templates:
+  - name: golang
+  steps:
+  - script: go test -coverprofile coverage.out -v ./...
+
+- name: build
+  templates:
+  - name: golang
+  #exports:
+  #- src: ./rageta
+  #env:
+  #- name: CGO_ENABLED
+  #  value: "0"
+  steps:
+  - script: go build -C cmd/cli/ -o ../../rageta
+
+- name: docker-build
+  dependsOn:
+  - name: build
+  templates:
+  - name: docker
+  copy:
+  - from: build
+    src: ./rageta
+  steps:
+  - script: docker build -t $CONTEXT_INPUTS__image .
+
+- name: install
+  templates:
+  - name: golang
+  steps:
+  - script: go install .

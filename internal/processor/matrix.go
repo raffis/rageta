@@ -11,12 +11,13 @@ import (
 
 	"maps"
 
+	"github.com/moby/buildkit/client/llb"
 	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 func WithMatrix() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Matrix == nil || len(spec.Matrix.Params) == 0 {
 			return nil
 		}
@@ -25,7 +26,7 @@ func WithMatrix() ProcessorBuilder {
 			matrix:   spec.Matrix.Params,
 			include:  spec.Matrix.Include,
 			failFast: spec.Matrix.FailFast,
-			stepName: spec.Name,
+			taskName: spec.Name,
 			pool:     make(chan struct{}, spec.Matrix.MaxConcurrent),
 		}
 	}
@@ -35,7 +36,7 @@ type Matrix struct {
 	matrix   []v1beta1.Param
 	include  []v1beta1.IncludeParam
 	failFast bool
-	stepName string
+	taskName string
 	pool     chan struct{}
 }
 
@@ -58,8 +59,13 @@ var ErrEmptyMatrix = &pipelineError{
 type isMatrixContext struct{}
 
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.Value(isMatrixContext{}) == s {
+			for k, v := range ctx.Matrix.Params {
+				envName := fmt.Sprintf("CONTEXT_MATRIX__%s", strings.ReplaceAll(k, "-", "_"))
+				ctx.EnvVars.Envs[envName] = v
+			}
+
 			return next(ctx)
 		}
 
@@ -88,8 +94,17 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		//If a matrix combination needs to be processed the step needs to start from beginning in order to through all step
-		//processors
-		next, err := pipeline.Entrypoint(s.stepName)
+		//processors.
+		//Deliberately the task's own entrypoint rather than pipeline.Entrypoint,
+		//which marks its context as selected (see selectedKey in depends_on.go):
+		//an instance re-enters a chain that is already running, so it must keep
+		//whatever selection the matrix task itself has instead of gaining one.
+		task, err := pipeline.Task(s.taskName)
+		if err != nil {
+			return ctx, err
+		}
+
+		next, err := task.Entrypoint()
 		if err != nil {
 			return ctx, err
 		}
@@ -117,10 +132,10 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			b := hasher.Sum(nil)
 
 			copyCtx := ctx.DeepCopy().WithNamespace(fmt.Sprintf("%x", b)[:6])
-			copyCtx.Context = cancelCtx
+			copyCtx.Context = context.WithValue(cancelCtx, ancestorsContext{}, ctx.UniqueName())
 			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
 			copyCtx.Matrix.Params = matrix
-
+			copyCtx.Build.State = llb.Scratch()
 			go func() {
 				if cap(s.pool) > 0 {
 					s.pool <- struct{}{}
@@ -134,14 +149,30 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}()
 		}
 
-		var done int
+		var (
+			done      int
+			allCached bool = true
+		)
 	WAIT:
 		for res := range results {
 			done++
-			maps.Copy(ctx.Steps, res.ctx.Steps)
+
+			if child, ok := res.ctx.Tasks[s.taskName]; ok {
+				ctx.TaskGroups[s.taskName] = append(ctx.TaskGroups[s.taskName], child)
+			}
+
+			for name, instances := range res.ctx.TaskGroups {
+				ctx.TaskGroups[name] = append(ctx.TaskGroups[name], instances...)
+			}
+
+			maps.Copy(ctx.Tasks, res.ctx.Tasks)
+
+			if !res.ctx.Build.Cached {
+				allCached = false
+			}
 
 			//Unify matrix outputs into an array output for the current step
-			for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
+			/*for paramKey, paramValue := range res.ctx.OutputVars.OutputVars {
 				var param v1beta1.ParamValue
 
 				if val, ok := ctx.OutputVars.OutputVars[paramKey]; !ok {
@@ -157,7 +188,7 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 				}
 
 				ctx.OutputVars.OutputVars[paramKey] = param
-			}
+			}*/
 
 			switch {
 			case cancelCtx.Err() == context.Canceled && len(errs) > 0:
@@ -175,11 +206,49 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
+		ctx.Build.Cached = allCached
+
 		if len(errs) > 0 {
 			return ctx, errors.Join(errs...)
 		}
 
-		return ctx, nil
+		// Every instance is done and merged into ctx; release the matrix
+		// task's own claim now rather than after AwaitMatrixChildren below
+		// has also been launched and awaited, for the same reason DependsOn
+		// does (see selfReleaseKey in depends_on.go): a waiter only needs
+		// this task's own result, not its dependents'.
+		releaseSelf(ctx, ctx, nil)
+
+		// Same restriction as DependsOn: only a selected task pushes its
+		// dependents. See selectedKey in depends_on.go.
+		if !isSelected(ctx) {
+			return ctx, nil
+		}
+
+		var children []Task
+		var depErrs []error
+		for _, task := range pipeline.AwaitMatrixChildren(s.taskName) {
+			if _, started := ctx.Tasks[task.Name()]; started {
+				continue
+			}
+
+			// Only launch the child once all of its dependencies have
+			// completed, not just this one.
+			if !task.Ready(ctx) {
+				continue
+			}
+
+			var depErr error
+			ctx, depErr = ensureDependencies(pipeline, ctx, task.Name())
+			if depErr != nil {
+				depErrs = append(depErrs, depErr)
+			}
+
+			children = append(children, task)
+		}
+
+		childCtx, childErr := launchTasks(ctx, children, true)
+		return childCtx, errors.Join(append(depErrs, childErr)...)
 	}, nil
 }
 
@@ -198,11 +267,11 @@ func (s *Matrix) build(params []v1beta1.Param) (map[string]map[string]string, er
 	return result, nil
 }
 
-func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, include []v1beta1.IncludeParam) StepContext {
+func (s *Matrix) extendMatrix(ctx TaskContext, matrixParams map[string]string, include []v1beta1.IncludeParam) TaskContext {
 	includeParams := make(map[string]string)
 
 	for currentMatrixKey, currentMatrixValue := range matrixParams {
-		tag := Tag{
+		label := Label{
 			Key:   fmt.Sprintf("matrix/%s", currentMatrixKey),
 			Value: currentMatrixValue,
 		}
@@ -216,10 +285,10 @@ func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, i
 			}
 
 			if combine {
-				tag.Color = includeGroup.Tag.Color
+				label.HEXColor = includeGroup.Label.HEXColor
 
-				if includeGroup.Tag.Value != "" {
-					tag.Value = includeGroup.Tag.Value
+				if includeGroup.Label.Value != "" {
+					label.Value = includeGroup.Label.Value
 				}
 
 				for _, includeParam := range includeGroup.Params {
@@ -228,7 +297,7 @@ func (s *Matrix) extendMatrix(ctx StepContext, matrixParams map[string]string, i
 			}
 		}
 
-		ctx.Tags.Add(tag)
+		ctx.Labels.Add(label)
 	}
 
 	maps.Copy(matrixParams, includeParams)

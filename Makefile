@@ -40,9 +40,25 @@ vet:
 code-gen:
 	./hack/code-gen.sh
 
-build:
+.PHONY: shim
+shim:
+	CGO_ENABLED=0 go build -C cmd/shim/ -o ../../internal/processor/shimbin/shim
+
+build: shim
+	#CGO_ENABLED=0 go build -C cmd/controller/ -o ../../controller
 	CGO_ENABLED=0 go build -C cmd/cli/ -o ../../rageta
 	docker build . -t ghcr.io/rageta/rageta:latest
+
+DLV_PORT ?= 2345
+ARGS ?= run examples/sample-matrix.yaml --no-cache
+.PHONY: debug
+debug: dlv shim
+	$(DLV) debug ./cmd/cli \
+		--headless \
+		--listen=127.0.0.1:$(DLV_PORT) \
+		--api-version=2 \
+		--accept-multiclient \
+		-- $(ARGS)
 
 .PHONY: docker-build
 docker-build: build
@@ -54,12 +70,17 @@ install:
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/...; ./internal/processor/..."
+
+DLV = $(GOBIN)/dlv
+.PHONY: dlv
+dlv: ## Download delve locally if necessary.
+	$(call go-install-tool,$(DLV),github.com/go-delve/delve/cmd/dlv@latest)
 
 CONTROLLER_GEN = $(GOBIN)/controller-gen
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0)
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0)
 
 # go-install-tool will 'go install' any package $2 and install it to $1
 define go-install-tool

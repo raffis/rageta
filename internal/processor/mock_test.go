@@ -2,7 +2,7 @@ package processor
 
 type mockPipeline struct{}
 
-func (m *mockPipeline) Step(name string) (Step, error) {
+func (m *mockPipeline) Task(name string) (Task, error) {
 	return nil, nil
 }
 

@@ -1,0 +1,67 @@
+apiVersion: core.rageta.io/v1beta1
+kind: Pipeline
+
+metadata:
+  name: yaml
+
+inputs:
+- name: paths
+  description: Paths to validate
+  default:
+  - ./
+- name: yamlfmt-config
+  description: Path to yamlfmt config file
+  default: yamlfmt.yaml
+- name: yamllint-config
+  description: Path to yamllint config file
+  default: yamllint.yaml
+
+defaultTask: lint
+
+templates:
+- name: yamlfmt
+  image: ghcr.io/google/yamlfmt:0.20.0
+  workingDir: /workspace
+- name: yamllint
+  image: ghcr.io/l/yamllint:v1.37.0
+  workingDir: /workspace
+- name: yq
+  image: mikefarah/yq:4.40.5
+  workingDir: /workspace
+
+tasks:
+- name: lint
+- name: yamllint
+  templates:
+  - name: yamllint
+  dependsOn: 
+  - name: lint
+  steps:
+  - script: |
+      yamllint -c $(context.inputs.yamllint-config) $(echo "$(context.inputs.paths)" | tr -d '[]",' | xargs)
+- name: yamlfmt-lint
+  dependsOn: 
+  - name: lint
+  templates:
+  - name: yamlfmt
+  steps:
+  - script: |
+      yamlfmt -conf $(context.inputs.yamlfmt-config) -lint $(echo "$(context.inputs.paths)" | tr -d '[]",' | xargs)
+
+- name: fmt
+  templates:
+  - name: yq
+  steps:
+  - script: find $(echo "$(context.inputs.paths)" | tr -d '[]",' | xargs) -type f -name \*.yaml -exec sed 's/[[:space:]]*$//g' -i {} \;
+  - script: find $(echo "$(context.inputs.paths)" | tr -d '[]",' | xargs) -type f -name \*.yaml -exec yq -P 'sort_keys(..)' -i {} \; 
+
+- name: yamlfmt
+  templates:
+  - name: yamlfmt
+  dependsOn:
+  - name: fmt
+  sources:
+  - from: fmt
+  steps:
+  - script: |
+      yamlfmt -conf $(context.inputs.yamlfmt-config) -verbose $(echo "$(context.inputs.paths)" | tr -d '[]",' | xargs)

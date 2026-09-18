@@ -9,7 +9,7 @@ import (
 )
 
 func WithRetry() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if spec.Retry == nil || (spec.Retry.Constant.Duration == 0 && spec.Retry.Exponential.Duration == 0) {
 			return nil
 		}
@@ -41,7 +41,7 @@ func (s *Retry) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		backoff = retry.WithMaxRetries(s.max, backoff)
 	}
 
-	return func(stepCtx StepContext) (StepContext, error) {
+	return func(stepCtx TaskContext) (TaskContext, error) {
 		var err error
 		if err := retry.Do(stepCtx, backoff, func(ctx context.Context) error {
 			stepCtx.Context = ctx

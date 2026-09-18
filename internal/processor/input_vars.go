@@ -3,17 +3,14 @@ package processor
 import (
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
 func WithInputVars(celEnv *cel.Env) ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
-		if len(spec.Inputs) == 0 {
-			return nil
-		}
-
+	return func(spec *v1beta1.Task) Bootstraper {
 		return &InputVars{
 			celEnv: celEnv,
 			inputs: spec.Inputs,
@@ -37,7 +34,7 @@ func newInputVarsContext() InputVarsContext {
 }
 
 func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		expr := make(map[string]cel.Program)
 
 		for _, input := range s.inputs {
@@ -87,8 +84,36 @@ func (s *InputVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			}
 		}
 
+		for k, v := range ctx.InputVars.Inputs {
+			nameSuffix := strings.ReplaceAll(k, "-", "_")
+
+			switch v.Type {
+			case v1beta1.ParamTypeString:
+				envName := fmt.Sprintf("CONTEXT_INPUTS__%s", nameSuffix)
+				ctx.EnvVars.Envs[envName] = v.StringVal
+			case v1beta1.ParamTypeArray:
+				for i, s := range v.ArrayVal {
+					envName := fmt.Sprintf("CONTEXT_INPUTS__%s_%d", nameSuffix, i)
+					ctx.EnvVars.Envs[envName] = s
+				}
+			case v1beta1.ParamTypeObject:
+				for objKey, s := range v.ObjectVal {
+					envName := fmt.Sprintf("CONTEXT_INPUTS__%s_%s", nameSuffix, objKey)
+					ctx.EnvVars.Envs[envName] = s
+				}
+			}
+
+			b, err := v.MarshalJSON()
+			if err != nil {
+				return ctx, fmt.Errorf("failed to marshal input: %w", err)
+			}
+
+			envName := fmt.Sprintf("CONTEXT_INPUTS_JSON__%s", nameSuffix)
+			ctx.EnvVars.Envs[envName] = string(b)
+		}
+
 		ctx, err := next(ctx)
-		ctx.InputVars.Inputs = originInputs
+		//ctx.InputVars.Inputs = originInputs
 		return ctx, err
 	}, nil
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func WithAllowFailure() ProcessorBuilder {
-	return func(spec *v1beta1.Step) Bootstraper {
+	return func(spec *v1beta1.Task) Bootstraper {
 		if !spec.AllowFailure {
 			return nil
 		}
@@ -26,7 +26,7 @@ var ErrAllowFailure = &pipelineError{
 }
 
 func (s *AllowFailure) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
-	return func(ctx StepContext) (StepContext, error) {
+	return func(ctx TaskContext) (TaskContext, error) {
 		ctx, err := next(ctx)
 
 		if err != nil {

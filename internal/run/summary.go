@@ -3,25 +3,24 @@ package run
 import (
 	"errors"
 	"fmt"
-	"path"
 	"strings"
 	"text/tabwriter"
 
 	"charm.land/lipgloss/v2"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/setup/flagset"
 	"github.com/raffis/rageta/internal/styles"
-	"github.com/spf13/pflag"
 )
 
 type SummaryOptions struct {
-	SkipSummary bool
+	NoSummary bool
 }
 
-func (s *SummaryOptions) BindFlags(flags *pflag.FlagSet) {
-	flags.BoolVarP(&s.SkipSummary, "skip-summary", "", s.SkipSummary, "Do not print an execution summary at the end of the pipeline execution.")
+func (s *SummaryOptions) BindFlags(flags flagset.Interface) {
+	flags.BoolVarP(&s.NoSummary, "no-summary", "", s.NoSummary, "Do not print an execution summary at the end of the pipeline execution.")
 }
 
-func (s SummaryOptions) Build() Step {
+func (s SummaryOptions) Build() Task {
 	return &Summary{opts: s}
 }
 
@@ -29,20 +28,24 @@ type Summary struct {
 	opts SummaryOptions
 }
 
+func (s *Summary) Label() string {
+	return "Preparing summary"
+}
+
 func (s *Summary) Run(rc *RunContext, next Next) error {
 	err := next(rc)
 
-	if s.opts.SkipSummary {
+	if s.opts.NoSummary {
 		return err
 	}
 
 	if err != nil {
 		s.writeErrorToStderr(err, rc)
-		return nil
+		return err
 	}
 
 	s.writeSuccessToStderr(rc)
-	return nil
+	return err
 }
 
 func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
@@ -50,8 +53,8 @@ func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
 	if errors.As(err, &pipelineExecErr) {
 		s.writePipelineErrorToStderr(errors.Unwrap(err), []error{errors.Unwrap(err)}, rc)
 	} else {
-		fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render("Details:"))
-		fmt.Fprintln(rc.Output.Stderr, err.Error())
+		fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render("Details:"))
+		fmt.Fprintln(rc.Display.Stderr, err.Error())
 	}
 
 	helpCmd := "rageta help"
@@ -59,7 +62,7 @@ func (s *Summary) writeErrorToStderr(err error, rc *RunContext) {
 	if rc.Provider.Ref != "" {
 		helpCmd = fmt.Sprintf("%s %s", helpCmd, rc.Provider.Ref)
 	}
-	fmt.Fprintf(rc.Output.Stderr, "\nRun %s for more information\n", styles.HelpSection.Render(helpCmd))
+	fmt.Fprintf(rc.Display.Stderr, "\nRun %s for more information\n", styles.HelpSection.Render(helpCmd))
 }
 
 func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *RunContext) {
@@ -77,39 +80,43 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	}
 
 	fmt.Printf("\n───────\n")
-	var stepErr processor.StepError
+	var stepErr processor.TaskError
 	if errors.As(err, &stepErr) {
-		fmt.Fprintf(rc.Output.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.StepName()))
+		fmt.Fprintf(rc.Display.Stderr, "The step %s failed.\n\n", styles.HelpSection.Render(stepErr.TaskName()))
 	}
 
-	var tags []string
-	w := tabwriter.NewWriter(rc.Output.Stderr, 0, 0, 2, ' ', 0)
-	var innerStepErr processor.StepError
-	if AsInner(err, &innerStepErr) {
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Step:"), innerStepErr.StepName())
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), path.Join(rc.ContextDir.Path, innerStepErr.Context().UniqueID()))
+	var labels []string
+	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
+	var innerTaskErr processor.TaskError
+	if AsInner(err, &innerTaskErr) {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Inner Task:"), innerTaskErr.TaskName())
 
-		for _, tag := range innerStepErr.Context().Tags.Tags() {
-			tags = append(tags, styles.TagLabel.
-				Background(lipgloss.Color(tag.Color)).
-				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(tag.Color))).
-				Render(fmt.Sprintf("%s: %s", tag.Key, tag.Value)),
+		for _, label := range innerTaskErr.Context().Labels.Labels() {
+			labels = append(labels, styles.Label.
+				Background(lipgloss.Color(label.HEXColor)).
+				Foreground(styles.AdaptiveBrightnessColor(lipgloss.Color(label.HEXColor))).
+				Render(fmt.Sprintf("%s: %s", label.Key, label.Value)),
 			)
 		}
 	}
 
-	var runErr processor.ErrorContainer
-	if errors.As(err, &runErr) {
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Container:"), runErr.ContainerName())
-		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), runErr.Image())
-		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), runErr.ExitCode())
+	var imageErr processor.ImageName
+	if errors.As(err, &imageErr) {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Image:"), imageErr.Image())
+	}
 
-		if len(tags) > 0 {
-			fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Tags:"), strings.Join(tags, " "))
-
-		}
-	} else {
+	var exitCodeErr processor.ExitCode
+	switch {
+	case errors.As(err, &exitCodeErr):
+		fmt.Fprintf(w, "%s\t%d\n", styles.Highlight.Render("Exit Code:"), exitCodeErr.ExitCode())
+	case errors.Unwrap(err) != nil:
 		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), errors.Unwrap(err).Error())
+	default:
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Error:"), err.Error())
+	}
+
+	if len(labels) > 0 {
+		fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Labels:"), strings.Join(labels, " "))
 	}
 
 	fmt.Fprint(w, "\n")
@@ -118,9 +125,9 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 	fmt.Fprintf(w, "%s\n", styles.Highlight.Render("Trace:"))
 	i := 0
 	for _, parentErr := range parents {
-		var stepErr processor.StepError
+		var stepErr processor.TaskError
 		if errors.As(parentErr, &stepErr) {
-			fmt.Fprintln(rc.Output.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.StepName())))
+			fmt.Fprintln(rc.Display.Stderr, styles.Highlight.Render(fmt.Sprintf("#%d step %s failed", i, stepErr.TaskName())))
 		}
 
 		i++
@@ -128,9 +135,9 @@ func (s *Summary) writePipelineErrorToStderr(err error, parents []error, rc *Run
 }
 
 func (s *Summary) writeSuccessToStderr(rc *RunContext) {
-	fmt.Fprintf(rc.Output.Stderr, "\nThe pipeline was successfully executed.\n\n")
-	w := tabwriter.NewWriter(rc.Output.Stderr, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
+	fmt.Fprintf(rc.Display.Stderr, "\nThe pipeline was successfully executed.\n\n")
+	w := tabwriter.NewWriter(rc.Display.Stderr, 0, 0, 2, ' ', 0)
+	//fmt.Fprintf(w, "%s\t%s\n", styles.Highlight.Render("Context path:"), rc.ContextDir.Path)
 	w.Flush()
 }
 
