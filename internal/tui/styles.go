@@ -54,6 +54,10 @@ var (
 	helpDescStyle lipgloss.Style
 	helpSepStyle  lipgloss.Style
 
+	filterBoxStyle    lipgloss.Style
+	filterPromptStyle lipgloss.Style
+	filterCountStyle  lipgloss.Style
+
 	activePanelColor = lipgloss.Color("#7D56F4")
 	lightGrey        = compat.AdaptiveColor{
 		Light: lipgloss.Color("#909090"),
@@ -146,4 +150,11 @@ func init() {
 	helpKeyStyle = newStyle().Foreground(lipgloss.Color("#CCCCCC"))
 	helpDescStyle = newStyle().Foreground(lipgloss.Color("#909090"))
 	helpSepStyle = newStyle().Foreground(lightGrey)
+
+	filterBoxStyle = newStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(activePanelColor).
+		Padding(0, 1)
+	filterPromptStyle = newStyle().Foreground(activePanelColor).Bold(true)
+	filterCountStyle = newStyle().Foreground(lightGrey)
 }

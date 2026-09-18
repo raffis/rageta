@@ -36,7 +36,7 @@ func (s *Copy) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 
 		for i := range sources {
 			sources[i] = *s.sources[i].DeepCopy()
-			subst = append(subst, &sources[i].Path, &sources[i].To)
+			subst = append(subst, &sources[i].Src, &sources[i].Dst)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -44,11 +44,11 @@ func (s *Copy) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 		}
 
 		for _, source := range sources {
-			srcPath := source.Path
+			srcPath := source.Src
 			if srcPath == "" {
 				srcPath = "."
 			}
-			copyTo := source.To
+			copyTo := source.Dst
 			if copyTo == "" {
 				copyTo = "."
 			}

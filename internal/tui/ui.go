@@ -12,11 +12,11 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/go-logr/logr"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/raffis/rageta/internal/processor"
+	"github.com/raffis/rageta/internal/tui/pager"
 )
 
 type Panel int8
@@ -27,11 +27,14 @@ const (
 )
 
 const (
-	ListWidthPercentage     = 35.0
-	ListHeightPercentage    = 44.0
-	LayoutAreaHeight        = 4
-	LayoutAreaHeightNarrow  = 7
-	FilterInputHeightOffset = 1
+	ListWidthPercentage    = 35.0
+	ListHeightPercentage   = 44.0
+	LayoutAreaHeight       = 4
+	LayoutAreaHeightNarrow = 7
+	// FilterInputHeightOffset is the height the filter prompt takes from the
+	// list body when it's shown: the input row plus the top and bottom edges
+	// of the box drawn around it (see renderFilterBox).
+	FilterInputHeightOffset = 3
 	LabelsHeightOffset      = 1
 	// StatsHeightOffset reserves 2 lines, not 1: the stats bar's own
 	// content line plus the closing bottom border it draws for the list
@@ -53,6 +56,9 @@ const (
 	KeyQ          = "q"
 	KeyDebugShell = "i"
 	KeyShowAll    = "a"
+
+	// FilterPrompt is the marker drawn in front of the filter input.
+	FilterPrompt = "❯ "
 )
 
 // uiKeyMap is the help.KeyMap rendered in the bottom help bar. It's a
@@ -116,11 +122,9 @@ type UI struct {
 	loader       spinner.Model
 	help         help.Model
 	status       TaskStatus
-	scanInput    textinput.Model
 	width        int
 	height       int
 	mu           *sync.Mutex
-	logger       logr.Logger
 	activePanel  Panel
 	lastSelected list.Item
 	debugShell   DebugShellFactory
@@ -133,6 +137,13 @@ type UI struct {
 	// place m.tasks is reordered; a plain status update on an existing task
 	// doesn't move it, so the index stays valid across those.
 	taskIndex map[string]int
+
+	// listOffset is the first visible line of the list body — the scroll
+	// position of the continuously scrolling window renderList slices out
+	// of the fully rendered list (see renderList). It's a pointer because
+	// the view is rendered from a value receiver, and the window has to
+	// move (and stay moved) as the selection walks past either edge.
+	listOffset *int
 
 	// visibleIndex maps a task's Name to its row index in the list's
 	// current items, rebuilt in refreshList. Lets per-task updates patch
@@ -167,9 +178,20 @@ func (d compactDelegate) Height() int {
 	return 1
 }
 
+// Render draws one task row. It deliberately doesn't hand off to
+// list.DefaultDelegate.Render: that highlights filter matches by running
+// lipgloss.StyleRunes over the title using rune offsets taken from the item's
+// FilterValue. A TaskMsg's title is a fully styled multi-column row that
+// shares no offsets with its FilterValue (which is name + labels), so those
+// offsets land inside ANSI escape sequences and chop them in half — the
+// escapes then leak into the output as stray characters the moment a filter
+// is typed. Matches are highlighted in the filter box instead, by the rows
+// that survive filtering.
 func (d compactDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	if di, ok := item.(list.DefaultItem); !ok || di.Description() == "" {
-		d.ShowDescription = false
+	task, ok := item.(TaskMsg)
+	if !ok {
+		d.DefaultDelegate.Render(w, m, index, item)
+		return
 	}
 
 	// Color the task name explicitly when this row is the selected one,
@@ -178,15 +200,22 @@ func (d compactDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	// reset clears the wrap's color for everything after it (ANSI resets
 	// aren't scoped to the style that opened them), so the name would
 	// otherwise render in the default color regardless of SelectedTitle.
-	if task, ok := item.(TaskMsg); ok {
-		task.selected = index == m.Index() && m.FilterState() != list.Filtering
-		item = task
+	task.selected = index == m.Index()
+
+	style := d.Styles.NormalTitle
+	if task.selected {
+		style = d.Styles.SelectedTitle
 	}
 
-	d.DefaultDelegate.Render(w, m, index, item)
+	width := m.Width() - style.GetHorizontalFrameSize()
+	if width <= 0 {
+		return
+	}
+
+	fmt.Fprint(w, style.Render(ansi.Truncate(task.Title(), width, "…")))
 }
 
-func NewUI(logger logr.Logger) UI {
+func NewUI() UI {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
 		BorderForeground(activePanelColor).
@@ -199,20 +228,19 @@ func NewUI(logger logr.Logger) UI {
 	delegate.Styles.NormalDesc = noBorderDescPadding
 	delegate.Styles.DimmedDesc = noBorderDescPadding
 
+	listOffset := 0
+
 	ui := UI{
 		status:      TaskStatusWaiting,
+		listOffset:  &listOffset,
 		list:        list.New(nil, compactDelegate{delegate}, 0, 0),
 		help:        help.New(),
 		mu:          &sync.Mutex{},
 		activePanel: PanelList,
-		logger:      logger,
-		// Done/cached/skipped tasks are shown by default; 'a' toggles them
-		// back to hidden for users who want a quieter, in-progress-only view.
-		showAll: true,
+		showAll:     true,
 	}
 
 	ui.initializeList()
-	ui.initializeScanInput()
 	ui.initializeLoader()
 	ui.initializeHelp()
 
@@ -226,18 +254,77 @@ func (m *UI) initializeList() {
 	m.list.SetShowHelp(false)
 	m.list.SetShowFilter(false)
 	m.list.SetFilteringEnabled(true)
-	m.list.Styles.PaginationStyle = listPaginatorStyle
+	// The list body scrolls continuously (see renderList) instead of
+	// flipping page by page, so bubbles' page indicator has nothing left to
+	// indicate — and hiding it hands its two lines back to the body.
+	m.list.SetShowPagination(false)
 	m.list.KeyMap.CursorUp = key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up"))
 	m.list.KeyMap.CursorDown = key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "down"))
+
+	// bubbles' DefaultFilter is a fuzzy matcher, which is far too loose
+	// here: TaskMsg.FilterValue concatenates the display name, the internal
+	// name and every label key and value, so a query only has to have its
+	// letters appear somewhere in that order for a task to match — typing a
+	// name no task has still left most of the list showing. Matching a plain
+	// substring instead makes the filter mean what it looks like it means,
+	// and keeps rows in the list's own tree order rather than reshuffling
+	// them by fuzzy score.
+	m.list.Filter = substringFilter
+
+	m.list.FilterInput.Prompt = FilterPrompt
+	m.list.FilterInput.Placeholder = "filter"
+	inputStyles := m.list.FilterInput.Styles()
+	inputStyles.Focused.Prompt = filterPromptStyle
+	inputStyles.Blurred.Prompt = filterPromptStyle
+	m.list.FilterInput.SetStyles(inputStyles)
 }
 
-// initializeScanInput sets up the scan input component
-func (m *UI) initializeScanInput() {
-	scanInput := textinput.New()
-	scanInput.Prompt = "Filter: "
-	scanInput.CharLimit = 64
-	scanInput.Focus()
-	m.scanInput = scanInput
+// substringFilter keeps the targets that contain the query as a literal,
+// case-insensitive substring, in their original order.
+func substringFilter(term string, targets []string) []list.Rank {
+	term = strings.ToLower(strings.TrimSpace(term))
+
+	ranks := make([]list.Rank, 0, len(targets))
+	for i, target := range targets {
+		if strings.Contains(strings.ToLower(target), term) {
+			ranks = append(ranks, list.Rank{Index: i})
+		}
+	}
+
+	return ranks
+}
+
+// renderFilterBox draws the filter prompt inside a box spanning the panel's
+// full width, so it reads as a distinct input line rather than text bleeding
+// into the rows above it.
+func (m UI) renderFilterBox(width int) string {
+	// Width is the box's total rendered width, border included, so the box
+	// spans the panel edge to edge; the prompt row inside it gets what the
+	// border and padding leave over.
+	content := max(0, width-filterBoxStyle.GetHorizontalFrameSize())
+
+	var counter string
+	if m.list.FilterInput.Value() != "" {
+		counter = filterCountStyle.Render(fmt.Sprintf("%d/%d", len(m.list.VisibleItems()), len(m.list.Items())))
+	}
+
+	// The input gets whatever the prompt and counter leave it, so a long
+	// query scrolls inside the box instead of pushing the counter out of it.
+	input := m.list.FilterInput
+	input.SetWidth(max(0, content-lipgloss.Width(FilterPrompt)-lipgloss.Width(counter)))
+
+	row := padBetween(input.View(), counter, content)
+
+	return filterBoxStyle.Width(width).MaxHeight(FilterInputHeightOffset).Render(row)
+}
+
+// padBetween lays left and right out on one line of the given width, with
+// right flush against the far end.
+func padBetween(left, right string, width int) string {
+	rightWidth := lipgloss.Width(right)
+	leftWidth := max(0, width-rightWidth)
+
+	return lipgloss.NewStyle().Width(leftWidth).MaxWidth(leftWidth).Render(left) + right
 }
 
 // initializeLoader sets up the loading spinner
@@ -522,9 +609,9 @@ func (m *UI) refreshList() {
 		items = append(items, t)
 	}
 
-	current := m.findCurrentSelection(items)
 	m.list.SetItems(items)
-	m.list.Select(current)
+	m.reapplyFilter()
+	m.list.Select(m.findCurrentSelection(m.list.VisibleItems()))
 	m.visibleIndex = visibleIndex
 }
 
@@ -536,9 +623,42 @@ func (m *UI) refreshList() {
 // list membership didn't.
 func (m *UI) updateVisibleItem(t TaskMsg) tea.Cmd {
 	if idx, ok := m.visibleIndex[t.Name]; ok {
-		return m.list.SetItem(idx, t)
+		cmd := m.list.SetItem(idx, t)
+		m.reapplyFilter()
+		return cmd
 	}
 	return nil
+}
+
+// reapplyFilter re-runs the active filter against the list's current items,
+// in place.
+//
+// bubbles' list applies a filter asynchronously: SetItems/SetItem only return
+// a tea.Cmd that eventually yields the matches. refreshList and
+// updateVisibleItem are called from message handlers and helpers that drop
+// that command, which left the list flagged as filtered with its match set
+// wiped — and since VisibleItems reads the match set while filtered, the
+// whole panel went blank the moment any task ticked. SetFilterText runs the
+// same filtering inline, so the match set is never out of step with the
+// items. The surrounding state is saved and restored because SetFilterText
+// also forces the list to FilterApplied and jumps the cursor to the top.
+func (m *UI) reapplyFilter() {
+	state := m.list.FilterState()
+	if state == list.Unfiltered {
+		return
+	}
+
+	idx := m.list.Index()
+	m.list.SetFilterText(m.list.FilterInput.Value())
+	m.list.SetFilterState(state)
+	if state != list.Filtering {
+		m.list.FilterInput.Blur()
+	}
+	m.list.Select(clamp(idx, 0, max(0, len(m.list.VisibleItems())-1)))
+}
+
+func clamp(v, low, high int) int {
+	return min(high, max(low, v))
 }
 
 // formatLabelsForSorting formats labels for sorting purposes
@@ -600,8 +720,6 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	m.logger.V(7).Info("tui update msg", "msg", msg)
-
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		cmds = append(cmds, m.handleMouseMessage(msg))
@@ -621,7 +739,6 @@ func (m UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleWindowResize(msg)...)
 	case DebugShellDoneMsg:
 		if msg.Err != nil {
-			m.logger.Error(msg.Err, "debug shell exited with an error", "task", msg.Name)
 			m.writeDebugShellError(msg.Name, msg.Err)
 		}
 	case InterruptMsg:
@@ -709,11 +826,6 @@ func (m *UI) getTaskMsg(name string) (TaskMsg, int, error) {
 	return TaskMsg{}, -1, fmt.Errorf("no such task: %s", name)
 }
 
-// writeDebugShellError writes a visible error into the given task's viewport
-// when spawning or running its debug shell failed. UI mode redirects the
-// logger to a file (see Display.Run in the run package) so errors logged via
-// m.logger alone are otherwise invisible to the user, making a failed 'i'
-// press look like a silent no-op.
 func (m *UI) writeDebugShellError(name string, err error) {
 	m.writeTaskNotice(name, stepFailedStyle.Render(fmt.Sprintf("Debug shell failed: %s", err)))
 }
@@ -784,7 +896,7 @@ func (m *UI) handleMouseMessage(msg tea.MouseMsg) tea.Cmd {
 // "database" into the filter box doesn't quit the app or toggle show-all
 // instead of inserting the letter.
 func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	filtering := m.list.FilterState() == list.Filtering
+	filtering := m.typing()
 
 	switch msg.String() {
 	case KeyQuit:
@@ -794,6 +906,7 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case KeyTab:
+		m.exitPrompt()
 		m.toggleActivePanel()
 		return m, nil
 	case KeyShowAll:
@@ -814,6 +927,63 @@ func (m UI) handleKeyMessage(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleListPanelKeys(msg)
 	}
 	return m, m.updateSelectedViewport(msg)
+}
+
+// typing reports whether a text prompt currently has focus — either the
+// list's filter or the pager's search box. The single-letter shortcuts above
+// ('a', 'i', 'q') and the panel switch are suppressed while it does, so
+// typing "action" into a prompt inserts those letters instead of toggling
+// show-all and dropping the user into an interactive shell.
+func (m UI) typing() bool {
+	if m.list.FilterState() == list.Filtering {
+		return true
+	}
+
+	if m.activePanel != PanelDetails {
+		return false
+	}
+
+	// Read the pager off m.tasks rather than m.lastSelected: key messages
+	// return from Update before updateLastSelected runs, so the pager
+	// pointer cached there can be a revision behind the one the last
+	// keystroke updated.
+	task := m.selectedTask()
+	return task != nil && task.viewport != nil && task.viewport.SearchState() == pager.Searching
+}
+
+// exitPrompt leaves whichever text prompt is currently capturing keystrokes.
+// A non-empty query stays applied and an empty one is cleared, so switching
+// panels out of a prompt neither discards what was typed nor leaves an idle
+// input behind on the panel being left.
+func (m *UI) exitPrompt() {
+	if m.list.FilterState() == list.Filtering {
+		if m.list.FilterInput.Value() == "" {
+			m.clearFilter()
+		} else {
+			m.list.SetFilterState(list.FilterApplied)
+			m.list.FilterInput.Blur()
+		}
+	}
+
+	if task := m.selectedTask(); task != nil && task.viewport != nil {
+		task.viewport.ExitSearch()
+	}
+}
+
+// selectedTask returns the currently selected task from m.tasks, or nil if
+// nothing is selected yet.
+func (m UI) selectedTask() *TaskMsg {
+	selected, ok := m.lastSelected.(TaskMsg)
+	if !ok {
+		return nil
+	}
+
+	for i := range m.tasks {
+		if m.tasks[i].Name == selected.Name {
+			return &m.tasks[i]
+		}
+	}
+	return nil
 }
 
 // openDebugShell spawns a debug shell for the currently selected task, if the task has
@@ -837,7 +1007,6 @@ func (m *UI) openDebugShell() tea.Cmd {
 
 	execCmd, err := m.debugShell(task.Context)
 	if err != nil {
-		m.logger.Error(err, "failed to prepare debug shell", "task", task.Name)
 		m.writeDebugShellError(task.Name, err)
 		return nil
 	}
@@ -850,9 +1019,6 @@ func (m *UI) openDebugShell() tea.Cmd {
 func (m *UI) interrupt(msg InterruptMsg) tea.Cmd {
 	return tea.Exec(&interruptExec{run: msg.Run}, func(err error) tea.Msg {
 		msg.Done <- err
-		if err != nil {
-			m.logger.Error(err, "debug shell exited with an error")
-		}
 		return nil
 	})
 }
@@ -870,25 +1036,49 @@ func (m *UI) toggleActivePanel() {
 func (m UI) handleListPanelKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// While the filter prompt has focus it owns every keystroke except the
+	// few that steer it, so letters land in the input rather than reaching
+	// the list's own single-key bindings. Arrows still move the cursor, so
+	// the filtered rows can be walked without leaving the prompt.
+	if m.list.FilterState() == list.Filtering {
+		switch msg.String() {
+		case KeyEscape:
+			m.clearFilter()
+		case KeyEnter:
+			m.list.SetFilterState(list.FilterApplied)
+			m.list.FilterInput.Blur()
+		case "up":
+			m.list.CursorUp()
+		case "down":
+			m.list.CursorDown()
+		default:
+			m.list.FilterInput, cmd = m.list.FilterInput.Update(msg)
+			m.list.SetFilterText(m.list.FilterInput.Value())
+			m.list.SetFilterState(list.Filtering)
+		}
+
+		return m, cmd
+	}
+
 	switch msg.String() {
 	case KeyFilter:
 		m.list.SetFilterState(list.Filtering)
 		m.list.FilterInput.Focus()
 	case KeyEscape:
-		m.list.FilterInput.Reset()
-		m.list.SetFilterState(list.Unfiltered)
+		m.clearFilter()
 	default:
-		if m.list.FilterState() > 0 {
-			m.list.FilterInput, cmd = m.list.FilterInput.Update(msg)
-			filterText := m.list.FilterInput.Value()
-			m.list.SetFilterText(filterText)
-			m.list.SetFilterState(list.Filtering)
-		} else {
-			m.list, cmd = m.list.Update(msg)
-		}
+		m.list, cmd = m.list.Update(msg)
 	}
 
 	return m, cmd
+}
+
+// clearFilter drops the active filter and restores the full task list.
+func (m *UI) clearFilter() {
+	m.list.FilterInput.Reset()
+	m.list.SetFilterText("")
+	m.list.SetFilterState(list.Unfiltered)
+	m.list.FilterInput.Blur()
 }
 
 // updateSelectedViewport updates the viewport for the selected item
@@ -1012,8 +1202,6 @@ func (m *UI) updateLastSelected() {
 
 // View renders the UI
 func (m UI) View() tea.View {
-	m.logger.Info("tui view", "height", m.height, "width", m.width, "last", m.lastSelected)
-
 	var content string
 	if m.lastSelected == nil || m.height == 0 || m.width == 0 {
 		content = m.loader.View()
@@ -1105,13 +1293,77 @@ func (m UI) renderHeaderPanel() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, listHeader, tab, pagerHeader)
 }
 
+// itemHeight is the number of lines compactDelegate renders for an item:
+// the title row, plus a second row when the item has a description (only
+// ever the image-pull progress bar — see compactDelegate).
+func itemHeight(item list.Item) int {
+	if di, ok := item.(list.DefaultItem); ok && di.Description() != "" {
+		return 2
+	}
+	return 1
+}
+
+// renderList renders the list body as a continuously scrolling window
+// rather than bubbles' built-in page-at-a-time view.
+//
+// bubbles' list has no scrolling mode: its viewport is a paginator, so
+// moving the cursor past the last row of a page swaps the whole page out at
+// once. Instead, this renders the list into a single page holding every
+// item (a copy, so the real list's own size stays what the layout computed)
+// and slices a viewHeight-line window out of that render, moving the window
+// only as far as needed to keep the selected row fully visible. The result
+// is that the cursor walks down the rows and the content scrolls by one row
+// underneath it at the edges.
+func (m UI) renderList(viewHeight int) string {
+	viewHeight = max(1, viewHeight)
+
+	items := m.list.VisibleItems()
+
+	// Height large enough that the paginator fits every item on page one,
+	// so View renders all of them and the window below can address any row.
+	full := m.list
+	full.SetHeight(max(1, len(items)))
+	lines := strings.Split(full.View(), "\n")
+
+	// Line span of the selected row within that full render.
+	var cursorStart, totalLines int
+	cursorHeight := 1
+	for i, item := range items {
+		h := itemHeight(item)
+		if i < m.list.Index() {
+			cursorStart += h
+		} else if i == m.list.Index() {
+			cursorHeight = h
+		}
+		totalLines += h
+	}
+
+	offset := min(*m.listOffset, max(0, totalLines-viewHeight))
+	if cursorStart < offset {
+		offset = cursorStart
+	} else if end := cursorStart + cursorHeight; end > offset+viewHeight {
+		offset = end - viewHeight
+	}
+	offset = max(0, offset)
+	*m.listOffset = offset
+
+	window := make([]string, 0, viewHeight)
+	for i := offset; i < offset+viewHeight; i++ {
+		if i < len(lines) {
+			window = append(window, lines[i])
+		} else {
+			window = append(window, "")
+		}
+	}
+
+	return strings.Join(window, "\n")
+}
+
 // renderListPanel renders the left list panel
 func (m UI) renderListPanel() string {
-	listPanelContent := []string{m.list.View()}
-
+	viewHeight := m.list.Height()
 	if m.list.FilterState() > 0 {
-		listPanelContent = append(listPanelContent, m.list.FilterInput.View())
-		m.list.SetHeight(m.list.Height() - FilterInputHeightOffset)
+		viewHeight -= FilterInputHeightOffset
 	}
 
 	active := m.activePanel == PanelList
@@ -1134,6 +1386,16 @@ func (m UI) renderListPanel() string {
 		style = style.Border(lipgloss.NormalBorder(), false, true, false, true)
 	} else {
 		style = style.Border(lipgloss.NormalBorder(), false, true, false, false)
+	}
+
+	listPanelContent := []string{m.renderList(viewHeight)}
+
+	if m.list.FilterState() > 0 {
+		// The panel's own side border(s) count against the Width applied
+		// below, so the filter box has to be sized to what's left inside
+		// them — given the full panel width it overshoots and lipgloss wraps
+		// its right edge onto a line of its own.
+		listPanelContent = append(listPanelContent, m.renderFilterBox(m.list.Width()-style.GetHorizontalFrameSize()))
 	}
 
 	header := m.renderListHeader()
@@ -1260,22 +1522,30 @@ func (m *UI) updatePanelStyles() {
 
 // updateViewportDimensions updates the viewport dimensions
 func (m *UI) updateViewportDimensions(task *TaskMsg) {
+	var width, height int
+
 	// Set viewport width based on layout
 	if m.width < AlignHorizontalBreakpoint {
 		// In vertical layout, viewport takes full width, minus the left
 		// and right borders drawn around the pager panel.
-		task.viewport.Width = m.width - 2
+		width = m.width - 2
 		// Height is reduced by list height and bottom panel
-		task.viewport.Height = m.height - m.list.Height() - LayoutAreaHeightNarrow
+		height = m.height - m.list.Height() - LayoutAreaHeightNarrow
 	} else {
 		// In horizontal layout, viewport takes remaining width
-		task.viewport.Width = m.width - m.list.Width()
-		task.viewport.Height = m.height - LayoutAreaHeight + 1
+		width = m.width - m.list.Width()
+		height = m.height - LayoutAreaHeight + 1
 	}
 
 	if task.LabelsAsString() != "" {
-		task.viewport.Height -= LabelsHeightOffset
+		height -= LabelsHeightOffset
 	}
+
+	// SetSize rather than assigning the fields: a task registered before the
+	// first tea.WindowSizeMsg was laid out against a zero-sized pager, and
+	// its scroll offset has to be recomputed against the real size here or
+	// the panel stays parked past the end of its content.
+	task.viewport.SetSize(width, height)
 }
 
 // buildPagerContent builds the content for the details panel

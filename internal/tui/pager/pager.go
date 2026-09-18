@@ -168,13 +168,22 @@ func (m *Model) Write(b []byte) (int, error) {
 func (m Model) maxYOffset() int {
 	var offset int
 
-	lineNumberWidth := 0
-	if m.ShowLineNumbers {
-		lineNumberWidth = lipgloss.Width(fmt.Sprintf("%d", len(m.lines)-1))
+	contentWidth := m.contentWidth()
+
+	// A pager is written to long before it is ever laid out: tasks start
+	// producing output while Width/Height are still zero (no
+	// tea.WindowSizeMsg yet) and a task whose panel is never on screen never
+	// gets them recomputed at all. Without this guard the per-line height
+	// below divides by zero or by a negative width, the loop trips on the
+	// very first line, and the offset is pinned past the end of the content
+	// — every Write then re-pins it via GotoBottom, so the pager renders
+	// nothing at all even though it holds the task's entire log.
+	if contentWidth <= 0 || m.Height <= 0 {
+		return 0
 	}
 
 	for i := len(m.lines) - 1; i >= 0; i-- {
-		offset += int(math.Ceil(float64(m.lines[i].width) / float64(m.Width-lineNumberWidth)))
+		offset += int(math.Ceil(float64(m.lines[i].width) / float64(contentWidth)))
 
 		if offset > m.Height {
 			i = i + 1
@@ -185,6 +194,37 @@ func (m Model) maxYOffset() int {
 	return 0
 }
 
+// contentWidth is the width left for the content itself once the line number
+// gutter has taken its share.
+func (m Model) contentWidth() int {
+	if !m.ShowLineNumbers {
+		return m.Width
+	}
+
+	return m.Width - lipgloss.Width(fmt.Sprintf("%d", len(m.lines)-1))
+}
+
+// SetSize updates the pager's dimensions and re-clamps the scroll position to
+// them. Assigning Width/Height directly leaves YOffset as it was computed
+// against the previous size, so an offset taken while the pager was still
+// zero-sized would survive the first real layout and keep the view parked
+// past the end of the content.
+func (m *Model) SetSize(width, height int) {
+	if m.Width == width && m.Height == height {
+		return
+	}
+
+	m.Width = width
+	m.Height = height
+
+	if m.AutoScroll {
+		m.GotoBottom()
+		return
+	}
+
+	m.SetYOffset(m.YOffset)
+}
+
 // visibleLines returns the lines that should currently be visible in the
 // viewport.
 func (m Model) visibleLines() []line {
@@ -193,14 +233,17 @@ func (m Model) visibleLines() []line {
 		return lines
 	}
 
-	var contentHeight int
-	for i, line := range m.lines[m.YOffset:] {
-		lineNumberWidth := 0
-		if m.ShowLineNumbers {
-			lineNumberWidth = lipgloss.Width(fmt.Sprintf("%d", i+1))
-		}
+	// Same guard as maxYOffset: with no usable size yet there is nothing to
+	// budget against, so hand back everything rather than dividing by a
+	// zero or negative width and dropping the content on the floor.
+	contentWidth := m.contentWidth()
+	if contentWidth <= 0 || m.Height <= 0 {
+		return m.lines[min(m.YOffset, len(m.lines)):]
+	}
 
-		contentHeight += int(math.Ceil(float64(line.width) / float64(m.Width-lineNumberWidth)))
+	var contentHeight int
+	for _, line := range m.lines[m.YOffset:] {
+		contentHeight += int(math.Ceil(float64(line.width) / float64(contentWidth)))
 		lines = append(lines, line)
 
 		if contentHeight >= m.Height {
@@ -250,6 +293,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		// While the search prompt is open it owns every keystroke: the
+		// navigation bindings below are plain, unmodified keys ("space"
+		// pages down, "n"/"N" jump between matches, "/" opens the prompt),
+		// so letting them match first would swallow the characters the user
+		// is trying to type into the search box instead of inserting them.
+		if m.searchState == Searching {
+			return m.updateSearchInput(msg)
+		}
+
 		switch {
 		case key.Matches(msg, m.KeyMap.PageDown):
 			m.LineDown(m.Height)
@@ -271,6 +323,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		case key.Matches(msg, m.KeyMap.Search):
 			m.searchState = Searching
+			m.filterInput.CursorEnd()
 			cmd = m.filterInput.Focus()
 
 		case key.Matches(msg, m.KeyMap.NextMatch) && m.searchState == Searched:
@@ -283,14 +336,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.SetSearchState(Unsearched)
 			m.filterInput.Reset()
 			m.ScanAfter("")
-
-		case m.searchState == Searching:
-			m.filterInput, cmd = m.filterInput.Update(msg)
-			if msg.String() == "enter" {
-				m.searchState = Searched
-				m.ScanAfter(m.filterInput.Value())
-				m.filterInput.SetValue("")
-			}
 		}
 	case tea.MouseWheelMsg:
 		if !m.MouseWheelEnabled {
@@ -308,22 +353,76 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *Model) ScanAfter(str string) int {
+// updateSearchInput handles a keystroke while the search prompt has focus.
+// Only escape (abandon the search) and enter (run it) are interpreted; every
+// other key goes straight into the text input, so none of the pager's
+// single-key navigation bindings — nor the single-key shortcuts of whatever
+// embeds the pager — fire while the user is typing a query.
+func (m Model) updateSearchInput(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.KeyMap.ExitSearchMode):
+		m.SetSearchState(Unsearched)
+		m.filterInput.Reset()
+		m.ScanAfter("")
+		return m, nil
+
+	case key.Matches(msg, m.KeyMap.AcceptSearch):
+		m.ExitSearch()
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.filterInput, cmd = m.filterInput.Update(msg)
+	m.scan(m.filterInput.Value())
+	return m, cmd
+}
+
+// ExitSearch leaves the search prompt, running whatever query has been typed
+// so its matches stay highlighted while the keyboard goes back to the pager.
+// An empty query clears the search instead of leaving an idle prompt behind.
+func (m *Model) ExitSearch() {
+	if m.searchState != Searching {
+		return
+	}
+
+	if m.filterInput.Value() == "" {
+		m.SetSearchState(Unsearched)
+		m.filterInput.Reset()
+		m.ScanAfter("")
+		return
+	}
+
+	m.SetSearchState(Searched)
+	m.ScanAfter(m.filterInput.Value())
+}
+
+// scan records every line matching str, highlighting them, without moving the
+// viewport. It's what runs on each keystroke in the search prompt, so the
+// matches and their count update as the query is typed while the content
+// stays where the reader left it — only running the search (enter) scrolls.
+func (m *Model) scan(str string) {
 	m.scanString = str
 	m.matchLines = nil
 	m.matchCount = 0
 	m.currentMatch = 0
 
 	if str == "" {
-		return 0
+		return
 	}
 
-	// Find all matches
 	for i, line := range m.lines {
 		if strings.Contains(line.msg, str) {
 			m.matchLines = append(m.matchLines, i)
 			m.matchCount++
 		}
+	}
+}
+
+func (m *Model) ScanAfter(str string) int {
+	m.scan(str)
+
+	if str == "" {
+		return 0
 	}
 
 	if m.matchCount > 0 {
@@ -345,21 +444,10 @@ func (m *Model) ScanAfter(str string) int {
 }
 
 func (m *Model) ScanBefore(str string) int {
-	m.scanString = str
-	m.matchLines = nil
-	m.matchCount = 0
-	m.currentMatch = 0
+	m.scan(str)
 
 	if str == "" {
 		return 0
-	}
-
-	// Find all matches
-	for i, line := range m.lines {
-		if strings.Contains(line.msg, str) {
-			m.matchLines = append(m.matchLines, i)
-			m.matchCount++
-		}
 	}
 
 	if m.matchCount > 0 {
@@ -464,8 +552,8 @@ func (m Model) View() string {
 	contentWidth := w - m.Style.GetHorizontalFrameSize()
 	contentHeight := h - m.Style.GetVerticalFrameSize()
 
-	if m.searchState > 0 {
-		contentHeight--
+	if m.searchState == Searching {
+		contentHeight = max(0, contentHeight-SearchBoxHeight)
 	}
 
 	contents := lipgloss.NewStyle().
@@ -475,11 +563,14 @@ func (m Model) View() string {
 		MaxWidth(contentWidth).
 		Render(strings.Join(lines, "\n"))
 
-	// Add filter input if active
-	if m.searchState > 0 {
+	// The prompt is only on screen while it's being typed into: once the
+	// search has run (or the pager has been left via tab) the matches stay
+	// highlighted and n/N still walk them, but the box gives its lines back
+	// to the content rather than lingering under a panel nobody is in.
+	if m.searchState == Searching {
 		contents = lipgloss.JoinVertical(lipgloss.Top,
 			contents,
-			m.filterInput.View(),
+			m.searchView(contentWidth),
 		)
 	}
 
@@ -507,11 +598,64 @@ func max(a, b int) int {
 	return b
 }
 
-// initializeSearch sets up the filter input component
+// SearchBoxHeight is the number of lines searchView renders: the prompt row
+// plus the top and bottom edges of the box drawn around it.
+const SearchBoxHeight = 3
+
+// searchView renders the search prompt inside a box spanning the pager's
+// full width, with the match counter right-aligned once a query has run.
+func (m Model) searchView(width int) string {
+	box := m.Styles.SearchBox
+
+	// Width is the box's total rendered width, border included, so the box
+	// spans the pager edge to edge; the prompt row inside it gets what the
+	// border and padding leave over.
+	content := max(0, width-box.GetHorizontalFrameSize())
+
+	// While the query is still being typed there's no current match to count
+	// from yet — only the total is meaningful. Once the search has run the
+	// counter tracks which match n/N has walked to.
+	var counter string
+	switch {
+	case m.scanString == "":
+	case m.matchCount == 0:
+		counter = m.Styles.SearchCount.Render("no matches")
+	case m.searchState == Searching:
+		counter = m.Styles.SearchCount.Render(fmt.Sprintf("%d matches", m.matchCount))
+		if m.matchCount == 1 {
+			counter = m.Styles.SearchCount.Render("1 match")
+		}
+	default:
+		counter = m.Styles.SearchCount.Render(fmt.Sprintf("%d/%d", m.currentMatch+1, m.matchCount))
+	}
+
+	// The input gets whatever the prompt and counter leave it, so a long
+	// query scrolls inside the box instead of pushing the counter out of it.
+	input := m.filterInput
+	input.SetWidth(max(0, content-lipgloss.Width(searchPrompt)-lipgloss.Width(counter)))
+
+	// The counter sits flush against the right edge of the box, on the same
+	// line as the prompt.
+	counterWidth := lipgloss.Width(counter)
+	inputWidth := max(0, content-counterWidth)
+	row := lipgloss.NewStyle().Width(inputWidth).MaxWidth(inputWidth).Render(input.View()) + counter
+
+	return box.Width(width).MaxHeight(SearchBoxHeight).Render(row)
+}
+
+// searchPrompt is the marker drawn in front of the search input.
+const searchPrompt = "❯ "
+
+// initializeSearch sets up the search input component
 func (m *Model) initializeSearch() {
 	filterInput := textinput.New()
-	filterInput.Prompt = "Search: "
+	filterInput.Prompt = searchPrompt
 	filterInput.CharLimit = 64
+	filterInput.Placeholder = "search"
+	inputStyles := filterInput.Styles()
+	inputStyles.Focused.Prompt = m.Styles.SearchPrompt
+	inputStyles.Blurred.Prompt = m.Styles.SearchPrompt
+	filterInput.SetStyles(inputStyles)
 	m.filterInput = filterInput
 }
 

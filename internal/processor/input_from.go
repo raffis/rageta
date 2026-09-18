@@ -37,7 +37,7 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		for i := range inputs {
 			inputs[i] = *s.inputs[i].DeepCopy()
-			subst = append(subst, &inputs[i].Path)
+			subst = append(subst, &inputs[i].Src)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -62,7 +62,7 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					contextRef = contextRes.Ref
 				}
 
-				if err := s.applyInputs(&ctx, contextRef, input.Path); err != nil {
+				if err := s.applyInputs(&ctx, contextRef, input.Src); err != nil {
 					return ctx, err
 				}
 			} else {
@@ -70,7 +70,7 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 				if instances, ok := ctx.TaskGroups[taskName]; ok {
 					for _, stepCtx := range instances {
-						if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Path); err != nil {
+						if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Src); err != nil {
 							return ctx, err
 						}
 					}
@@ -83,7 +83,7 @@ func (s *InputFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					return ctx, fmt.Errorf("source step %q dependency not found", taskName)
 				}
 
-				if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Path); err != nil {
+				if err := s.applyInputs(&ctx, stepCtx.Build.Ref, input.Src); err != nil {
 					return ctx, err
 				}
 			}
@@ -101,7 +101,7 @@ func (s *InputFrom) applyInputs(ctx *TaskContext, ref gwclient.Reference, srcPat
 
 	vars := make(map[string]json.RawMessage)
 	if err := json.Unmarshal(b, &vars); err != nil {
-		return fmt.Errorf("failed to parse input vars from file: %w", err)
+		return fmt.Errorf("invalid json input file from %q: %w", srcPath, err)
 	}
 
 	for k, v := range vars {

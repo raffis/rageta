@@ -14,7 +14,7 @@ templates:
     cache:
       name: go-build
   copy:
-  - path: .
+  - src: .
   image: golang:1.25-alpine
   workingDir: /workspace
 
@@ -26,15 +26,15 @@ tasks:
   templates:
   - name: golang
   exports:
-  - path: crds
+  - src: crds
   steps:
   - script: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
   - script: controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=crds
   - script: controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/core/...; ./pkg/apis/package/...; ./internal/processor/..."
 - name: code-gen
   exports:
-  - path: .
+  - src: .
   steps:
   - copy:
-    - path: .
+    - src: .
   - script: ./hack/code-gen.sh

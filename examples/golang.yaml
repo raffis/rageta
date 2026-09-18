@@ -23,25 +23,27 @@ templates:
   dependsOn:
   - name: go-version
   copy:
-  - path: .
+  - src: .
   inputFrom:
   - from: go-version
-    file: /rageta/work/.env
-  image: golang:$(context.inputs.GO_VERSION)
+    src: /rageta/work/input.json
+  image: golang:$(context.inputs.version)
   workingDir: /workspace
   
 - name: docker
   copy:
-  - path: .
+  - src: .
   image: docker:27-cli
   workingDir: /workspace
 
 tasks:
 - name: go-version
   copy:
-  - path: go.mod
+  - src: go.mod
   steps:
-  - script: sed -En 's/^go[[:space:]]+([[:digit:].]+)$/GO_VERSION=\1/p' go.mod > .env
+  - script: |
+      version=$(sed -En 's/^go[[:space:]]+([[:digit:].]+)$/\1/p' go.mod)
+      echo '{"version": "'$version'"}' > /rageta/work/input.json
 - name: default
   targets:
   - name: tidy
@@ -54,8 +56,8 @@ tasks:
   templates:
   - name: golang
   exports:
-  - path: ./go.mod
-  - path: ./go.sum
+  - src: ./go.mod
+  - src: ./go.sum
   steps:
   - script: go mod tidy
 
@@ -63,7 +65,7 @@ tasks:
   templates:
   - name: golang
   exports:
-  - path: .
+  - src: .
   steps:
     - script: go fmt ./...
 
@@ -80,7 +82,7 @@ tasks:
     cache: 
       name: golangci-lint
   copy:
-  - path: .
+  - src: .
   workingDir: /workspace
   steps:
   - script: golangci-lint run --timeout=3m
@@ -95,7 +97,7 @@ tasks:
   templates:
   - name: golang
   #exports:
-  #- path: ./rageta
+  #- src: ./rageta
   #env:
   #- name: CGO_ENABLED
   #  value: "0"
@@ -109,9 +111,9 @@ tasks:
   - name: docker
   copy:
   - from: build
-    path: ./rageta
+    src: ./rageta
   steps:
-  - script: docker build -t $(context.inputs.image) .
+  - script: docker build -t $CONTEXT_INPUTS__image .
 
 - name: install
   templates:

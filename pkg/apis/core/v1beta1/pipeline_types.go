@@ -65,7 +65,7 @@ type TaskOptions struct {
 }
 
 type Export struct {
-	Path *string `json:"path,omitempty"`
+	Src *string `json:"src,omitempty"`
 }
 
 type TaskDependency struct {
@@ -76,8 +76,8 @@ type TaskDependency struct {
 type Copy struct {
 	From  *string `json:"from,omitempty"`
 	Chmod *uint32 `json:"chmod,omitempty"`
-	Path  string  `json:"path,omitempty"`
-	To    string  `json:"to,omitempty"`
+	Src   string  `json:"src,omitempty"`
+	Dst   string  `json:"dst,omitempty"`
 }
 
 type Label struct {
@@ -98,12 +98,12 @@ type EnvVar struct {
 
 type InputFrom struct {
 	From *string `json:"from,omitempty"`
-	Path string  `json:"file"`
+	Src  string  `json:"src"`
 }
 
 type EnvFrom struct {
 	From *string `json:"from,omitempty"`
-	Path string  `json:"path"`
+	Src  string  `json:"src"`
 }
 
 type Condition struct {

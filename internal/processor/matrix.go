@@ -61,6 +61,11 @@ type isMatrixContext struct{}
 func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 	return func(ctx TaskContext) (TaskContext, error) {
 		if ctx.Value(isMatrixContext{}) == s {
+			for k, v := range ctx.Matrix.Params {
+				envName := fmt.Sprintf("CONTEXT_MATRIX__%s", strings.ReplaceAll(k, "-", "_"))
+				ctx.EnvVars.Envs[envName] = v
+			}
+
 			return next(ctx)
 		}
 
@@ -131,7 +136,6 @@ func (s *Matrix) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			copyCtx = s.extendMatrix(copyCtx, matrix, additionalParams)
 			copyCtx.Matrix.Params = matrix
 			copyCtx.Build.State = llb.Scratch()
-
 			go func() {
 				if cap(s.pool) > 0 {
 					s.pool <- struct{}{}

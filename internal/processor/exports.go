@@ -32,11 +32,11 @@ func (s *Exports) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		subst := []any{}
 
 		for i, item := range s.exports {
-			if item.Path == nil {
+			if item.Src == nil {
 				continue
 			}
 
-			paths[i] = *item.Path
+			paths[i] = *item.Src
 			subst = append(subst, &paths[i])
 		}
 

@@ -102,6 +102,7 @@ func (c TaskContext) DeepCopy() TaskContext {
 	copy.Matrix.Params = maps.Clone(c.Matrix.Params)
 	copy.Build.RunOpts = append(copy.Build.RunOpts, c.Build.RunOpts...)
 	copy.Build.Mounts = append(copy.Build.Mounts, c.Build.Mounts...)
+	copy.Build.Secrets = append(copy.Build.Secrets, c.Build.Secrets...)
 	copy.Build.ExtraHosts = append(copy.Build.ExtraHosts, c.Build.ExtraHosts...)
 	copy.Build.State = c.Build.State
 	copy.Build.ContextState = c.Build.ContextState

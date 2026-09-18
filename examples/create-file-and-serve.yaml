@@ -19,4 +19,4 @@ tasks:
     pipeline: ./examples/serve-and-request-file.yaml
   sources:
   - from: create-file
-    path: index.html
+    src: index.html

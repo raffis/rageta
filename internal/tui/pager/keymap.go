@@ -15,6 +15,7 @@ type KeyMap struct {
 	Search         key.Binding
 	NextMatch      key.Binding
 	PrevMatch      key.Binding
+	AcceptSearch   key.Binding
 	ExitSearchMode key.Binding
 }
 
@@ -56,6 +57,10 @@ func DefaultKeyMap() KeyMap {
 		PrevMatch: key.NewBinding(
 			key.WithKeys("N"),
 			key.WithHelp("N", "prev match"),
+		),
+		AcceptSearch: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "search"),
 		),
 		ExitSearchMode: key.NewBinding(
 			key.WithKeys("esc"),

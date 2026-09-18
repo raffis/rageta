@@ -153,7 +153,7 @@ func (s *Display) uiDisplay(rc *RunContext) *tea.Program {
 	}
 
 	s.tuiDone = make(chan struct{})
-	model := tui.NewUI(rc.Logging.FileLogger.WithValues("component", "tui"))
+	model := tui.NewUI()
 	model.SetDebugShell(func(stepCtx processor.TaskContext) (tea.ExecCommand, error) {
 		return &debugShellExec{rc: rc, stepCtx: stepCtx}, nil
 	})

@@ -36,7 +36,7 @@ func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		for i := range envs {
 			envs[i] = *s.envs[i].DeepCopy()
-			subst = append(subst, &envs[i].Path)
+			subst = append(subst, &envs[i].Src)
 		}
 
 		if err := substitute.Substitute(ctx.ToV1Beta1(), subst...); err != nil {
@@ -61,7 +61,7 @@ func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					contextRef = contextRes.Ref
 				}
 
-				if err := s.applyEnvs(&ctx, contextRef, env.Path); err != nil {
+				if err := s.applyEnvs(&ctx, contextRef, env.Src); err != nil {
 					return ctx, err
 				}
 			} else {
@@ -69,7 +69,7 @@ func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 				if instances, ok := ctx.TaskGroups[taskName]; ok {
 					for _, stepCtx := range instances {
-						if err := s.applyEnvs(stepCtx, stepCtx.Build.Ref, env.Path); err != nil {
+						if err := s.applyEnvs(stepCtx, stepCtx.Build.Ref, env.Src); err != nil {
 							return ctx, err
 						}
 					}
@@ -82,7 +82,7 @@ func (s *EnvFrom) Bootstrap(_ Pipeline, next Next) (Next, error) {
 					return ctx, fmt.Errorf("source step %q dependency not found", taskName)
 				}
 
-				if err := s.applyEnvs(stepCtx, stepCtx.Build.Ref, env.Path); err != nil {
+				if err := s.applyEnvs(stepCtx, stepCtx.Build.Ref, env.Src); err != nil {
 					return ctx, err
 				}
 			}
@@ -100,7 +100,7 @@ func (s *EnvFrom) applyEnvs(ctx *TaskContext, ref gwclient.Reference, srcPath st
 
 	vars, err := godotenv.UnmarshalBytes(b)
 	if err != nil {
-		return fmt.Errorf("failed to parse env vars from file: %w", err)
+		return fmt.Errorf("invalid .env file from %q: %w", srcPath, err)
 	}
 
 	maps.Copy(ctx.EnvVars.Envs, vars)

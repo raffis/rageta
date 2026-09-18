@@ -15,7 +15,7 @@ tasks:
 - name: http-server
   image: busybox:1
   copy:
-  - path: $(context.inputs.file)
+  - src: $(context.inputs.file)
   service:
     args: [httpd, -f, -v, -p, "8080", -h, "."]
 
@@ -24,4 +24,4 @@ tasks:
   - name: http-server
   image: curlimages/curl:8.9.1
   steps:
-  - script: curl --fail http://http-server:8080/$(context.inputs.file)
+  - script: curl --fail http://http-server:8080/$CONTEXT_INPUTS__file

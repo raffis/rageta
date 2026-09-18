@@ -48,8 +48,10 @@ func (s *SecretVars) Bootstrap(pipeline Pipeline, next Next) (Next, error) {
 			ctx.SecretVars.Secrets[k] = string(v)
 		}
 
-		for k, _ := range ctx.SecretVars.Secrets {
-			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(fmt.Sprintf("/run/secrets/%s", k), llb.SecretID(k)))
+		for k := range ctx.SecretVars.Secrets {
+			path := fmt.Sprintf("/run/secrets/%s", k)
+			ctx.Build.RunOpts = append(ctx.Build.RunOpts, llb.AddSecret(path, llb.SecretID(k)))
+			ctx.Build.AddSecret(path, k)
 		}
 
 		return next(ctx)

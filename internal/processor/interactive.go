@@ -131,6 +131,17 @@ func RunDebugShell(ctx context.Context, gwClient gwclient.Client, stepCtx TaskCo
 		}
 	}
 
+	for _, secret := range stepCtx.Build.Secrets {
+		mounts = append(mounts, gwclient.Mount{
+			Dest:      secret.Path,
+			MountType: pb.MountType_SECRET,
+			SecretOpt: &pb.SecretOpt{
+				ID:   secret.ID,
+				Mode: 0400,
+			},
+		})
+	}
+
 	ctr, err := gwClient.NewContainer(ctx, gwclient.NewContainerRequest{
 		Mounts:     mounts,
 		ExtraHosts: stepCtx.Build.ExtraHosts,

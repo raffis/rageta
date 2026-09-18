@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 	"github.com/moby/buildkit/client/llb"
 	gwclient "github.com/moby/buildkit/frontend/gateway/client"
 	"github.com/raffis/rageta/internal/secrets"
-	"github.com/raffis/rageta/internal/substitute"
 	"github.com/raffis/rageta/pkg/apis/core/v1beta1"
 )
 
@@ -55,8 +53,9 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 		}
 
 		secretID := ContextSecretPrefix + s.taskName
-		s.store.AddSecret(context.Background(), secretID, contextJSON)
+		s.store.AddSecret(ctx, secretID, contextJSON)
 		contextSecretOpt := llb.AddSecret(contextPath, llb.SecretID(secretID))
+		ctx.Build.AddSecret(contextPath, secretID)
 
 		baseRunOpts := append([]llb.RunOption{contextSecretOpt}, ctx.Build.RunOpts...)
 		if s.noCache {
@@ -67,9 +66,6 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 
 		for k, step := range s.steps {
 			script := *step.Script
-			if err := substitute.Substitute(ctx.ToV1Beta1(), &script); err != nil {
-				return ctx, err
-			}
 			script = strings.TrimSpace(script)
 
 			interpreter := defaultShell
@@ -79,8 +75,13 @@ func (s *Steps) Bootstrap(_ Pipeline, next Next) (Next, error) {
 			}
 
 			exitCodePath := fmt.Sprintf("/rageta/exitcode-%d", k)
+			stepPath := fmt.Sprintf("/rageta/step-%d.ash", k)
 
-			history = append(history, script)
+			ctx.Build.State = ctx.Build.State.File(
+				llb.Mkfile(stepPath, 0644, []byte(script)),
+			)
+
+			history = append(history, fmt.Sprintf("/bin/ash %s", stepPath))
 			stepRunOpts := append(append([]llb.RunOption{}, baseRunOpts...), llb.Args([]string{
 				shimPath,
 				"-stats",

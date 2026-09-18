@@ -1,7 +1,6 @@
 package v1beta1
 
 import (
-	"encoding/json"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,18 +21,24 @@ type Context struct {
 
 func (v *Context) Index() map[string]string {
 	vars := map[string]string{}
-
 	for k, v := range v.Inputs {
 		switch v.Type {
 		case ParamTypeString:
 			vars[fmt.Sprintf("context.inputs.%s", k)] = v.StringVal
 		case ParamTypeArray:
-			b, _ := json.Marshal(v.ArrayVal)
-			vars[fmt.Sprintf("context.inputs.%s", k)] = string(b)
+			for i, s := range v.ArrayVal {
+				vars[fmt.Sprintf("context.inputs.%s[%d]", k, i)] = s
+			}
 		case ParamTypeObject:
-			b, _ := json.Marshal(v.ObjectVal)
-			vars[fmt.Sprintf("context.inputs.%s", k)] = string(b)
+			for objKey, s := range v.ObjectVal {
+				vars[fmt.Sprintf("context.inputs.%s.%s", k, objKey)] = s
+			}
 		}
+	}
+
+	for k, v := range v.Inputs {
+		b, _ := v.MarshalJSON()
+		vars[fmt.Sprintf("context.inputsJSON.%s", k)] = string(b)
 	}
 
 	for k, v := range v.Secrets {
